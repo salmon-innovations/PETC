@@ -1,0 +1,65 @@
+version: "3.9"
+
+# Postgres (driving-school-postgres) and Redis (driving-school-redis) are
+# already running on the host at localhost:5432 and localhost:6379.
+# This file manages: MinIO, cloud backend (Spring Boot), cloud frontend (Nginx).
+# The desktop Electron app is built separately — it never runs in Docker.
+
+services:
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./cloud/backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      minio:
+        condition: service_healthy
+    # host.docker.internal resolves to the Docker host where the shared
+    # Postgres and Redis containers are listening on published ports.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      DB_URL: jdbc:postgresql://host.docker.internal:5432/petc
+      DB_USER: petc
+      DB_PASS: petc
+      REDIS_HOST: host.docker.internal
+      REDIS_PORT: 6379
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: petc-photos
+      S3_REGION: ap-southeast-1
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      JWT_SECRET: dev-secret-must-be-at-least-32-chars!
+    ports:
+      - "8080:8080"
+
+  cloud-frontend:
+    build:
+      context: ./cloud/frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+volumes:
+  minio_data:

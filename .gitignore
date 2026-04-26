@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+dist/
+*.egg-info/
+petc_outbox.db
+petc.db
+petc.db-*
+photos/
+build/
+
+# Java / Gradle
+.gradle/
+web/backend/build/
+web/backend/.env
+*.class
+*.jar
+
+# Node
+web/frontend/node_modules/
+web/frontend/dist/
+desktop/node_modules/
+desktop/renderer/node_modules/
+desktop/renderer/dist/
+cloud/frontend/node_modules/
+cloud/frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+*.env
+.env.local
+application-local.yml

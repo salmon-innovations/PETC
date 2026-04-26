@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PETC Mirror Event Envelope",
+  "description": "Payload sent from the desktop cloud_outbox to the cloud backend /api/ingest/mirror",
+  "type": "object",
+  "required": ["center_id", "entity_type", "entity_id", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "center_id":   { "type": "string", "minLength": 1 },
+    "entity_type": { "type": "string", "enum": ["emission_test_result", "ltms_submission"] },
+    "entity_id":   { "type": "string", "minLength": 1 },
+    "payload":     { "type": "object" }
+  },
+  "definitions": {
+    "emission_test_result": {
+      "type": "object",
+      "required": ["session_token", "fuel_type", "pass_fail", "captured_at"],
+      "properties": {
+        "session_token": { "type": "string" },
+        "fuel_type":     { "type": "string", "enum": ["GAS", "DIESEL"] },
+        "pass_fail":     { "type": ["boolean", "null"] },
+        "serial_no":     { "type": ["string", "null"] },
+        "captured_at":   { "type": "string", "format": "date-time" },
+        "raw":           { "type": ["string", "null"] }
+      }
+    },
+    "ltms_submission": {
+      "type": "object",
+      "required": ["test_id", "state"],
+      "properties": {
+        "test_id":        { "type": "string" },
+        "state":          { "type": "string", "enum": ["ACCEPTED", "REJECTED"] },
+        "certificate_no": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

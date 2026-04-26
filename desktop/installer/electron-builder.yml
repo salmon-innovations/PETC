@@ -1,0 +1,77 @@
+appId: com.salmoninnovations.petc
+productName: PETC Desktop
+copyright: "Copyright © 2025 Salmon Innovations"
+
+directories:
+  buildResources: installer/assets
+  output: dist/installer
+
+# Renderer built bundle
+files:
+  - from: renderer/dist
+    to: .
+    filter:
+      - "**/*"
+  - from: electron/dist
+    to: electron
+    filter:
+      - "main.js"
+      - "preload.js"
+
+# PyInstaller-frozen sidecar binary (built separately before electron-builder)
+extraResources:
+  - from: sidecar/dist/petc
+    to: petc-sidecar
+    filter:
+      - "**/*"
+
+# electron-builder entry point
+main: electron/main.js
+
+asar: true
+
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  category: public.app-category.productivity
+  icon: installer/assets/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: installer/assets/entitlements.mac.plist
+  entitlementsInherit: installer/assets/entitlements.mac.plist
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: installer/assets/icon.ico
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: installer/assets/icon.ico
+  uninstallerIcon: installer/assets/icon.ico
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: PETC Desktop
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+  category: Office
+
+publish:
+  provider: generic
+  url: https://releases.petc.example.com
+  channel: stable
