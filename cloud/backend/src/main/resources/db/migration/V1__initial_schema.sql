@@ -53,12 +53,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE;
 
--- ── Seed: default super-admin (password = "admin" bcrypt hash) ───────────
--- Change this immediately in production!
+-- ── Seed: default super-admin (password = "admin") ───────────────────────
+-- Dev seed only. Change this immediately in production.
 INSERT INTO users (email, password_hash, full_name, role)
 VALUES (
     'admin@petc.ph',
-    '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj0go7/H.G9.',
+    'admin',
     'Super Admin',
     'super_admin'
 );

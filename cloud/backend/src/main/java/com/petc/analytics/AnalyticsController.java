@@ -25,7 +25,8 @@ public class AnalyticsController {
         return jdbc.queryForList("""
             SELECT
                 t.name                                                      AS "centerName",
-                COUNT(me.id) FILTER (
+                COUNT(DISTINCT me.id)                                       AS "totalTests",
+                COUNT(DISTINCT me.id) FILTER (
                     WHERE date_trunc('month', me.captured_at) =
                           date_trunc('month', now())
                 )                                                           AS "testsThisMonth",
@@ -35,7 +36,9 @@ public class AnalyticsController {
                               date_trunc('month', now())
                     ), 0
                 )                                                           AS "passRate",
-                COUNT(me.id) FILTER (WHERE ml.id IS NULL)                  AS "pendingLtms",
+                COUNT(DISTINCT me.id) FILTER (WHERE ml.id IS NULL)         AS "pendingLtms",
+                COUNT(DISTINCT me.id) FILTER (WHERE ml.state = 'ACCEPTED') AS "acceptedLtms",
+                COUNT(DISTINCT me.id) FILTER (WHERE ml.state = 'REJECTED') AS "rejectedLtms",
                 MAX(me.ingested_at)                                         AS "lastSync"
             FROM tenants t
             LEFT JOIN mirror_emission_tests me ON me.tenant_id = t.id
@@ -44,6 +47,24 @@ public class AnalyticsController {
             GROUP BY t.id, t.name
             ORDER BY t.name
             """);
+    }
+
+    @GetMapping("/recent-events")
+    public List<Map<String, Object>> recentEvents(
+            @RequestParam(defaultValue = "25") int limit
+    ) {
+        return jdbc.queryForList("""
+            SELECT
+                e.received_at AS "receivedAt",
+                t.name        AS "centerName",
+                e.center_id   AS "centerId",
+                e.entity_type AS "entityType",
+                e.entity_id   AS "entityId"
+            FROM mirror_events e
+            JOIN tenants t ON t.id = e.tenant_id
+            ORDER BY e.received_at DESC
+            LIMIT ?
+            """, Math.max(1, Math.min(limit, 100)));
     }
 
     /**

@@ -22,6 +22,11 @@ petc:
   updates:
     stable-version: ${STABLE_VERSION:0.1.0}
     stable-url: ${STABLE_BASE_URL:https://releases.example.com/petc}
+  ingest:
+    dev-key-enabled: ${DEV_CENTER_KEY_ENABLED:true}
+    dev-key: ${DEV_CENTER_KEY:dev-insecure-key}
+    dev-tenant-slug: ${DEV_CENTER_SLUG:dev-center}
+    dev-tenant-name: ${DEV_CENTER_NAME:Mock PETC Center}
 
 logging:
   level:

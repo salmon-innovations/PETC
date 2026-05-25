@@ -19,7 +19,12 @@ logger = logging.getLogger("petc.service")
 
 # ── configuration (env vars set by Electron main process) ─────────────────
 _CONFIG = {
+    # PETC_ANALYZER: "mock" | "serial_gas" | "serial_diesel"
     "analyzer": os.environ.get("PETC_ANALYZER", "mock"),
+    # PETC_ANALYZER_PORT: COM port for serial adapters, e.g. "COM3" or "/dev/ttyUSB0"
+    "analyzer_port": os.environ.get("PETC_ANALYZER_PORT", "COM1"),
+    # PETC_ANALYZER_BAUD: baud rate for serial adapters (default 9600)
+    "analyzer_baud": int(os.environ.get("PETC_ANALYZER_BAUD", "9600")),
     "camera": os.environ.get("PETC_CAMERA", "mock"),
     "printer": os.environ.get("PETC_PRINTER", "mock"),
     "gov_mock": os.environ.get("PETC_GOV_MOCK", "true").lower() == "true",
@@ -30,8 +35,14 @@ _CONFIG = {
 }
 
 
+def _build_analyzer():
+    """Build the analyzer from the app_settings table, falling back to env vars
+    via the seeded defaults in _seed_default_settings()."""
+    from .analyzer.builder import build_analyzer_from_settings
+    return build_analyzer_from_settings()
+
+
 def run() -> None:
-    from .analyzer.mock import MockAnalyzer
     from .camera.capture import MockCameraCapture
     from .printer.mock import MockPrinter
     from .gov.mock_client import MockGovRegistryClient
@@ -43,7 +54,7 @@ def run() -> None:
     init_db()
     logger.info("SQLite initialised")
 
-    analyzer = MockAnalyzer()
+    analyzer = _build_analyzer()
     camera = MockCameraCapture()
     printer = MockPrinter()
 
@@ -59,8 +70,9 @@ def run() -> None:
     analyzer.connect()
     camera.open()
     logger.info(
-        "Hardware initialised (analyzer=%s, camera=%s, printer=%s, gov_mock=%s)",
-        _CONFIG["analyzer"], _CONFIG["camera"], _CONFIG["printer"], _CONFIG["gov_mock"],
+        "Hardware initialised (analyzer=%s port=%s, camera=%s, printer=%s, gov_mock=%s)",
+        _CONFIG["analyzer"], _CONFIG["analyzer_port"],
+        _CONFIG["camera"], _CONFIG["printer"], _CONFIG["gov_mock"],
     )
 
     cloud_sync = CloudSyncPusher(

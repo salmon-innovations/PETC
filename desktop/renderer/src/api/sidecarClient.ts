@@ -66,6 +66,25 @@ export interface LtmsSubmitResponse {
   submissionId?: string;
 }
 
+export type AnalyzerType = "mock" | "serial_gas" | "serial_diesel" | "fty_opacimeter";
+
+export interface AnalyzerSettings {
+  type: AnalyzerType;
+  port: string;
+  baud: number;
+  dataBits: number;
+  parity: "N" | "E" | "O";
+  stopBits: number;
+  address: string;
+}
+
+export interface SerialPortInfo {
+  device: string;
+  description: string;
+  hwid: string;
+  manufacturer: string;
+}
+
 // ── API calls ──────────────────────────────────────────────────────────────
 export const sidecarClient = {
   async getStatus(): Promise<SidecarStatus> {
@@ -172,6 +191,24 @@ export const sidecarClient = {
   async submitUpload(payload: Record<string, unknown>): Promise<LtmsSubmitResponse> {
     const c = await client();
     const { data } = await c.post("/api/v1/upload/submit", { payload });
+    return data;
+  },
+
+  async listSerialPorts(): Promise<SerialPortInfo[]> {
+    const c = await client();
+    const { data } = await c.get("/api/v1/ports");
+    return data;
+  },
+
+  async getAnalyzerSettings(): Promise<AnalyzerSettings> {
+    const c = await client();
+    const { data } = await c.get("/api/v1/settings/analyzer");
+    return data;
+  },
+
+  async updateAnalyzerSettings(settings: AnalyzerSettings): Promise<{ applied: boolean; connected: boolean }> {
+    const c = await client();
+    const { data } = await c.put("/api/v1/settings/analyzer", settings);
     return data;
   },
 };

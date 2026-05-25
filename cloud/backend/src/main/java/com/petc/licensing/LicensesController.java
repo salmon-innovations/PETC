@@ -30,8 +30,12 @@ public class LicensesController {
     @GetMapping
     public List<Map<String, Object>> list() {
         return jdbc.queryForList("""
-            SELECT l.id, t.name AS center_name, l.tenant_id, l.active,
-                   l.issued_at, l.expires_at
+            SELECT l.id::text AS "id",
+                   t.name AS "centerName",
+                   l.tenant_id::text AS "tenantId",
+                   l.active AS "active",
+                   l.issued_at AS "issuedAt",
+                   l.expires_at AS "expiresAt"
             FROM licenses l
             JOIN tenants t ON t.id = l.tenant_id
             ORDER BY l.issued_at DESC

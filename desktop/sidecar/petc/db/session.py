@@ -38,6 +38,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _additive_sqlite_migrations()
     _seed_dev_operator()
+    _seed_default_settings()
 
 
 def _additive_sqlite_migrations() -> None:
@@ -82,6 +83,27 @@ def _additive_sqlite_migrations() -> None:
             for column_name, column_type in columns.items():
                 if column_name not in existing:
                     conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"))
+
+
+def _seed_default_settings() -> None:
+    """Seed analyzer.* settings from env vars on first boot. Subsequent boots
+    read whatever the user has saved via the settings page."""
+    from .models import AppSetting
+
+    defaults = {
+        "analyzer.type": os.environ.get("PETC_ANALYZER", "mock"),
+        "analyzer.port": os.environ.get("PETC_ANALYZER_PORT", "COM1"),
+        "analyzer.baud": os.environ.get("PETC_ANALYZER_BAUD", "9600"),
+        "analyzer.data_bits": os.environ.get("PETC_ANALYZER_DATABITS", "8"),
+        "analyzer.parity": os.environ.get("PETC_ANALYZER_PARITY", "N"),
+        "analyzer.stop_bits": os.environ.get("PETC_ANALYZER_STOPBITS", "1"),
+        "analyzer.address": os.environ.get("PETC_ANALYZER_ADDRESS", "01"),
+    }
+    with SessionLocal() as session:
+        for key, value in defaults.items():
+            if session.get(AppSetting, key) is None:
+                session.add(AppSetting(key=key, value=value))
+        session.commit()
 
 
 def _seed_dev_operator() -> None:

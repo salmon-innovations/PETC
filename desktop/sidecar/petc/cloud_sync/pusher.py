@@ -97,9 +97,9 @@ class CloudSyncPusher:
                 resp = client.post(
                     url,
                     json={
-                        "center_id": self._center_id,
-                        "entity_type": row.entity_type,
-                        "entity_id": row.entity_id,
+                        "centerId": self._center_id,
+                        "entityType": row.entity_type,
+                        "entityId": row.entity_id,
                         "payload": json.loads(row.payload_json),
                     },
                     headers={"X-Center-Key": self._api_key},
