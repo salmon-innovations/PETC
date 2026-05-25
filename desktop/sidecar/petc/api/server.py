@@ -271,6 +271,7 @@ def start_test(
         test_id,
         {
             "id": test_id,
+            "session_token": token,
             "operator_id": req.operator_id,
             "plate_number": req.plate_number.upper().replace(" ", ""),
             "fuel_type": req.fuel_type.upper(),
@@ -318,8 +319,10 @@ def get_result(
             session.merge(GasTestResult(test_id=test.id, **readings))
         else:
             session.merge(DieselTestResult(test_id=test.id, **readings))
-        session.commit()
         test_id = test.id
+        plate_number = test.plate_number
+        photo_count = len(test.photos)
+        session.commit()
 
     cloud_sync.enqueue(
         "emission_test_result",
@@ -327,11 +330,13 @@ def get_result(
         {
             "id": test_id,
             "session_token": session_token,
+            "plate_number": plate_number,
             "fuel_type": result.fuel_type.value,
             "pass_fail": result.pass_fail,
             "serial_no": result.serial_no,
             "captured_at": captured_at.isoformat(),
             "readings": readings,
+            "photo_count": photo_count,
             "raw": result.raw_bytes.hex(),
         },
     )
@@ -359,6 +364,7 @@ def abort_test(
 def capture_photo(
     req: CapturePhotoRequest = CapturePhotoRequest(),
     camera: CameraCapture = Depends(_get_camera),
+    cloud_sync: CloudSyncPusher = Depends(_get_cloud_sync),
 ) -> dict:
     from ..db.session import SessionLocal
     from ..db.models import EmissionTest, TestPhoto
@@ -393,6 +399,20 @@ def capture_photo(
             )
             session.add(row)
             session.commit()
+
+        cloud_sync.enqueue(
+            "test_photo",
+            photo_id,
+            {
+                "id": photo_id,
+                "test_id": req.test_id,
+                "photo_type": req.photo_type.upper(),
+                "file_path": str(file_path),
+                "mime_type": photo.mime_type,
+                "camera_id": photo.camera_id,
+                "captured_at": photo.captured_at.isoformat(),
+            },
+        )
 
     return {
         "id": photo_id,
@@ -577,8 +597,11 @@ def submit_ltms(
         session.commit()
 
     cloud_sync.enqueue("ltms_submission", sub.id, {
-        "test_id": test_id, "state": result.state,
+        "test_id": test_id,
+        "state": result.state,
         "certificate_no": result.certificate_no,
+        "rejection_reason": result.rejection_reason,
+        "submitted_at": datetime.now(timezone.utc).isoformat(),
     })
 
     return {
@@ -721,6 +744,7 @@ def submit_upload_v1(
             "test_id": test_id,
             "state": result.state,
             "certificate_no": result.certificate_no,
+            "rejection_reason": result.rejection_reason,
             "submitted_at": now.isoformat(),
         },
     )
@@ -898,7 +922,7 @@ def analytics_summary() -> dict:
 def analytics_daily(days: int = 7) -> list:
     from ..db.session import SessionLocal
     from ..db.models import EmissionTest
-    from sqlalchemy import func, cast, Date, Integer
+    from sqlalchemy import func, cast, Integer
 
     with SessionLocal() as session:
         cutoff = datetime.now(timezone.utc).replace(
@@ -909,7 +933,7 @@ def analytics_daily(days: int = 7) -> list:
 
         rows = (
             session.query(
-                cast(EmissionTest.started_at, Date).label("date"),
+                func.date(EmissionTest.started_at).label("date"),
                 func.count(EmissionTest.id).label("total"),
                 func.sum(cast(EmissionTest.pass_fail, Integer)).label("passed"),
             )
@@ -922,6 +946,141 @@ def analytics_daily(days: int = 7) -> list:
             {"date": str(r.date), "total": r.total, "passed": int(r.passed or 0)}
             for r in rows
         ]
+
+
+@app.get("/api/v1/ports")
+def list_ports() -> list:
+    """Return available serial ports for the settings / hardware-config screen."""
+    from ..analyzer.serial_base import list_serial_ports
+    return list_serial_ports()
+
+
+# ---------------------------------------------------------------------------
+# Settings routes — analyzer hardware config (read + hot-reconnect)
+# ---------------------------------------------------------------------------
+_ANALYZER_SETTING_KEYS = (
+    "analyzer.type",
+    "analyzer.port",
+    "analyzer.baud",
+    "analyzer.data_bits",
+    "analyzer.parity",
+    "analyzer.stop_bits",
+    "analyzer.address",
+)
+
+_ANALYZER_TYPES = {"mock", "serial_gas", "serial_diesel", "fty_opacimeter"}
+_PARITY_VALUES = {"N", "E", "O"}
+
+
+class AnalyzerSettings(BaseModel):
+    type: str
+    port: str
+    baud: int
+    dataBits: int
+    parity: str
+    stopBits: int
+    address: str
+
+
+def _load_analyzer_settings() -> AnalyzerSettings:
+    from ..db.session import SessionLocal
+    from ..db.models import AppSetting
+
+    with SessionLocal() as session:
+        rows = {
+            r.key: (r.value or "")
+            for r in session.query(AppSetting).filter(AppSetting.key.in_(_ANALYZER_SETTING_KEYS)).all()
+        }
+    return AnalyzerSettings(
+        type=rows.get("analyzer.type", "mock"),
+        port=rows.get("analyzer.port", "COM1"),
+        baud=int(rows.get("analyzer.baud", "9600")),
+        dataBits=int(rows.get("analyzer.data_bits", "8")),
+        parity=rows.get("analyzer.parity", "N"),
+        stopBits=int(rows.get("analyzer.stop_bits", "1")),
+        address=rows.get("analyzer.address", "01"),
+    )
+
+
+@app.get("/api/v1/settings/analyzer", response_model=AnalyzerSettings)
+def get_analyzer_settings() -> AnalyzerSettings:
+    return _load_analyzer_settings()
+
+
+@app.put("/api/v1/settings/analyzer")
+def update_analyzer_settings(req: AnalyzerSettings) -> dict:
+    """Persist new analyzer settings and rebuild the analyzer in place.
+
+    On failure to connect the new analyzer, rolls back to the previous settings
+    and reconnects the previous analyzer so the lane is never left offline."""
+    global _analyzer
+    from ..db.session import SessionLocal
+    from ..db.models import AppSetting
+    from ..analyzer.builder import build_analyzer_from_settings
+
+    if req.type not in _ANALYZER_TYPES:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            f"type must be one of {sorted(_ANALYZER_TYPES)}")
+    if req.parity.upper() not in _PARITY_VALUES:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "parity must be N, E, or O")
+    if req.dataBits not in (7, 8):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "dataBits must be 7 or 8")
+    if req.stopBits not in (1, 2):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "stopBits must be 1 or 2")
+    if req.baud <= 0:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "baud must be positive")
+
+    previous = _load_analyzer_settings()
+    new_values = {
+        "analyzer.type": req.type,
+        "analyzer.port": req.port,
+        "analyzer.baud": str(req.baud),
+        "analyzer.data_bits": str(req.dataBits),
+        "analyzer.parity": req.parity.upper(),
+        "analyzer.stop_bits": str(req.stopBits),
+        "analyzer.address": req.address,
+    }
+
+    def _persist(values: dict[str, str]) -> None:
+        with SessionLocal() as session:
+            for key, value in values.items():
+                row = session.get(AppSetting, key)
+                if row is None:
+                    session.add(AppSetting(key=key, value=value))
+                else:
+                    row.value = value
+            session.commit()
+
+    _persist(new_values)
+
+    old_analyzer = _analyzer
+    try:
+        new_analyzer = build_analyzer_from_settings()
+        new_analyzer.connect()
+    except Exception as exc:
+        logger.exception("Failed to bring up new analyzer; rolling back")
+        _persist({
+            "analyzer.type": previous.type,
+            "analyzer.port": previous.port,
+            "analyzer.baud": str(previous.baud),
+            "analyzer.data_bits": str(previous.dataBits),
+            "analyzer.parity": previous.parity,
+            "analyzer.stop_bits": str(previous.stopBits),
+            "analyzer.address": previous.address,
+        })
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            f"Could not connect with new settings: {exc}. Reverted to previous configuration.",
+        ) from exc
+
+    _analyzer = new_analyzer
+    if old_analyzer is not None:
+        try:
+            old_analyzer.disconnect()
+        except Exception:
+            logger.exception("Error disconnecting previous analyzer (ignored)")
+
+    return {"applied": True, "connected": new_analyzer.is_connected}
 
 
 @app.get("/analytics/fuel-split")

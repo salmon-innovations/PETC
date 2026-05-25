@@ -7,9 +7,12 @@ import { api } from "../../api/webClient";
 
 interface CenterSummary {
   centerName: string;
+  totalTests: number;
   testsThisMonth: number;
   passRate: number;
   pendingLtms: number;
+  acceptedLtms: number;
+  rejectedLtms: number;
   lastSync: string | null;
 }
 
@@ -17,6 +20,14 @@ interface DailyRollup {
   date: string;
   total: number;
   passed: number;
+}
+
+interface RecentEvent {
+  receivedAt: string;
+  centerName: string;
+  centerId: string;
+  entityType: string;
+  entityId: string;
 }
 
 export default function CrossCenterDashboard() {
@@ -32,7 +43,14 @@ export default function CrossCenterDashboard() {
     staleTime: 60_000,
   });
 
+  const { data: recentEvents = [] } = useQuery<RecentEvent[]>({
+    queryKey: ["analytics", "recent-events"],
+    queryFn: () => api.get<RecentEvent[]>("/analytics/recent-events?limit=12").then((r) => r.data),
+    staleTime: 30_000,
+  });
+
   const totalTests = centers.reduce((s, c) => s + c.testsThisMonth, 0);
+  const totalMirrored = centers.reduce((s, c) => s + c.totalTests, 0);
   const avgPass = centers.length
     ? centers.reduce((s, c) => s + c.passRate, 0) / centers.length
     : 0;
@@ -43,9 +61,10 @@ export default function CrossCenterDashboard() {
       <h1 className="text-xl font-bold text-gray-800">Cross-Center Analytics</h1>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         {[
           { label: "Tests This Month", value: totalTests },
+          { label: "Mirrored Tests",    value: totalMirrored },
           { label: "Avg Pass Rate",    value: `${(avgPass * 100).toFixed(1)}%` },
           { label: "Pending LTMS",     value: totalPending },
         ].map(({ label, value }) => (
@@ -91,7 +110,7 @@ export default function CrossCenterDashboard() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
             <tr>
-              {["Center", "Tests (month)", "Pass Rate", "Pending LTMS", "Last Sync"].map((h) => (
+              {["Center", "Total", "Tests (month)", "Pass Rate", "Accepted", "Rejected", "Pending LTMS", "Last Sync"].map((h) => (
                 <th key={h} className="px-5 py-3 text-left font-semibold">{h}</th>
               ))}
             </tr>
@@ -100,14 +119,47 @@ export default function CrossCenterDashboard() {
             {centers.map((c) => (
               <tr key={c.centerName} className="hover:bg-gray-50">
                 <td className="px-5 py-3 font-medium">{c.centerName}</td>
+                <td className="px-5 py-3">{c.totalTests}</td>
                 <td className="px-5 py-3">{c.testsThisMonth}</td>
                 <td className="px-5 py-3">{(c.passRate * 100).toFixed(1)}%</td>
+                <td className="px-5 py-3">{c.acceptedLtms}</td>
+                <td className="px-5 py-3">{c.rejectedLtms}</td>
                 <td className="px-5 py-3">{c.pendingLtms}</td>
                 <td className="px-5 py-3 text-gray-500">
                   {c.lastSync ? new Date(c.lastSync).toLocaleString() : "—"}
                 </td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="bg-white rounded-xl shadow overflow-hidden">
+        <div className="px-5 py-4 border-b">
+          <h2 className="text-sm font-semibold text-gray-700">Recent Mirror Events</h2>
+        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
+            <tr>
+              {["Time", "Center", "Event", "Entity"].map((h) => (
+                <th key={h} className="px-5 py-3 text-left font-semibold">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {recentEvents.map((event) => (
+              <tr key={`${event.receivedAt}-${event.entityType}-${event.entityId}`} className="hover:bg-gray-50">
+                <td className="px-5 py-3 text-gray-500">{new Date(event.receivedAt).toLocaleString()}</td>
+                <td className="px-5 py-3 font-medium">{event.centerName}</td>
+                <td className="px-5 py-3">{event.entityType}</td>
+                <td className="px-5 py-3 font-mono text-xs text-gray-500">{event.entityId}</td>
+              </tr>
+            ))}
+            {recentEvents.length === 0 && (
+              <tr>
+                <td colSpan={4} className="px-5 py-8 text-center text-gray-500">No mirror events yet.</td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

@@ -37,9 +37,6 @@ dependencies {
     // JSON
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
 
-    // Fix Netty DNS on Apple Silicon in dev
-    runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.1.115.Final:osx-aarch64")
-
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")

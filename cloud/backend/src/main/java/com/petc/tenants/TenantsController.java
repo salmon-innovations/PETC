@@ -24,9 +24,12 @@ public class TenantsController {
     @GetMapping
     public List<Map<String, Object>> list() {
         return jdbc.queryForList("""
-            SELECT t.id, t.slug, t.name, t.created_at,
-                   COUNT(l.id) FILTER (WHERE l.active = true) AS active_licenses,
-                   MAX(me.ingested_at) AS last_sync
+            SELECT t.id::text AS "id",
+                   t.slug AS "slug",
+                   t.name AS "name",
+                   t.created_at AS "createdAt",
+                   COUNT(l.id) FILTER (WHERE l.active = true) AS "activeLicenses",
+                   MAX(me.ingested_at) AS "lastSync"
             FROM tenants t
             LEFT JOIN licenses l ON l.tenant_id = t.id
             LEFT JOIN mirror_emission_tests me ON me.tenant_id = t.id

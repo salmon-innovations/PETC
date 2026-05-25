@@ -190,6 +190,14 @@ class CloudOutbox(Base):
     last_error: Mapped[Optional[str]] = mapped_column(Text)
 
 
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[Optional[str]] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
 
