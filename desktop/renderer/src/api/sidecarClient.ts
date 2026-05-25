@@ -66,7 +66,7 @@ export interface LtmsSubmitResponse {
   submissionId?: string;
 }
 
-export type AnalyzerType = "mock" | "serial_gas" | "serial_diesel" | "fty_opacimeter";
+export type AnalyzerType = "mock" | "serial_gas" | "serial_diesel" | "fty_opacimeter" | "fofen_gas" | "fofen_ascii";
 
 export interface AnalyzerSettings {
   type: AnalyzerType;

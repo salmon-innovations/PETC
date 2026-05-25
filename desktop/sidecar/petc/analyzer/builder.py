@@ -65,6 +65,12 @@ def build_analyzer_from_settings() -> Analyzer:
     if kind == "fty_opacimeter":
         from .fty_opacimeter import FtyOpacimeterAnalyzer
         return FtyOpacimeterAnalyzer(**common)
+    if kind == "fofen_gas":
+        from .fofen_gas import FofenGasAnalyzer
+        return FofenGasAnalyzer(**common)
+    if kind == "fofen_ascii":
+        from .fofen_ascii import FofenAsciiReceiptAnalyzer
+        return FofenAsciiReceiptAnalyzer(**common)
 
     logger.warning("Unknown analyzer.type=%r — falling back to MockAnalyzer", kind)
     from .mock import MockAnalyzer

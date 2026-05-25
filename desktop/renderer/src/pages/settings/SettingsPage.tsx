@@ -7,6 +7,8 @@ const ANALYZER_TYPES: { value: AnalyzerType; label: string }[] = [
   { value: "serial_gas", label: "Gas analyzer — ASCII" },
   { value: "serial_diesel", label: "Diesel analyzer — Binary" },
   { value: "fty_opacimeter", label: "FTY-100 Opacimeter (FOFEN SINGLE)" },
+  { value: "fofen_gas", label: "Fofen Petrol Gas Analyzer — binary push" },
+  { value: "fofen_ascii", label: "Fofen Petrol Gas Analyzer — ASCII receipt (PRINT)" },
 ];
 
 const BAUD_OPTIONS = [9600, 19200, 38400, 57600, 115200];

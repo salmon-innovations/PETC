@@ -145,18 +145,12 @@ export default function RunTestPage() {
 
       {/* Result card */}
       {step === "done" && result && (
-        <div className={clsx(
-          "rounded-xl shadow p-6 space-y-5",
-          result.passFail ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"
-        )}>
+        <div className="rounded-xl shadow p-6 space-y-5 bg-white border border-gray-200">
           <div className="flex items-center justify-between">
-            <h2 className={clsx("text-2xl font-bold", result.passFail ? "text-green-700" : "text-red-700")}>
-              {result.passFail ? "PASSED" : "FAILED"}
+            <h2 className="text-2xl font-bold text-gray-800">
+              READING
             </h2>
-            <span className={clsx(
-              "rounded-full px-3 py-1 text-sm font-medium",
-              result.passFail ? "bg-green-200 text-green-800" : "bg-red-200 text-red-800"
-            )}>
+            <span className="rounded-full px-3 py-1 text-sm font-medium bg-gray-100 text-gray-700">
               {result.fuelType}
             </span>
           </div>
