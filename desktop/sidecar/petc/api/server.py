@@ -968,7 +968,7 @@ _ANALYZER_SETTING_KEYS = (
     "analyzer.address",
 )
 
-_ANALYZER_TYPES = {"mock", "serial_gas", "serial_diesel", "fty_opacimeter"}
+_ANALYZER_TYPES = {"mock", "serial_gas", "serial_diesel", "fty_opacimeter", "fofen_gas", "fofen_ascii"}
 _PARITY_VALUES = {"N", "E", "O"}
 
 

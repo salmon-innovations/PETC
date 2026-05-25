@@ -204,6 +204,7 @@ class SerialAnalyzer(Analyzer):
             try:
                 chunk = self._serial.read(256)  # type: ignore[union-attr]
                 if chunk:
+                    logger.debug("serial rx %d bytes: %s", len(chunk), chunk[:32].hex())
                     buf.extend(chunk)
                     result = self.parse_frame(bytes(buf))
                     if result is not None:
