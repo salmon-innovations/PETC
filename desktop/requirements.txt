@@ -8,6 +8,7 @@ alembic==1.13.3
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.3.0
 python-multipart==0.0.12
+reportlab==4.2.5
 
 # Build / packaging
 pyinstaller==6.10.0

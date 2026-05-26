@@ -72,6 +72,7 @@ def _additive_sqlite_migrations() -> None:
         "ltms_submissions": {
             "payload_json": "TEXT",
             "ltms_reference_no": "VARCHAR",
+            "pdf_path": "VARCHAR",
         },
     }
 
@@ -98,6 +99,8 @@ def _seed_default_settings() -> None:
         "analyzer.parity": os.environ.get("PETC_ANALYZER_PARITY", "N"),
         "analyzer.stop_bits": os.environ.get("PETC_ANALYZER_STOPBITS", "1"),
         "analyzer.address": os.environ.get("PETC_ANALYZER_ADDRESS", "01"),
+        "camera.type": os.environ.get("PETC_CAMERA", "mock"),
+        "camera.device": os.environ.get("PETC_CAMERA_DEVICE", "0"),
     }
     with SessionLocal() as session:
         for key, value in defaults.items():

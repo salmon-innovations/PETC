@@ -8,12 +8,19 @@ import type { SidecarStatus, VehicleInfo, DriverInfo, OwnerInfo, EmissionTestDet
 
 let _client: AxiosInstance | null = null;
 
+let _baseUrl: string | null = null;
+
 async function client(): Promise<AxiosInstance> {
   if (!_client) {
-    const base = await window.petcBridge.getSidecarUrl();
-    _client = axios.create({ baseURL: base, timeout: 30_000 });
+    _baseUrl = await window.petcBridge.getSidecarUrl();
+    _client = axios.create({ baseURL: _baseUrl, timeout: 30_000 });
   }
   return _client;
+}
+
+export async function getSidecarBaseUrl(): Promise<string> {
+  await client();
+  return _baseUrl!;
 }
 
 // ── types ──────────────────────────────────────────────────────────────────
@@ -85,6 +92,19 @@ export interface SerialPortInfo {
   manufacturer: string;
 }
 
+export type CameraType = "mock" | "opencv";
+
+export interface CameraSettings {
+  type: CameraType;
+  device: number;
+}
+
+export interface CameraInfo {
+  index: number;
+  label: string;
+  resolution: string;
+}
+
 // ── API calls ──────────────────────────────────────────────────────────────
 export const sidecarClient = {
   async getStatus(): Promise<SidecarStatus> {
@@ -153,6 +173,32 @@ export const sidecarClient = {
     };
   },
 
+  async photoUrl(photoId: string): Promise<string> {
+    const base = await getSidecarBaseUrl();
+    return `${base}/api/v1/photos/${photoId}`;
+  },
+
+  async uploadTestPhoto(params: {
+    testId: string;
+    blob: Blob;
+    photoType?: string;
+  }): Promise<{ id: string; sizeBytes: number; capturedAt: string }> {
+    const c = await client();
+    const form = new FormData();
+    form.append("file", params.blob, "photo.jpg");
+    // Do NOT set Content-Type here — the browser/axios needs to generate the
+    // multipart boundary automatically. Setting it manually breaks the upload.
+    const { data } = await c.post(
+      `/api/v1/tests/${params.testId}/photo?photo_type=${params.photoType ?? "FRONT"}`,
+      form,
+    );
+    return {
+      id: data.id,
+      sizeBytes: data.size_bytes,
+      capturedAt: data.captured_at,
+    };
+  },
+
   async printReceipt(req: PrintReceiptRequest): Promise<void> {
     const c = await client();
     await c.post("/print/receipt", { ...req, copies: req.copies ?? 2 });
@@ -194,6 +240,17 @@ export const sidecarClient = {
     return data;
   },
 
+  async cecPdfUrl(submissionId: string): Promise<string> {
+    const base = await getSidecarBaseUrl();
+    return `${base}/api/v1/cec/${submissionId}/pdf`;
+  },
+
+  async printCec(submissionId: string, copies = 2): Promise<{ printed: boolean; copies: number }> {
+    const c = await client();
+    const { data } = await c.post(`/api/v1/cec/${submissionId}/print`, { copies });
+    return data;
+  },
+
   async listSerialPorts(): Promise<SerialPortInfo[]> {
     const c = await client();
     const { data } = await c.get("/api/v1/ports");
@@ -209,6 +266,24 @@ export const sidecarClient = {
   async updateAnalyzerSettings(settings: AnalyzerSettings): Promise<{ applied: boolean; connected: boolean }> {
     const c = await client();
     const { data } = await c.put("/api/v1/settings/analyzer", settings);
+    return data;
+  },
+
+  async listCameras(): Promise<CameraInfo[]> {
+    const c = await client();
+    const { data } = await c.get("/api/v1/cameras");
+    return data;
+  },
+
+  async getCameraSettings(): Promise<CameraSettings> {
+    const c = await client();
+    const { data } = await c.get("/api/v1/settings/camera");
+    return data;
+  },
+
+  async updateCameraSettings(settings: CameraSettings): Promise<{ applied: boolean }> {
+    const c = await client();
+    const { data } = await c.put("/api/v1/settings/camera", settings);
     return data;
   },
 };

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { sidecarClient, type LtmsSubmitResponse, type VehicleLookupResponse } from "../../api/sidecarClient";
 import { useAuthStore } from "../../store/authStore";
 import type { EmissionTest, EmissionTestDetail, FuelType, OwnerInfo, TestPhoto, VehicleInfo } from "../../types";
 import { evaluateEmission, type EngineFlags } from "../../utils/emissionLimits";
+import { CameraStream, type CameraStreamHandle } from "../../components/CameraStream";
 
 type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
 type PhotoType = TestPhoto["photoType"];
@@ -64,10 +65,7 @@ const EMPTY_OWNER: OwnerForm = {
 };
 
 const PHOTO_TYPES: { type: PhotoType; label: string; required: boolean }[] = [
-  { type: "FRONT", label: "Front of vehicle", required: true },
-  { type: "REAR", label: "Rear of vehicle", required: true },
-  { type: "RESULT", label: "Emission result printout", required: false },
-  { type: "OTHER", label: "Additional", required: false },
+  { type: "FRONT", label: "Vehicle photo", required: true },
 ];
 
 const STEP_LABELS = ["Vehicle", "Owner", "Results", "Technician", "Photos", "Review"] as const;
@@ -412,47 +410,79 @@ function PhotosStep({ testId, photos, onBack, onNext }: {
   onNext: () => void;
 }) {
   const qc = useQueryClient();
+  const cameraRef = useRef<CameraStreamHandle>(null);
+  const [status, setStatus] = useState<string | null>(null);
+
   const captureMutation = useMutation({
-    mutationFn: (photoType: PhotoType) => sidecarClient.capturePhoto({ testId, photoType }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["test-detail", testId] }),
+    mutationFn: async (photoType: PhotoType) => {
+      const blob = await cameraRef.current?.captureBlob();
+      if (!blob) throw new Error("Camera preview not ready");
+      return sidecarClient.uploadTestPhoto({ testId, blob, photoType });
+    },
+    onSuccess: () => {
+      setStatus("Photo saved ✓");
+      qc.invalidateQueries({ queryKey: ["test-detail", testId] });
+    },
+    onError: (err: any) => setStatus(`Failed: ${err?.message ?? "upload error"}`),
   });
+
   const hasFront = photos.some((photo) => photo.photoType === "FRONT");
-  const hasRear = photos.some((photo) => photo.photoType === "REAR");
 
   return (
     <section className="bg-white rounded-lg shadow p-5 space-y-4">
       <StepHeading title="Step 5 - Photos" />
+
       <div className="grid grid-cols-2 gap-4">
-        {PHOTO_TYPES.map((item) => {
-          const captured = photos.filter((photo) => photo.photoType === item.type);
-          return (
-            <div key={item.type} className="rounded-md border border-gray-200 p-3 space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-gray-700">{item.label}</p>
-                {item.required && <span className="text-xs text-red-600">Required</span>}
-              </div>
-              {captured.length === 0 ? (
-                <p className="text-xs text-gray-500">No photo yet.</p>
-              ) : (
-                <ul className="space-y-1">
-                  {captured.map((photo) => (
-                    <li key={photo.id} className="truncate text-xs font-mono text-gray-600">{photo.filePath}</li>
-                  ))}
-                </ul>
-              )}
-              <button
-                onClick={() => captureMutation.mutate(item.type)}
-                disabled={captureMutation.isPending}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
-              >
-                {captureMutation.isPending ? "Capturing..." : captured.length ? "Retake / Add" : "Capture"}
-              </button>
+        <div className="space-y-3">
+          <CameraStream ref={cameraRef} />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => captureMutation.mutate("FRONT")}
+              disabled={captureMutation.isPending}
+              className="rounded-md bg-blue-600 text-white px-4 py-1.5 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+            >
+              {captureMutation.isPending ? "Saving…" : hasFront ? "Retake photo" : "Take photo"}
+            </button>
+            {status && (
+              <span className={clsx("text-xs", status.startsWith("Failed") ? "text-red-600" : "text-green-700")}>
+                {status}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-sm font-semibold text-gray-700">Vehicle photo</p>
+          {photos.filter((p) => p.photoType === "FRONT").length === 0 ? (
+            <p className="text-xs text-gray-500">No photo yet — use the camera on the left.</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              {photos.filter((p) => p.photoType === "FRONT").map((photo) => (
+                <PhotoThumb key={photo.id} photoId={photo.id} />
+              ))}
             </div>
-          );
-        })}
+          )}
+        </div>
       </div>
-      <FooterNav nextDisabled={!hasFront || !hasRear} onBack={onBack} onNext={onNext} />
+
+      <FooterNav nextDisabled={!hasFront} onBack={onBack} onNext={onNext} />
     </section>
+  );
+}
+
+function PhotoThumb({ photoId }: { photoId: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    sidecarClient.photoUrl(photoId).then((u) => { if (!cancelled) setSrc(u); });
+    return () => { cancelled = true; };
+  }, [photoId]);
+  return (
+    <div className="aspect-square rounded border border-gray-200 bg-gray-100 overflow-hidden">
+      {src ? (
+        <img src={src} alt="Captured photo" className="w-full h-full object-cover" />
+      ) : null}
+    </div>
   );
 }
 
@@ -470,10 +500,12 @@ function ReviewStep({ payload, result, isPending, isError, onBack, onDone, onSub
   const verdict = payload.verdict as ReturnType<typeof evaluateEmission>;
 
   if (result) {
+    if (result.state === "ACCEPTED" && result.submissionId) {
+      return <CecPreviewAndPrint submissionId={result.submissionId} certificateNo={result.certificateNo} onDone={onDone} />;
+    }
     return (
-      <section className={clsx("rounded-lg shadow p-8 text-center space-y-3", result.state === "ACCEPTED" ? "bg-green-50 border border-green-200" : result.state === "PENDING" ? "bg-yellow-50 border border-yellow-200" : "bg-red-50 border border-red-200")}>
-        <p className="text-xl font-bold">{result.state === "ACCEPTED" ? "Submitted and printed" : result.state === "PENDING" ? "Queued for retry" : "Rejected"}</p>
-        {result.certificateNo && <p className="text-sm text-green-700">Certificate No: <strong>{result.certificateNo}</strong></p>}
+      <section className={clsx("rounded-lg shadow p-8 text-center space-y-3", result.state === "PENDING" ? "bg-yellow-50 border border-yellow-200" : "bg-red-50 border border-red-200")}>
+        <p className="text-xl font-bold">{result.state === "PENDING" ? "Queued for retry" : "Rejected"}</p>
         {result.rejectionReason && <p className="text-sm text-red-700">{result.rejectionReason}</p>}
         <button onClick={onDone} className="rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700">Done</button>
       </section>
@@ -509,6 +541,66 @@ function ReviewStep({ payload, result, isPending, isError, onBack, onDone, onSub
         <button onClick={onSubmit} disabled={isPending} className="rounded-md bg-green-600 px-6 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
           {isPending ? "Submitting..." : "Submit to LTMS"}
         </button>
+      </div>
+    </section>
+  );
+}
+
+function CecPreviewAndPrint({ submissionId, certificateNo, onDone }: {
+  submissionId: string;
+  certificateNo: string | null;
+  onDone: () => void;
+}) {
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [printStatus, setPrintStatus] = useState<"idle" | "printed" | "error">("idle");
+
+  useEffect(() => {
+    let cancelled = false;
+    sidecarClient.cecPdfUrl(submissionId).then((url) => {
+      if (!cancelled) setPdfUrl(url);
+    });
+    return () => { cancelled = true; };
+  }, [submissionId]);
+
+  const printMutation = useMutation({
+    mutationFn: () => sidecarClient.printCec(submissionId, 2),
+    onSuccess: () => setPrintStatus("printed"),
+    onError: () => setPrintStatus("error"),
+  });
+
+  return (
+    <section className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="flex items-center justify-between gap-4 border-b border-gray-200 bg-green-50 px-5 py-3">
+        <div>
+          <p className="text-sm font-bold text-green-800">CEC issued — review before printing</p>
+          {certificateNo && (
+            <p className="text-xs text-green-700">Certificate No: <strong>{certificateNo}</strong></p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {printStatus === "printed" && <span className="text-xs text-green-700">Sent to printer ✓</span>}
+          {printStatus === "error" && <span className="text-xs text-red-600">Print failed</span>}
+          <button
+            onClick={() => printMutation.mutate()}
+            disabled={printMutation.isPending}
+            className="rounded-md bg-blue-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {printMutation.isPending ? "Printing…" : "Print CEC ×2"}
+          </button>
+          <button
+            onClick={onDone}
+            className="rounded-md border border-gray-300 px-4 py-1.5 text-xs font-medium hover:bg-gray-50"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+      <div className="h-[70vh] bg-gray-100">
+        {pdfUrl ? (
+          <iframe src={pdfUrl} title="CEC preview" className="w-full h-full border-0" />
+        ) : (
+          <div className="flex h-full items-center justify-center text-sm text-gray-500">Loading CEC PDF…</div>
+        )}
       </div>
     </section>
   );

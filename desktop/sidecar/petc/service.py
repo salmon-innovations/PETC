@@ -43,7 +43,7 @@ def _build_analyzer():
 
 
 def run() -> None:
-    from .camera.capture import MockCameraCapture
+    from .camera.builder import build_camera_from_settings
     from .printer.mock import MockPrinter
     from .gov.mock_client import MockGovRegistryClient
     from .gov.stradcom_client import StradcomGovRegistryClient
@@ -55,7 +55,7 @@ def run() -> None:
     logger.info("SQLite initialised")
 
     analyzer = _build_analyzer()
-    camera = MockCameraCapture()
+    camera = build_camera_from_settings()
     printer = MockPrinter()
 
     gov_client = (
@@ -75,7 +75,14 @@ def run() -> None:
             "operator can switch type or port from Settings.",
             exc,
         )
-    camera.open()
+    try:
+        camera.open()
+    except Exception as exc:
+        logger.warning(
+            "Camera open failed at boot (%s) — sidecar starting anyway; "
+            "operator can switch device from Settings.",
+            exc,
+        )
     logger.info(
         "Hardware initialised (analyzer=%s port=%s, camera=%s, printer=%s, gov_mock=%s)",
         _CONFIG["analyzer"], _CONFIG["analyzer_port"],
