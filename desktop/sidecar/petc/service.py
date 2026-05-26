@@ -67,7 +67,14 @@ def run() -> None:
         )
     )
 
-    analyzer.connect()
+    try:
+        analyzer.connect()
+    except Exception as exc:
+        logger.warning(
+            "Analyzer connect failed at boot (%s) — sidecar starting anyway; "
+            "operator can switch type or port from Settings.",
+            exc,
+        )
     camera.open()
     logger.info(
         "Hardware initialised (analyzer=%s port=%s, camera=%s, printer=%s, gov_mock=%s)",
