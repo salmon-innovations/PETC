@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -360,6 +360,90 @@ def abort_test(
     return {"aborted": session_token}
 
 
+@app.get("/api/v1/photos/{photo_id}")
+def get_photo_file(photo_id: str):
+    """Serve the raw photo bytes by ID so the UI can render thumbnails."""
+    from fastapi.responses import FileResponse
+    from ..db.session import SessionLocal
+    from ..db.models import TestPhoto
+
+    with SessionLocal() as session:
+        row = session.get(TestPhoto, photo_id)
+        if row is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "photo not found")
+        path = Path(row.file_path)
+        if not path.is_file():
+            raise HTTPException(status.HTTP_410_GONE, "photo file missing on disk")
+        return FileResponse(path, media_type=row.mime_type)
+
+
+@app.post("/api/v1/tests/{test_id}/photo")
+async def upload_test_photo(
+    test_id: str,
+    file: UploadFile = File(...),
+    photo_type: str = "FRONT",
+    cloud_sync: CloudSyncPusher = Depends(_get_cloud_sync),
+) -> dict:
+    """Accept a JPEG captured client-side (browser getUserMedia) and persist it
+    to disk + the cloud queue. Replaces the sidecar-owned OpenCV capture path."""
+    from ..db.session import SessionLocal
+    from ..db.models import EmissionTest, TestPhoto
+    from datetime import datetime, timezone
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "empty upload")
+
+    photo_id = str(uuid.uuid4())
+    captured_at = datetime.now(timezone.utc)
+    mime_type = file.content_type or "image/jpeg"
+
+    with SessionLocal() as session:
+        test = session.get(EmissionTest, test_id)
+        if test is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f"Test {test_id} not found")
+
+        data_dir = Path(os.environ.get("PETC_DATA_DIR", "."))
+        photo_dir = data_dir / "photos" / test_id
+        photo_dir.mkdir(parents=True, exist_ok=True)
+        file_path = photo_dir / f"{photo_id}.jpg"
+        file_path.write_bytes(data)
+
+        row = TestPhoto(
+            id=photo_id,
+            test_id=test_id,
+            photo_type=photo_type.upper(),
+            file_path=str(file_path),
+            mime_type=mime_type,
+            camera_id="browser",
+            captured_at=captured_at,
+        )
+        session.add(row)
+        session.commit()
+
+    cloud_sync.enqueue(
+        "test_photo",
+        photo_id,
+        {
+            "id": photo_id,
+            "test_id": test_id,
+            "photo_type": photo_type.upper(),
+            "file_path": str(file_path),
+            "mime_type": mime_type,
+            "camera_id": "browser",
+            "captured_at": captured_at.isoformat(),
+        },
+    )
+
+    return {
+        "id": photo_id,
+        "test_id": test_id,
+        "photo_type": photo_type.upper(),
+        "size_bytes": len(data),
+        "captured_at": captured_at.isoformat(),
+    }
+
+
 @app.post("/camera/capture")
 def capture_photo(
     req: CapturePhotoRequest = CapturePhotoRequest(),
@@ -615,12 +699,11 @@ def submit_ltms(
 def submit_upload_v1(
     req: UploadSubmitRequest,
     gov: GovRegistryClient = Depends(_get_gov),
-    printer: Printer = Depends(_get_printer),
     cloud_sync: CloudSyncPusher = Depends(_get_cloud_sync),
 ) -> dict:
     from ..gov.base import EmissionPayload
     from ..db.session import SessionLocal
-    from ..db.models import EmissionTest, GovOutbox, LtmsSubmission, Receipt
+    from ..db.models import EmissionTest, GovOutbox, LtmsSubmission
 
     payload = req.payload
     test_id = payload.get("testId")
@@ -636,7 +719,6 @@ def submit_upload_v1(
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"Test {test_id} not found")
 
         vehicle = payload.get("vehicle", {})
-        technician = payload.get("technician", {})
         photos = payload.get("photos", [])
         readings = payload.get("readings") or _readings_for_test(test)
 
@@ -693,6 +775,19 @@ def submit_upload_v1(
             }
 
         sub_id = str(uuid.uuid4())
+        pdf_path: Optional[str] = None
+        if result.state == "ACCEPTED" and result.certificate_no:
+            from ..cec.pdf import render_cec_pdf
+            try:
+                pdf_path = str(render_cec_pdf(
+                    submission_id=sub_id,
+                    certificate_no=result.certificate_no,
+                    payload=payload,
+                    issued_at=now,
+                ))
+            except Exception:
+                logger.exception("Failed to render CEC PDF for submission %s", sub_id)
+
         sub = LtmsSubmission(
             id=sub_id,
             test_id=test_id,
@@ -703,39 +798,14 @@ def submit_upload_v1(
             submitted_at=now,
             accepted_at=now if result.state == "ACCEPTED" else None,
             last_error=result.rejection_reason,
+            pdf_path=pdf_path,
         )
         session.add(sub)
 
         if result.state == "ACCEPTED":
             test.uploaded_at = now
-            receipt = Receipt(
-                id=str(uuid.uuid4()),
-                test_id=test_id,
-                copy_count=2,
-                printed_at=now,
-            )
-            session.add(receipt)
 
         session.commit()
-
-    if result.state == "ACCEPTED":
-        printer.print_receipt(
-            ReceiptData(
-                test_id=test_id,
-                plate_number=vehicle.get("plateNo") or "",
-                vehicle_make=vehicle.get("make") or "",
-                vehicle_model=vehicle.get("series") or "",
-                year=int(vehicle.get("yearModel") or 0),
-                fuel_type=vehicle.get("fuelType") or "",
-                pass_fail=bool(payload.get("verdict", {}).get("pass", False)),
-                operator_name=technician.get("technicianName") or "Operator",
-                center_name=payload.get("centerName") or "PETC Center",
-                printed_at=now,
-                certificate_no=result.certificate_no,
-                raw_readings=readings,
-            ),
-            copies=2,
-        )
 
     cloud_sync.enqueue(
         "ltms_submission",
@@ -756,6 +826,95 @@ def submit_upload_v1(
         "queued": False,
         "submissionId": sub_id,
     }
+
+
+class CecPrintRequest(BaseModel):
+    copies: int = 2
+
+
+@app.get("/api/v1/cec/{submission_id}/pdf")
+def get_cec_pdf(submission_id: str):
+    """Stream the CEC PDF for an accepted submission so the operator can preview
+    it in the LTMS wizard before printing."""
+    from fastapi.responses import FileResponse
+    from ..db.session import SessionLocal
+    from ..db.models import LtmsSubmission
+
+    with SessionLocal() as session:
+        sub = session.get(LtmsSubmission, submission_id)
+        if sub is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "submission not found")
+        if not sub.pdf_path:
+            raise HTTPException(status.HTTP_409_CONFLICT, "CEC PDF has not been generated for this submission")
+        path = Path(sub.pdf_path)
+        if not path.is_file():
+            raise HTTPException(status.HTTP_410_GONE, "CEC PDF file missing on disk")
+        return FileResponse(
+            path,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'inline; filename="CEC-{sub.certificate_no or submission_id}.pdf"',
+            },
+        )
+
+
+@app.post("/api/v1/cec/{submission_id}/print")
+def print_cec(
+    submission_id: str,
+    req: CecPrintRequest = CecPrintRequest(),
+    printer: Printer = Depends(_get_printer),
+) -> dict:
+    """Print the CEC for an accepted submission. Records a Receipt row."""
+    from ..db.session import SessionLocal
+    from ..db.models import EmissionTest, LtmsSubmission, Receipt
+
+    with SessionLocal() as session:
+        sub = session.get(LtmsSubmission, submission_id)
+        if sub is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "submission not found")
+        if sub.state != "ACCEPTED" or not sub.certificate_no:
+            raise HTTPException(status.HTTP_409_CONFLICT, "submission is not in ACCEPTED state")
+
+        test = session.get(EmissionTest, sub.test_id)
+        if test is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "test not found")
+
+        payload = json.loads(sub.payload_json) if sub.payload_json else {}
+        vehicle = payload.get("vehicle") or {}
+        technician = payload.get("technician") or {}
+        verdict = payload.get("verdict") or {}
+        readings = payload.get("readings") or _readings_for_test(test)
+
+        now = datetime.now(timezone.utc)
+        printer.print_receipt(
+            ReceiptData(
+                test_id=test.id,
+                plate_number=vehicle.get("plateNo") or test.plate_number,
+                vehicle_make=vehicle.get("make") or "",
+                vehicle_model=vehicle.get("series") or "",
+                year=int(vehicle.get("yearModel") or 0),
+                fuel_type=vehicle.get("fuelType") or test.fuel_type,
+                pass_fail=bool(verdict.get("pass", test.pass_fail or False)),
+                operator_name=technician.get("technicianName") or "Operator",
+                center_name=payload.get("centerName") or "PETC Center",
+                printed_at=now,
+                certificate_no=sub.certificate_no,
+                raw_readings=readings,
+            ),
+            copies=req.copies,
+        )
+
+        session.add(
+            Receipt(
+                id=str(uuid.uuid4()),
+                test_id=test.id,
+                copy_count=req.copies,
+                printed_at=now,
+            )
+        )
+        session.commit()
+
+    return {"printed": True, "copies": req.copies}
 
 
 @app.get("/api/v1/upload/status/{test_id}")
@@ -1081,6 +1240,108 @@ def update_analyzer_settings(req: AnalyzerSettings) -> dict:
             logger.exception("Error disconnecting previous analyzer (ignored)")
 
     return {"applied": True, "connected": new_analyzer.is_connected}
+
+
+# ---------------------------------------------------------------------------
+# Settings routes — camera hardware
+# ---------------------------------------------------------------------------
+_CAMERA_TYPES = {"mock", "opencv"}
+
+
+class CameraSettings(BaseModel):
+    type: str
+    device: int
+
+
+def _load_camera_settings() -> CameraSettings:
+    from ..db.session import SessionLocal
+    from ..db.models import AppSetting
+
+    with SessionLocal() as session:
+        rows = {
+            r.key: (r.value or "")
+            for r in session.query(AppSetting).filter(AppSetting.key.in_(("camera.type", "camera.device"))).all()
+        }
+    try:
+        device = int(rows.get("camera.device", "0"))
+    except ValueError:
+        device = 0
+    return CameraSettings(type=rows.get("camera.type", "mock"), device=device)
+
+
+@app.get("/api/v1/cameras")
+def list_cameras() -> list:
+    """Probe local cameras and return ones the OS / OpenCV can open."""
+    try:
+        from ..camera.opencv_camera import list_available_cameras
+        return list_available_cameras()
+    except ImportError:
+        return []
+
+
+@app.get("/api/v1/settings/camera", response_model=CameraSettings)
+def get_camera_settings() -> CameraSettings:
+    return _load_camera_settings()
+
+
+@app.put("/api/v1/settings/camera")
+def update_camera_settings(req: CameraSettings) -> dict:
+    """Persist new camera settings and rebuild the camera in place.
+
+    On failure, rolls back to the previous settings and reopens the previous
+    camera so the lane is never left without a capture device."""
+    global _camera
+    from ..db.session import SessionLocal
+    from ..db.models import AppSetting
+    from ..camera.builder import build_camera_from_settings
+
+    if req.type not in _CAMERA_TYPES:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            f"type must be one of {sorted(_CAMERA_TYPES)}")
+    if req.device < 0:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "device must be >= 0")
+
+    previous = _load_camera_settings()
+    new_values = {
+        "camera.type": req.type,
+        "camera.device": str(req.device),
+    }
+
+    def _persist(values: dict[str, str]) -> None:
+        with SessionLocal() as session:
+            for key, value in values.items():
+                row = session.get(AppSetting, key)
+                if row is None:
+                    session.add(AppSetting(key=key, value=value))
+                else:
+                    row.value = value
+            session.commit()
+
+    _persist(new_values)
+
+    old_camera = _camera
+    try:
+        new_camera = build_camera_from_settings()
+        new_camera.open()
+    except Exception as exc:
+        logger.exception("Failed to bring up new camera; rolling back")
+        _persist({
+            "camera.type": previous.type,
+            "camera.device": str(previous.device),
+        })
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            f"Could not open camera with new settings: {exc}. Reverted to previous configuration.",
+        ) from exc
+
+    _camera = new_camera
+    if old_camera is not None:
+        try:
+            old_camera.close()
+        except Exception:
+            logger.exception("Error closing previous camera (ignored)")
+
+    return {"applied": True}
 
 
 @app.get("/analytics/fuel-split")

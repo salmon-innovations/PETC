@@ -4,10 +4,9 @@
  *  2. Start test  → sidecar instructs analyzer
  *  3. Poll result → readings displayed
  *  4. Capture photo
- *  5. Print receipt (×2)
- *  6. Queue LTMS upload
+ *  5. Queue LTMS upload (CEC preview + print happens in the LTMS wizard)
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -15,6 +14,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import clsx from "clsx";
 import { sidecarClient, type TestResultResponse } from "../../api/sidecarClient";
 import { useAuthStore } from "../../store/authStore";
+import { CameraStream, type CameraStreamHandle } from "../../components/CameraStream";
 
 const schema = z.object({
   plateNumber: z.string().min(3, "Enter plate number"),
@@ -28,6 +28,7 @@ export default function RunTestPage() {
   const [result, setResult] = useState<TestResultResponse | null>(null);
   const [step, setStep] = useState<Step>("idle");
   const [photoCaptured, setPhotoCaptured] = useState(false);
+  const cameraRef = useRef<CameraStreamHandle>(null);
 
   const { register, handleSubmit, watch, formState: { errors } } =
     useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { fuelType: "GAS" } });
@@ -51,31 +52,23 @@ export default function RunTestPage() {
         fuelType: values.fuelType,
       });
       setStep("running");
-      return sidecarClient.getResult(started.sessionToken);
+      const r = await sidecarClient.getResult(started.sessionToken);
+      // Grab the current frame from the live preview and upload it
+      try {
+        const blob = await cameraRef.current?.captureBlob();
+        if (!blob) {
+          console.warn("Photo capture skipped: no live preview frame available");
+        } else {
+          await sidecarClient.uploadTestPhoto({ testId: r.testId, blob, photoType: "FRONT" });
+          setPhotoCaptured(true);
+        }
+      } catch (err) {
+        console.error("Photo upload failed:", err);
+      }
+      return r;
     },
     onSuccess: (data) => { setResult(data); setStep("done"); },
     onError: () => setStep("error"),
-  });
-
-  const photoMutation = useMutation({
-    mutationFn: () => sidecarClient.capturePhoto({ testId: result?.testId, photoType: "FRONT" }),
-    onSuccess: () => setPhotoCaptured(true),
-  });
-
-  const printMutation = useMutation({
-    mutationFn: () =>
-      sidecarClient.printReceipt({
-        test_id: result!.testId,
-        plate_number: plate,
-        vehicle_make: vehicle?.make ?? "—",
-        vehicle_model: vehicle?.model ?? "—",
-        year: vehicle?.year ?? 0,
-        fuel_type: result!.fuelType,
-        pass_fail: result!.passFail ?? false,
-        operator_name: user?.fullName ?? "Operator",
-        center_name: "PETC Center",
-        copies: 2,
-      }),
   });
 
   const reset = () => {
@@ -123,6 +116,8 @@ export default function RunTestPage() {
           </div>
         )}
 
+        <CameraStream ref={cameraRef} />
+
         <button
           type="submit"
           disabled={step === "running"}
@@ -137,9 +132,18 @@ export default function RunTestPage() {
 
       {/* Running indicator */}
       {step === "running" && (
-        <div className="flex items-center gap-3 bg-white rounded-xl shadow px-5 py-4 text-gray-600">
-          <div className="h-5 w-5 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
-          <span className="text-sm">Waiting for analyzer result…</span>
+        <div className="flex items-center justify-between gap-3 bg-white rounded-xl shadow px-5 py-4 text-gray-600">
+          <div className="flex items-center gap-3">
+            <div className="h-5 w-5 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+            <span className="text-sm">Waiting for analyzer result… press PRINT on the analyzer.</span>
+          </div>
+          <button
+            type="button"
+            onClick={reset}
+            className="text-xs text-gray-500 hover:text-red-600 underline"
+          >
+            Cancel
+          </button>
         </div>
       )}
 
@@ -164,23 +168,15 @@ export default function RunTestPage() {
             ))}
           </div>
 
+          {photoCaptured && (
+            <div className="text-xs text-green-700">Photo captured ✓</div>
+          )}
+
+          <p className="text-xs text-gray-500">
+            Test queued for LTMS upload. Open the <strong>LTMS Upload</strong> page to submit and print the CEC.
+          </p>
+
           <div className="flex gap-3 pt-1">
-            <button
-              onClick={() => photoMutation.mutate()}
-              disabled={photoMutation.isPending || photoCaptured}
-              className="flex-1 rounded-lg border border-gray-300 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
-            >
-              {photoCaptured ? "Photo captured ✓" : photoMutation.isPending ? "Capturing…" : "Capture Photo"}
-            </button>
-
-            <button
-              onClick={() => printMutation.mutate()}
-              disabled={printMutation.isPending}
-              className="flex-1 rounded-lg bg-blue-600 py-2 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
-            >
-              {printMutation.isPending ? "Printing…" : "Print Receipt ×2"}
-            </button>
-
             <button
               onClick={reset}
               className="flex-1 rounded-lg border border-gray-300 py-2 text-sm font-medium hover:bg-gray-50 transition-colors"
@@ -188,18 +184,22 @@ export default function RunTestPage() {
               New Test
             </button>
           </div>
-
-          {printMutation.isSuccess && (
-            <p className="text-center text-sm text-green-700">Receipt printed. Test queued for LTMS upload.</p>
-          )}
         </div>
       )}
 
       {step === "error" && (
-        <div className="rounded-xl bg-red-50 border border-red-200 px-5 py-4 text-sm text-red-800">
-          Test failed or timed out. Check the analyzer connection and try again.
+        <div className="rounded-xl bg-red-50 border border-red-200 px-5 py-4 text-sm text-red-800 flex items-center justify-between">
+          <span>Test failed or timed out. Check the analyzer connection and try again.</span>
+          <button
+            type="button"
+            onClick={reset}
+            className="rounded bg-red-600 text-white px-3 py-1 text-xs hover:bg-red-700"
+          >
+            Reset
+          </button>
         </div>
       )}
     </div>
   );
 }
+

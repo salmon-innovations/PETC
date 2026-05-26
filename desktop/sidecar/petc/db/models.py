@@ -148,6 +148,7 @@ class LtmsSubmission(Base):
     accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     last_error: Mapped[Optional[str]] = mapped_column(Text)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
+    pdf_path: Mapped[Optional[str]] = mapped_column(String)
 
     test: Mapped["EmissionTest"] = relationship(back_populates="ltms_submissions")
 

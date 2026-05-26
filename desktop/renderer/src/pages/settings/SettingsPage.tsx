@@ -33,6 +33,8 @@ export default function SettingsPage() {
 
       <AnalyzerHardwareSection />
 
+      <CameraHardwareSection />
+
       <section className="bg-white rounded-xl shadow p-5 space-y-2">
         <h2 className="font-semibold text-sm text-gray-700">Data Location</h2>
         <DataPath />
@@ -251,5 +253,18 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="text-xs text-gray-600">{label}</span>
       {children}
     </label>
+  );
+}
+
+function CameraHardwareSection() {
+  return (
+    <section className="bg-white rounded-xl shadow p-5 space-y-2">
+      <h2 className="font-semibold text-sm text-gray-700">Camera</h2>
+      <p className="text-xs text-gray-600">
+        The camera is managed by the app's built-in capture (the same way a website
+        accesses your camera). Pick the camera and confirm the live preview on the{" "}
+        <span className="font-medium">Run Test</span> page — selection persists.
+      </p>
+    </section>
   );
 }
