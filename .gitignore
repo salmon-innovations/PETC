@@ -9,6 +9,7 @@ petc_outbox.db
 petc.db
 petc.db-*
 photos/
+!cloud/src/**/photos/
 build/
 
 # Java / Gradle

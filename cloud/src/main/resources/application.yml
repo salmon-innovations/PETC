@@ -31,6 +31,7 @@ petc:
     region: ${S3_REGION:ap-southeast-1}
     access-key: ${S3_ACCESS_KEY:minioadmin}
     secret-key: ${S3_SECRET_KEY:minioadmin}
+    presigned-put-ttl-seconds: ${S3_PRESIGN_TTL:300}
   gov:
     mock: ${GOV_MOCK:true}   # flip to false once real sandbox creds arrive
   ingest:
