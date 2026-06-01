@@ -33,6 +33,13 @@ petc:
     secret-key: ${S3_SECRET_KEY:minioadmin}
   gov:
     mock: ${GOV_MOCK:true}   # flip to false once real sandbox creds arrive
+  ingest:
+    dev-key-enabled: ${DEV_CENTER_KEY_ENABLED:true}
+    dev-key: ${DEV_CENTER_KEY:dev-insecure-key}
+    dev-tenant-slug: ${DEV_CENTER_SLUG:dev-center}
+    dev-tenant-name: ${DEV_CENTER_NAME:Mock PETC Center}
+  submission:
+    max-attempts: ${SUBMISSION_MAX_ATTEMPTS:5}
 
 logging:
   level:
