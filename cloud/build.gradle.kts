@@ -42,8 +42,8 @@ dependencies {
 
     // HTTP client for gov API adapter
     implementation("org.springframework.boot:spring-boot-starter-webflux")
-    // Fixes "Unable to load MacOSDnsServerAddressStreamProvider" on Apple Silicon
-    runtimeOnly("io.netty:netty-resolver-dns-native-macos:4.1.115.Final:osx-aarch64")
+    // Fixes "Unable to load MacOSDnsServerAddressStreamProvider" on Apple Silicon (dev only)
+    developmentOnly("io.netty:netty-resolver-dns-native-macos:4.1.115.Final:osx-aarch64")
 
     // Dev tools
     developmentOnly("org.springframework.boot:spring-boot-devtools")

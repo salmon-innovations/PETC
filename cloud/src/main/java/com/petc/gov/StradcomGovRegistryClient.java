@@ -6,6 +6,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.util.Optional;
+
 /**
  * Real Stradcom / LTMS adapter.
  * TODO: fill in API details once accreditation sandbox credentials are received.
@@ -21,23 +23,25 @@ public class StradcomGovRegistryClient implements GovRegistryClient {
     private final WebClient webClient;
 
     public StradcomGovRegistryClient(WebClient.Builder builder) {
-        // TODO: configure base URL, auth headers from application.yml once sandbox docs arrive
+        // TODO: configure base URL + auth headers from application.yml once sandbox docs arrive
         this.webClient = builder.baseUrl("https://api.stradcom.gov.ph").build();
     }
 
     @Override
-    public VehicleInfo findVehicle(String plateNumber) {
-        // TODO: implement once API contract is documented
-        throw new UnsupportedOperationException("StradcomGovRegistryClient.findVehicle not yet implemented");
+    public Optional<VehicleInfo> findVehicle(String plateNumber) {
+        throw new UnsupportedOperationException(
+                "StradcomGovRegistryClient.findVehicle not yet implemented — awaiting sandbox credentials");
     }
 
     @Override
-    public DriverInfo findDriver(String licenseNumber) {
-        throw new UnsupportedOperationException("StradcomGovRegistryClient.findDriver not yet implemented");
+    public Optional<DriverInfo> findDriver(String licenseNumber) {
+        throw new UnsupportedOperationException(
+                "StradcomGovRegistryClient.findDriver not yet implemented — awaiting sandbox credentials");
     }
 
     @Override
     public SubmissionResult submitEmissionResult(EmissionPayload payload) {
-        throw new UnsupportedOperationException("StradcomGovRegistryClient.submitEmissionResult not yet implemented");
+        throw new UnsupportedOperationException(
+                "StradcomGovRegistryClient.submitEmissionResult not yet implemented — awaiting sandbox credentials");
     }
 }

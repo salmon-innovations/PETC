@@ -4,45 +4,79 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Deterministic in-memory implementation used in development and CI.
- * Activated when petc.gov.mock=true (the default).
+ * Deterministic mock gov client — Java port of desktop/sidecar/petc/gov/mock_client.py.
+ * Plate behaviours are identical to the Python mock so dev plate numbers work against
+ * both the desktop-only path and the cloud submission path.
+ *
+ * Active when petc.gov.mock=true (the default).
  */
 @Component
 @ConditionalOnProperty(name = "petc.gov.mock", havingValue = "true", matchIfMissing = true)
 public class MockGovRegistryClient implements GovRegistryClient {
 
     @Override
-    public VehicleInfo findVehicle(String plateNumber) {
-        if ("NOTFOUND".equalsIgnoreCase(plateNumber)) return null;
-        return new VehicleInfo(
-                plateNumber,
-                "Toyota", "Vios", 2020,
-                "GAS",
-                "ENG-" + plateNumber,
-                "CHS-" + plateNumber,
-                "Juan dela Cruz"
-        );
+    public Optional<VehicleInfo> findVehicle(String plateNumber) {
+        String plate = plateNumber.toUpperCase().replace(" ", "");
+        if ("NOTFOUND".equals(plate)) {
+            return Optional.empty();
+        }
+        if (plate.startsWith("DSL")) {
+            return Optional.of(new VehicleInfo(
+                    plate, "MV-" + plate + "-D", "MVRR",
+                    LocalDate.of(2024, 5, 12), "CR-" + plate,
+                    "1368 - PASAY CITY DISTRICT OFFICE",
+                    "ISUZU", "NPR", "TRUCK", 2018, "WHITE", "M/T", "DIESEL",
+                    "ENG-" + plate, "CHS-" + plate,
+                    "ORGANIZATION", "", "", "", "JUAN LOGISTICS CORP.",
+                    "EDSA Extension", "Pasay City"
+            ));
+        }
+        if (plate.startsWith("MC")) {
+            return Optional.of(new VehicleInfo(
+                    plate, "MV-" + plate + "-M", "MVRS",
+                    LocalDate.of(2025, 2, 3), "CR-" + plate,
+                    "1301 - QUEZON CITY DISTRICT OFFICE",
+                    "HONDA", "CLICK 125", "MOTORCYCLE", 2022, "BLACK", "A/T", "MOTORCYCLE",
+                    "ENG-" + plate, "CHS-" + plate,
+                    "INDIVIDUAL", "SANTOS", "MARIA", "REYES", "",
+                    "Commonwealth Avenue", "Quezon City"
+            ));
+        }
+        // Default: generic gas car (covers ABC1234 and any other plate)
+        return Optional.of(new VehicleInfo(
+                plate, "MV-" + plate, "MVRR",
+                LocalDate.of(2025, 1, 18), "CR-" + plate,
+                "1368 - PASAY CITY DISTRICT OFFICE",
+                "TOYOTA", "VIOS", "CAR", 2020, "SILVER", "A/T", "GAS",
+                "ENG-" + plate, "CHS-" + plate,
+                "INDIVIDUAL", "DELA CRUZ", "JUAN", "SANTOS", "",
+                "Roxas Boulevard", "Pasay City"
+        ));
     }
 
     @Override
-    public DriverInfo findDriver(String licenseNumber) {
-        if ("NOTFOUND".equalsIgnoreCase(licenseNumber)) return null;
-        return new DriverInfo(
+    public Optional<DriverInfo> findDriver(String licenseNumber) {
+        if ("NOTFOUND".equalsIgnoreCase(licenseNumber)) {
+            return Optional.empty();
+        }
+        return Optional.of(new DriverInfo(
                 licenseNumber,
                 "Juan dela Cruz",
                 "Non-Professional",
-                LocalDate.now().plusYears(3)
-        );
+                LocalDate.of(2027, 12, 31)
+        ));
     }
 
     @Override
     public SubmissionResult submitEmissionResult(EmissionPayload payload) {
-        if (payload.plateNumber().startsWith("FAIL")) {
-            return new SubmissionResult("REJECTED", null, "Mock rejection: plate starts with FAIL");
+        if (payload.plateNumber().toUpperCase().startsWith("FAIL")) {
+            return SubmissionResult.rejected("Mock rejection: plate starts with FAIL");
         }
-        return new SubmissionResult("ACCEPTED", "CERT-" + UUID.randomUUID(), null);
+        String certNo = "CERT-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
+        return SubmissionResult.accepted(certNo);
     }
 }

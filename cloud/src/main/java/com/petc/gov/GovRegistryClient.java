@@ -1,33 +1,24 @@
 package com.petc.gov;
 
+import java.util.Optional;
+
 /**
- * Adapter interface isolating the rest of the system from whatever LTMS /
- * Stradcom / Dermalog APIs ultimately look like.
+ * Adapter interface isolating the rest of the system from LTMS / Stradcom / Dermalog.
  *
- * Two implementations ship from day one:
- *   - MockGovRegistryClient   (dev / CI — deterministic fixtures)
- *   - StradcomGovRegistryClient (stub; filled once accreditation lands)
+ * Two implementations:
+ *   - MockGovRegistryClient   (dev / CI — deterministic fixtures, petc.gov.mock=true)
+ *   - StradcomGovRegistryClient (stub; filled once accreditation sandbox creds arrive)
  *
- * All gov-bound calls are also written to the gov_outbox table for replay
- * and audit (see GovOutboxService).
+ * All implementations must be safe to call from a background thread.
  */
 public interface GovRegistryClient {
 
-    /**
-     * Look up a vehicle by plate number.
-     * Returns null if not found (center should allow manual entry).
-     */
-    VehicleInfo findVehicle(String plateNumber);
+    /** Returns empty if plate not found in registry (center should allow manual entry). */
+    Optional<VehicleInfo> findVehicle(String plateNumber);
 
-    /**
-     * Look up a driver by license number.
-     * Returns null if not found.
-     */
-    DriverInfo findDriver(String licenseNumber);
+    /** Returns empty if license not found in registry. */
+    Optional<DriverInfo> findDriver(String licenseNumber);
 
-    /**
-     * Submit a completed emission test for the official certificate.
-     * Returns the state of the submission (ACCEPTED or REJECTED with reason).
-     */
+    /** Submit a completed emission test for the official certificate. */
     SubmissionResult submitEmissionResult(EmissionPayload payload);
 }
