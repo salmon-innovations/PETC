@@ -1202,6 +1202,7 @@ def list_tests(
                 "completedAt": t.completed_at.isoformat() if t.completed_at else None,
                 "ltmsState": t.ltms_submissions[0].state if t.ltms_submissions else None,
                 "certificateNo": t.ltms_submissions[0].certificate_no if t.ltms_submissions else None,
+                "submissionId": t.ltms_submissions[0].id if t.ltms_submissions else None,
                 "photoCount": len(t.photos),
             }
             for t in tests
@@ -1768,6 +1769,7 @@ def _test_detail_to_response(test) -> dict:
         ],
         "ltmsState": test.ltms_submissions[0].state if test.ltms_submissions else None,
         "certificateNo": test.ltms_submissions[0].certificate_no if test.ltms_submissions else None,
+        "submissionId": test.ltms_submissions[0].id if test.ltms_submissions else None,
     }
 
 

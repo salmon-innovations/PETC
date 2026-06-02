@@ -503,6 +503,18 @@ function ReviewStep({ payload, result, isPending, isError, onBack, onDone, onSub
     if (result.state === "ACCEPTED" && result.submissionId) {
       return <CecPreviewAndPrint submissionId={result.submissionId} certificateNo={result.certificateNo} onDone={onDone} />;
     }
+    if (result.state === "WAITING_FOR_LTMS") {
+      return (
+        <section className="rounded-lg shadow p-8 text-center space-y-3 bg-blue-50 border border-blue-200">
+          <p className="text-xl font-bold text-blue-800">Queued — awaiting LTMS response</p>
+          <p className="text-sm text-blue-700">
+            The test has been submitted to the cloud. LTMS is processing the request.
+            The CEC certificate will become available in <strong>History</strong> once approved.
+          </p>
+          <button onClick={onDone} className="rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700">Go to History</button>
+        </section>
+      );
+    }
     return (
       <section className={clsx("rounded-lg shadow p-8 text-center space-y-3", result.state === "PENDING" ? "bg-yellow-50 border border-yellow-200" : "bg-red-50 border border-red-200")}>
         <p className="text-xl font-bold">{result.state === "PENDING" ? "Queued for retry" : "Rejected"}</p>

@@ -75,6 +75,7 @@ export interface EmissionTest {
   completedAt: string | null;
   ltmsState: string | null;
   certificateNo: string | null;
+  submissionId: string | null;
   photoCount: number;
 }
 

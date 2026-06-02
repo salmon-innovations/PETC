@@ -1,6 +1,8 @@
+import { useMutation } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
 import clsx from "clsx";
+import { sidecarClient } from "../../api/sidecarClient";
 import type { EmissionTest } from "../../types";
 
 export default function HistoryPage() {
@@ -11,7 +13,13 @@ export default function HistoryPage() {
       const { data } = await axios.get(`${base}/tests?limit=100`);
       return data;
     },
-    staleTime: 30_000,
+    // Poll faster while any row is still waiting for LTMS
+    refetchInterval: (query) => {
+      const rows = query.state.data ?? [];
+      return rows.some((t) => t.ltmsState === "WAITING_FOR_LTMS" || t.ltmsState === "PENDING")
+        ? 10_000
+        : 30_000;
+    },
   });
 
   return (
@@ -22,34 +30,7 @@ export default function HistoryPage() {
 
       <div className="bg-white rounded-xl shadow divide-y">
         {tests.map((t) => (
-          <div key={t.id} className="flex items-center justify-between px-5 py-3">
-            <div>
-              <p className="font-semibold text-sm text-gray-800">{t.plateNumber}</p>
-              <p className="text-xs text-gray-500">
-                {t.fuelType} · {t.startedAt ? new Date(t.startedAt).toLocaleString() : "—"}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {t.passFail !== null && (
-                <span className={clsx(
-                  "rounded-full px-2 py-0.5 text-xs font-medium",
-                  t.passFail ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                )}>
-                  {t.passFail ? "PASS" : "FAIL"}
-                </span>
-              )}
-              <span className={clsx(
-                "rounded-full px-2 py-0.5 text-xs",
-                t.ltmsState === "ACCEPTED"
-                  ? "bg-blue-100 text-blue-700"
-                  : t.ltmsState === "REJECTED"
-                  ? "bg-red-100 text-red-600"
-                  : "bg-yellow-100 text-yellow-700"
-              )}>
-                {t.ltmsState ?? "pending LTMS"}
-              </span>
-            </div>
-          </div>
+          <HistoryRow key={t.id} test={t} />
         ))}
         {!isLoading && tests.length === 0 && (
           <p className="px-5 py-10 text-center text-sm text-gray-500">No tests recorded yet.</p>
@@ -57,4 +38,62 @@ export default function HistoryPage() {
       </div>
     </div>
   );
+}
+
+function HistoryRow({ test: t }: { test: EmissionTest }) {
+  const printMutation = useMutation({
+    mutationFn: () => sidecarClient.printCec(t.submissionId!, 2),
+  });
+
+  return (
+    <div className="flex items-center justify-between px-5 py-3">
+      <div>
+        <p className="font-semibold text-sm text-gray-800">{t.plateNumber}</p>
+        <p className="text-xs text-gray-500">
+          {t.fuelType} · {t.startedAt ? new Date(t.startedAt).toLocaleString() : "—"}
+        </p>
+        {t.certificateNo && (
+          <p className="text-xs text-blue-600 mt-0.5">Cert: {t.certificateNo}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        {t.passFail !== null && (
+          <span className={clsx(
+            "rounded-full px-2 py-0.5 text-xs font-medium",
+            t.passFail ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+          )}>
+            {t.passFail ? "PASS" : "FAIL"}
+          </span>
+        )}
+        <LtmsStateBadge state={t.ltmsState} />
+        {t.ltmsState === "ACCEPTED" && t.submissionId && (
+          <button
+            onClick={() => printMutation.mutate()}
+            disabled={printMutation.isPending}
+            className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {printMutation.isPending ? "Printing…" : printMutation.isSuccess ? "Printed ✓" : "Print CEC"}
+          </button>
+        )}
+        {t.ltmsState === "WAITING_FOR_LTMS" && (
+          <span className="text-xs text-blue-600 animate-pulse">Awaiting LTMS…</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LtmsStateBadge({ state }: { state: string | null }) {
+  const label = state ?? "pending LTMS";
+  const cls = clsx(
+    "rounded-full px-2 py-0.5 text-xs",
+    state === "ACCEPTED"
+      ? "bg-blue-100 text-blue-700"
+      : state === "REJECTED"
+      ? "bg-red-100 text-red-600"
+      : state === "WAITING_FOR_LTMS"
+      ? "bg-blue-50 text-blue-500"
+      : "bg-yellow-100 text-yellow-700",
+  );
+  return <span className={cls}>{label}</span>;
 }

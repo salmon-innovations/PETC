@@ -66,7 +66,7 @@ export interface DriverLookupResponse {
 }
 
 export interface LtmsSubmitResponse {
-  state: "ACCEPTED" | "REJECTED" | "PENDING";
+  state: "ACCEPTED" | "REJECTED" | "PENDING" | "WAITING_FOR_LTMS";
   certificateNo: string | null;
   rejectionReason: string | null;
   queued?: boolean;
