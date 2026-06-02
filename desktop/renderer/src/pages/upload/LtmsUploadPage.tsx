@@ -10,6 +10,8 @@ import { CameraStream, type CameraStreamHandle } from "../../components/CameraSt
 type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
 type PhotoType = TestPhoto["photoType"];
 
+type Classification = "PRIVATE" | "PUBLIC" | "GOVERNMENT" | "DIPLOMATIC";
+
 type VehicleForm = {
   plateNo: string;
   mvNo: string;
@@ -26,6 +28,7 @@ type VehicleForm = {
   color: string;
   transmission: "M/T" | "A/T";
   fuelType: FuelType;
+  classification: Classification;
 };
 
 type OwnerForm = OwnerInfo;
@@ -52,6 +55,7 @@ const EMPTY_VEHICLE: VehicleForm = {
   color: "",
   transmission: "A/T",
   fuelType: "GAS",
+  classification: "PRIVATE",
 };
 
 const EMPTY_OWNER: OwnerForm = {
@@ -313,6 +317,7 @@ function VehicleStep({ vehicle, lookup, onChange, onNext }: {
         <TextField label="Color" value={vehicle.color} onChange={(value) => set("color", value.toUpperCase())} badge={badgeFor("color", vehicle.color, lookup?.vehicle?.color)} />
         <Segment label="Transmission" value={vehicle.transmission} options={["M/T", "A/T"]} onChange={(value) => set("transmission", value as VehicleForm["transmission"])} />
         <Segment label="Fuel Type" value={vehicle.fuelType} options={["GAS", "DIESEL", "MOTORCYCLE"]} onChange={(value) => set("fuelType", value as FuelType)} />
+        <Segment label="Classification" value={vehicle.classification} options={["PRIVATE", "PUBLIC", "GOVERNMENT", "DIPLOMATIC"]} onChange={(value) => set("classification", value as Classification)} />
       </div>
       <FooterNav nextDisabled={!valid} onNext={onNext} />
     </section>
@@ -748,6 +753,7 @@ function mapVehicle(vehicle: VehicleInfo): VehicleForm {
     color: vehicle.color ?? "",
     transmission: vehicle.transmission ?? "A/T",
     fuelType: vehicle.fuelType ?? "GAS",
+    classification: (vehicle.classification as Classification | undefined) ?? "PRIVATE",
   };
 }
 
