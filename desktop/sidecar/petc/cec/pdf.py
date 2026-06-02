@@ -1,27 +1,32 @@
 """Render a Certificate of Emission Compliance (CEC) to a PDF file.
 
-Single-page A4 document modeled after the LTO Memorandum Circular VPT-2013-1766
-requirements: LTO logo in the upper-right, plate/test-probe/technician photo
-slots, CEC number, vehicle + owner + readings + verdict + technician block.
+The page is one A4 portrait sheet divided into two halves so the operator
+prints once and tears the sheet in two: the top half is the customer copy,
+the bottom half is the center copy.  Layout follows the existing-IT-provider
+sample (MEGA EMISSION TESTING CENTER / THE NEW CYBERLINKTECH, INC.) — plain
+center header (no LTO branding band), OR No + DERMALOG token + IT provider
+attribution + classification + validity window + "FOR REGISTRATION ONLY"
+disclaimer, "PASSED" / "FAILED" as plain text in the corner.
 """
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from reportlab.lib.colors import HexColor, black, white
+from reportlab.lib.colors import HexColor, black
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 
 
-BRAND = HexColor("#0b3d91")     # LTO-ish blue
-BAND = HexColor("#0b3d91")
-SOFT = HexColor("#e6efff")
-LINE = HexColor("#cfd6e4")
+LINE = HexColor("#9a9a9a")
 MUTED = HexColor("#5a667a")
+PASS_GREEN = HexColor("#1ea64a")
+FAIL_RED = HexColor("#c0392b")
+
+IT_PROVIDER = "DIGIFLASH  ·  SALMON INNOVATIONS"
 
 
 def cec_pdf_dir() -> Path:
@@ -41,33 +46,56 @@ def render_cec_pdf(
     certificate_no: str,
     payload: dict,
     issued_at: datetime,
+    or_no: Optional[str] = None,
+    dermalog_token: Optional[str] = None,
+    valid_from: Optional[str] = None,
+    valid_until: Optional[str] = None,
 ) -> Path:
     """Render the CEC PDF for an accepted LTMS submission. Returns the path."""
-    vehicle = payload.get("vehicle") or {}
-    owner = payload.get("owner") or {}
-    technician = payload.get("technician") or {}
-    verdict = payload.get("verdict") or {}
-    readings = payload.get("readings") or {}
-    photos = payload.get("photos") or []
-    center_name = payload.get("centerName") or "PETC Center"
-
     path = cec_pdf_path(submission_id)
     c = canvas.Canvas(str(path), pagesize=A4)
     width, height = A4
 
-    _draw_header(c, width, height, certificate_no, issued_at, center_name)
-    _draw_watermark(c, width, height, "PASS" if verdict.get("pass") else "FAIL")
+    # Derive validity window from issued_at if LTMS did not supply one.
+    issued_date = issued_at.date()
+    vf = valid_from or issued_date.isoformat()
+    vu = valid_until or (issued_date + timedelta(days=60)).isoformat()
 
-    content_top = height - 42 * mm
-    photo_bottom = _draw_photos(c, width, content_top, photos)
+    # Top half: customer copy (full layout)
+    _draw_full_copy(
+        c, width,
+        copy_label="CUSTOMER COPY",
+        top=height - 8 * mm,
+        bottom=height / 2 + 4 * mm,
+        certificate_no=certificate_no,
+        or_no=or_no,
+        dermalog_token=dermalog_token,
+        valid_from=vf,
+        valid_until=vu,
+        payload=payload,
+        issued_at=issued_at,
+    )
 
-    data_top = photo_bottom - 6 * mm
-    data_bottom = _draw_data_columns(c, width, data_top, vehicle, owner, readings, verdict)
+    # Centre tear-line
+    c.setDash(2, 2)
+    c.setStrokeColor(LINE)
+    c.line(10 * mm, height / 2, width - 10 * mm, height / 2)
+    c.setDash()
 
-    sig_top = data_bottom - 4 * mm
-    _draw_technician_and_signature(c, width, sig_top, technician)
-
-    _draw_footer(c, width, submission_id, issued_at)
+    # Bottom half: center copy (condensed)
+    _draw_condensed_copy(
+        c, width,
+        copy_label="CENTER COPY",
+        top=height / 2 - 4 * mm,
+        bottom=8 * mm,
+        certificate_no=certificate_no,
+        or_no=or_no,
+        dermalog_token=dermalog_token,
+        valid_from=vf,
+        valid_until=vu,
+        payload=payload,
+        issued_at=issued_at,
+    )
 
     c.showPage()
     c.save()
@@ -75,256 +103,329 @@ def render_cec_pdf(
 
 
 # ---------------------------------------------------------------------------
-# Layout sections
+# Full (customer) copy — top half
 # ---------------------------------------------------------------------------
-def _draw_header(c: canvas.Canvas, width: float, height: float,
-                 certificate_no: str, issued_at: datetime, center_name: str) -> None:
-    band_h = 22 * mm
-    c.setFillColor(BAND)
-    c.rect(0, height - band_h, width, band_h, stroke=0, fill=1)
+def _draw_full_copy(
+    c: canvas.Canvas,
+    width: float,
+    *,
+    copy_label: str,
+    top: float,
+    bottom: float,
+    certificate_no: str,
+    or_no: Optional[str],
+    dermalog_token: Optional[str],
+    valid_from: str,
+    valid_until: str,
+    payload: dict,
+    issued_at: datetime,
+) -> None:
+    vehicle = payload.get("vehicle") or {}
+    owner = payload.get("owner") or {}
+    technician = payload.get("technician") or {}
+    verdict = payload.get("verdict") or {}
+    readings = payload.get("readings") or {}
+    photos = payload.get("photos") or []
+    center_name = payload.get("centerName") or "PETC CENTER"
+    center_address = payload.get("centerAddress") or ""
+    center_accred = payload.get("centerAccreditationNo") or ""
 
-    c.setFillColor(white)
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(20 * mm, height - 11 * mm, "CERTIFICATE OF EMISSION COMPLIANCE")
-    c.setFont("Helvetica", 10)
-    c.drawString(20 * mm, height - 17 * mm, "Land Transportation Office  ·  Republic of the Philippines")
-
-    # LTO logo slot — upper right per LTO MC VPT-2013-1766
-    logo_w = 18 * mm
-    logo_x = width - 20 * mm - logo_w
-    logo_y = height - 20 * mm
-    c.setStrokeColor(white)
-    c.setLineWidth(0.6)
-    c.rect(logo_x, logo_y, logo_w, logo_w, stroke=1, fill=0)
-    c.setFont("Helvetica-Bold", 7)
-    c.drawCentredString(logo_x + logo_w / 2, logo_y + logo_w / 2 - 1, "LTO LOGO")
-
-    # Certificate strip below the band
-    strip_y = height - band_h - 9 * mm
-    c.setFillColor(SOFT)
-    c.rect(0, strip_y, width, 9 * mm, stroke=0, fill=1)
-    c.setFillColor(BRAND)
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(20 * mm, strip_y + 3 * mm, f"CEC No.  {certificate_no}")
-    c.setFont("Helvetica", 9)
-    c.setFillColor(MUTED)
-    c.drawRightString(width - 20 * mm, strip_y + 3 * mm,
-                      f"{center_name}   ·   Issued {issued_at.strftime('%Y-%m-%d %H:%M')}")
+    # Header (plain center text — matches sample)
+    y = top
     c.setFillColor(black)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawCentredString(width / 2, y, center_name.upper())
+    y -= 4.5 * mm
+    if center_address:
+        c.setFont("Helvetica", 8)
+        c.drawCentredString(width / 2, y, center_address.upper())
+        y -= 4 * mm
+    if center_accred:
+        c.setFont("Helvetica", 7.5)
+        c.setFillColor(MUTED)
+        c.drawCentredString(width / 2, y, f"Accreditation No.: {center_accred}")
+        c.setFillColor(black)
+        y -= 4 * mm
+    # Issue date (top-left, short form like sample)
+    c.setFont("Helvetica", 8)
+    c.drawCentredString(width / 2, y, issued_at.strftime("%m/%d/%Y"))
+    y -= 5 * mm
 
+    # OR No (top-right corner of header zone)
+    if or_no:
+        c.setFont("Helvetica-Bold", 9)
+        c.drawRightString(width - 15 * mm, top, or_no)
+        c.setFont("Helvetica", 8)
+        # Short form: last 4–5 digits as receipt no
+        short = or_no[-4:]
+        c.drawRightString(width - 15 * mm, top - 4 * mm, f"OR No.: {short}")
 
-def _draw_watermark(c: canvas.Canvas, width: float, height: float, label: str) -> None:
-    c.saveState()
-    c.setFont("Helvetica-Bold", 110)
-    c.setFillColor(HexColor("#1ea64a") if label == "PASS" else HexColor("#c0392b"))
-    c.setFillAlpha(0.08)
-    c.translate(width / 2, height / 2)
-    c.rotate(30)
-    c.drawCentredString(0, -20, label)
-    c.restoreState()
-
-
-def _draw_photos(c: canvas.Canvas, width: float, top: float, photos: list[dict]) -> float:
-    """Three photo slots: vehicle plate (FRONT/REAR), test probe, technician."""
-    box_w = (width - 40 * mm - 8 * mm) / 3  # 3 boxes, 4mm gutters
-    box_h = 42 * mm
-    y = top - box_h
-
-    slots = [
-        ("Vehicle (plate visible)", _find_photo(photos, ("REAR", "FRONT"))),
-        ("Test probe at tailpipe", _find_photo(photos, ("PROBE", "TAILPIPE"))),
-        ("Technician", _find_photo(photos, ("TECHNICIAN",))),
-    ]
-
-    x = 20 * mm
-    for label, photo_path in slots:
-        _draw_photo_box(c, x, y, box_w, box_h, label, photo_path)
-        x += box_w + 4 * mm
-
-    return y
-
-
-def _draw_photo_box(c: canvas.Canvas, x: float, y: float, w: float, h: float,
-                    label: str, image_path: Optional[str]) -> None:
-    c.setStrokeColor(LINE)
-    c.setLineWidth(0.6)
-    c.rect(x, y, w, h, stroke=1, fill=0)
-
-    img_area_h = h - 6 * mm
-    if image_path and Path(image_path).is_file():
-        try:
-            c.drawImage(image_path, x + 1.5 * mm, y + 6 * mm + 0.5 * mm,
-                        width=w - 3 * mm, height=img_area_h - 1.5 * mm,
-                        preserveAspectRatio=True, anchor='c', mask='auto')
-        except Exception:
-            _draw_placeholder(c, x, y + 6 * mm, w, img_area_h, "image unavailable")
-    else:
-        _draw_placeholder(c, x, y + 6 * mm, w, img_area_h, "no photo")
-
-    c.setFillColor(BRAND)
+    # Copy label (top-left)
     c.setFont("Helvetica-Bold", 8)
-    c.drawString(x + 2 * mm, y + 2 * mm, label)
-    c.setFillColor(black)
-
-
-def _draw_placeholder(c: canvas.Canvas, x: float, y: float, w: float, h: float, msg: str) -> None:
-    c.setFillColor(HexColor("#f5f6f8"))
-    c.rect(x + 1 * mm, y + 0.5 * mm, w - 2 * mm, h - 1 * mm, stroke=0, fill=1)
     c.setFillColor(MUTED)
-    c.setFont("Helvetica-Oblique", 8)
-    c.drawCentredString(x + w / 2, y + h / 2 - 2, msg)
+    c.drawString(15 * mm, top, copy_label)
     c.setFillColor(black)
 
+    # ── Owner block (left) + Vehicle classification (right) ────────────
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(15 * mm, y, _owner_name(owner))
+    y -= 3.5 * mm
+    c.setFont("Helvetica", 8)
+    c.drawString(15 * mm, y, (owner.get("address") or "") + " " + (owner.get("city") or ""))
+    y -= 6 * mm
 
-def _draw_data_columns(c: canvas.Canvas, width: float, top: float,
-                       vehicle: dict, owner: dict, readings: dict, verdict: dict) -> float:
-    col_w = (width - 40 * mm - 6 * mm) / 2
-    left_x = 20 * mm
-    right_x = left_x + col_w + 6 * mm
+    # ── Two-column data block (matches sample's left / right split) ────
+    left_x = 15 * mm
+    right_x = width / 2 + 5 * mm
+    block_top = y
+    c.setFont("Helvetica", 8.5)
 
-    left_y = _section(c, left_x, top, col_w, "VEHICLE INFORMATION", [
+    left_rows = [
         ("Plate No", vehicle.get("plateNo")),
         ("MV File No", vehicle.get("mvNo")),
         ("Engine No", vehicle.get("engineNo")),
         ("Chassis No", vehicle.get("chassisNo")),
-        ("Make", vehicle.get("make")),
-        ("Series / Model", vehicle.get("series")),
-        ("Year Model", vehicle.get("yearModel")),
-        ("Color", vehicle.get("color")),
-        ("Vehicle Type", vehicle.get("vehicleType")),
-        ("Fuel Type", vehicle.get("fuelType")),
-        ("Transmission", vehicle.get("transmission")),
-    ])
-
-    right_y = _section(c, right_x, top, col_w, "REGISTERED OWNER", [
-        ("Name", _owner_name(owner)),
-        ("Address", owner.get("address")),
-        ("City", owner.get("city")),
-    ])
-
-    # Readings block under owner column
-    reading_rows = [(_pretty(k), _fmt_reading(v)) for k, v in readings.items()]
-    right_y -= 4 * mm
-    right_y = _section(c, right_x, right_y, col_w, "EMISSION READINGS",
-                      reading_rows or [("(no readings)", "")])
-
-    # Verdict box under readings
-    right_y -= 4 * mm
-    right_y = _verdict_box(c, right_x, right_y, col_w, verdict)
-
-    return min(left_y, right_y)
-
-
-def _section(c: canvas.Canvas, x: float, y: float, w: float, title: str,
-             rows: list[tuple[str, Optional[object]]]) -> float:
-    # Section title bar
-    c.setFillColor(BRAND)
-    c.rect(x, y - 5 * mm, w, 5 * mm, stroke=0, fill=1)
-    c.setFillColor(white)
-    c.setFont("Helvetica-Bold", 8.5)
-    c.drawString(x + 2 * mm, y - 3.6 * mm, title)
-    c.setFillColor(black)
-
-    y -= 5 * mm
-    row_h = 5.2 * mm
-    label_w = 32 * mm
-    c.setFont("Helvetica", 9)
-    for i, (label, value) in enumerate(rows):
-        row_y = y - (i + 1) * row_h
-        if i % 2 == 1:
-            c.setFillColor(HexColor("#f8f9fb"))
-            c.rect(x, row_y, w, row_h, stroke=0, fill=1)
-            c.setFillColor(black)
-        c.setFillColor(MUTED)
-        c.setFont("Helvetica", 8.5)
-        c.drawString(x + 2 * mm, row_y + 1.6 * mm, label.upper())
-        c.setFillColor(black)
-        c.setFont("Helvetica-Bold", 9)
-        c.drawString(x + 2 * mm + label_w, row_y + 1.6 * mm, _safe(value))
-
-    # Outer border
-    body_h = row_h * len(rows)
-    c.setStrokeColor(LINE)
-    c.setLineWidth(0.5)
-    c.rect(x, y - body_h, w, body_h + 5 * mm, stroke=1, fill=0)
-
-    return y - body_h
-
-
-def _verdict_box(c: canvas.Canvas, x: float, y: float, w: float, verdict: dict) -> float:
-    h = 14 * mm
-    is_pass = bool(verdict.get("pass"))
-    fill = HexColor("#e8f7ed") if is_pass else HexColor("#fdecea")
-    border = HexColor("#1ea64a") if is_pass else HexColor("#c0392b")
-
-    c.setFillColor(fill)
-    c.setStrokeColor(border)
-    c.setLineWidth(1)
-    c.rect(x, y - h, w, h, stroke=1, fill=1)
-
-    c.setFillColor(border)
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(x + 3 * mm, y - 7 * mm, "PASS" if is_pass else "FAIL")
-    c.setFont("Helvetica", 8.5)
-    c.setFillColor(black)
-    notes = "; ".join(verdict.get("reasons") or []) or "Within configured emission limits"
-    c.drawString(x + 22 * mm, y - 7 * mm, notes[:80])
-
-    return y - h
-
-
-def _draw_technician_and_signature(c: canvas.Canvas, width: float, top: float, technician: dict) -> None:
-    x = 20 * mm
-    w = width - 40 * mm
-    h = 26 * mm
-    c.setStrokeColor(LINE)
-    c.setLineWidth(0.5)
-    c.rect(x, top - h, w, h, stroke=1, fill=0)
-
-    c.setFillColor(BRAND)
-    c.setFont("Helvetica-Bold", 8.5)
-    c.drawString(x + 2 * mm, top - 4 * mm, "TECHNICIAN  /  CERTIFICATION")
-    c.setFillColor(black)
-
-    # Three columns of technician data
-    col_w = w / 3
-    fields = [
-        ("Technician Name", technician.get("technicianName")),
-        ("TESDA Cert. No", technician.get("tesdaCertNo")),
-        ("Certification No", technician.get("certificationNo")),
+        ("Test Datetime", issued_at.strftime("%m/%d/%Y %I:%M:%S %p")),
     ]
-    for i, (label, value) in enumerate(fields):
-        cx = x + i * col_w + 2 * mm
-        c.setFillColor(MUTED)
-        c.setFont("Helvetica", 7.5)
-        c.drawString(cx, top - 9 * mm, label.upper())
-        c.setFillColor(black)
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(cx, top - 13 * mm, _safe(value))
+    right_rows = [
+        ("Fuel Type", vehicle.get("fuelType")),
+        ("Year Model", vehicle.get("yearModel")),
+        ("Make / Series", _join(vehicle.get("make"), vehicle.get("series"))),
+        ("Vehicle Type", vehicle.get("vehicleType")),
+        ("Color", vehicle.get("color")),
+        ("Classification", vehicle.get("classification") or "—"),
+    ]
 
-    # Signature line
-    sig_y = top - h + 6 * mm
-    c.setStrokeColor(black)
-    c.setLineWidth(0.4)
-    c.line(x + 2 * mm, sig_y, x + 80 * mm, sig_y)
+    rowy = block_top
+    for label, value in left_rows:
+        c.setFillColor(MUTED)
+        c.drawString(left_x, rowy, label.upper())
+        c.setFillColor(black)
+        c.drawString(left_x + 28 * mm, rowy, _safe(value))
+        rowy -= 4 * mm
+
+    rowy = block_top
+    for label, value in right_rows:
+        c.setFillColor(MUTED)
+        c.drawString(right_x, rowy, label.upper())
+        c.setFillColor(black)
+        c.drawString(right_x + 28 * mm, rowy, _safe(value))
+        rowy -= 4 * mm
+
+    y = min(block_top - len(left_rows) * 4 * mm, block_top - len(right_rows) * 4 * mm) - 2 * mm
+
+    # Validity window
+    c.setFont("Helvetica", 8)
+    c.drawString(left_x, y, _fmt_date_long(valid_from))
+    c.drawString(right_x, y, _fmt_date_long(valid_until))
+    y -= 5 * mm
+
+    # ── Photos row (two slots side-by-side, like the sample) ──────────
+    photo_top = y
+    photo_h = 32 * mm
+    photo_w = 42 * mm
+    gap = 4 * mm
+    photo_y = photo_top - photo_h
+
+    plate_photo = _find_photo(photos, ("REAR", "FRONT"))
+    close_photo = _find_photo(photos, ("PLATE", "CLOSE", "RESULT")) or plate_photo
+
+    _draw_photo_box(c, left_x, photo_y, photo_w, photo_h, plate_photo, issued_at)
+    _draw_photo_box(c, left_x + photo_w + gap, photo_y, photo_w, photo_h, close_photo, issued_at)
+
+    # Technician name under first photo, license # under second
+    c.setFont("Helvetica-Bold", 8)
+    c.drawString(left_x, photo_y - 3.5 * mm, (technician.get("technicianName") or "").upper())
+    c.drawString(left_x + photo_w + gap, photo_y - 3.5 * mm, (technician.get("technicianName") or "").upper())
+    c.setFont("Helvetica", 7)
     c.setFillColor(MUTED)
-    c.setFont("Helvetica", 7.5)
-    c.drawString(x + 2 * mm, sig_y - 3.5 * mm, "SIGNATURE OVER PRINTED NAME OF TECHNICIAN")
+    c.drawString(left_x + photo_w + gap, photo_y - 7 * mm, _safe(technician.get("certificationNo")))
     c.setFillColor(black)
 
+    # Reading numbers + PASSED on the right
+    readings_x = left_x + 2 * (photo_w + gap) + 4 * mm
+    rx = readings_x
+    ry = photo_top - 4 * mm
+    c.setFont("Helvetica", 10)
+    for r in _formatted_readings(readings, vehicle.get("fuelType")):
+        c.drawString(rx, ry, r)
+        ry -= 5 * mm
 
-def _draw_footer(c: canvas.Canvas, width: float, submission_id: str, issued_at: datetime) -> None:
+    # PASSED / FAILED text (plain, like sample)
+    is_pass = bool(verdict.get("pass"))
+    c.setFont("Helvetica-Bold", 16)
+    c.setFillColor(PASS_GREEN if is_pass else FAIL_RED)
+    c.drawString(rx, photo_y + 2 * mm, "PASSED" if is_pass else "FAILED")
+    c.setFillColor(black)
+    c.setFont("Helvetica", 7.5)
     c.setFillColor(MUTED)
-    c.setFont("Helvetica-Oblique", 7.5)
-    c.drawString(20 * mm, 10 * mm,
-                 f"Submission {submission_id}  ·  Generated by PETC  ·  {issued_at.isoformat()}")
-    c.drawRightString(width - 20 * mm, 10 * mm,
-                      "This document is system-generated. Verify against LTMS records.")
+    c.drawString(rx, photo_y - 3.5 * mm, "FOR REGISTRATION ONLY")
+    c.setFillColor(black)
+
+    # DERMALOG token + IT provider attribution at the bottom of the half
+    foot_y = bottom + 2 * mm
+    if dermalog_token:
+        c.setFont("Helvetica", 6.5)
+        c.setFillColor(MUTED)
+        c.drawString(15 * mm, foot_y + 4 * mm, f"DERMALOG: {dermalog_token}")
+        c.setFillColor(black)
+    c.setFont("Helvetica", 6.5)
+    c.setFillColor(MUTED)
+    c.drawString(15 * mm, foot_y, IT_PROVIDER)
+    c.drawRightString(width - 15 * mm, foot_y, f"CEC No. {certificate_no}")
     c.setFillColor(black)
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Condensed (center) copy — bottom half
+# ---------------------------------------------------------------------------
+def _draw_condensed_copy(
+    c: canvas.Canvas,
+    width: float,
+    *,
+    copy_label: str,
+    top: float,
+    bottom: float,
+    certificate_no: str,
+    or_no: Optional[str],
+    dermalog_token: Optional[str],
+    valid_from: str,
+    valid_until: str,
+    payload: dict,
+    issued_at: datetime,
+) -> None:
+    vehicle = payload.get("vehicle") or {}
+    owner = payload.get("owner") or {}
+    technician = payload.get("technician") or {}
+    verdict = payload.get("verdict") or {}
+    readings = payload.get("readings") or {}
+    photos = payload.get("photos") or []
+
+    left_x = 15 * mm
+
+    # Copy label
+    c.setFont("Helvetica-Bold", 8)
+    c.setFillColor(MUTED)
+    c.drawString(left_x, top, copy_label)
+    c.setFillColor(black)
+
+    # DERMALOG header line
+    if dermalog_token:
+        c.setFont("Helvetica", 6.5)
+        c.setFillColor(MUTED)
+        c.drawString(width / 2 - 30 * mm, top, f"DERMALOG: {dermalog_token}")
+        c.setFillColor(black)
+        c.setFont("Helvetica-Bold", 7.5)
+        c.drawString(width / 2 - 30 * mm, top - 3.5 * mm, IT_PROVIDER)
+
+    y = top - 8 * mm
+
+    # Small photo on the left
+    plate_photo = _find_photo(photos, ("REAR", "FRONT"))
+    photo_w = 30 * mm
+    photo_h = 24 * mm
+    photo_y = y - photo_h
+    _draw_photo_box(c, left_x, photo_y, photo_w, photo_h, plate_photo, issued_at)
+
+    # Technician name + cert # under photo
+    c.setFont("Helvetica-Bold", 7.5)
+    c.drawString(left_x, photo_y - 3.5 * mm, (technician.get("technicianName") or "").upper())
+    c.setFont("Helvetica", 6.5)
+    c.setFillColor(MUTED)
+    c.drawString(left_x, photo_y - 6.5 * mm, _safe(technician.get("certificationNo")))
+    c.setFillColor(black)
+    c.setFont("Helvetica-Bold", 11)
+    c.setFillColor(PASS_GREEN if verdict.get("pass") else FAIL_RED)
+    c.drawString(left_x, photo_y - 11 * mm, "PASSED" if verdict.get("pass") else "FAILED")
+    c.setFillColor(black)
+
+    # Compact data block to the right of the photo
+    data_x = left_x + photo_w + 6 * mm
+    dy = y
+    c.setFont("Helvetica", 7.5)
+    compact_rows = [
+        (_owner_name(owner), ""),
+        ((owner.get("address") or "") + " " + (owner.get("city") or ""), ""),
+        (vehicle.get("plateNo"), str(vehicle.get("yearModel") or "")),
+        (vehicle.get("mvNo"), _join(vehicle.get("make"), vehicle.get("series"))),
+        (vehicle.get("engineNo"), vehicle.get("color")),
+        (vehicle.get("chassisNo"), vehicle.get("classification") or "—"),
+        (issued_at.strftime("%m/%d/%Y %I:%M:%S %p"), "FOR REGISTRATION ONLY"),
+        (_fmt_date_long(valid_from), _fmt_date_long(valid_until)),
+    ]
+    for left, right in compact_rows:
+        c.drawString(data_x, dy, _safe(left))
+        if right:
+            c.drawRightString(width - 15 * mm, dy, _safe(right))
+        dy -= 3.8 * mm
+
+    # Readings under the photo
+    ready = photo_y - 16 * mm
+    c.setFont("Helvetica", 8)
+    for r in _formatted_readings(readings, vehicle.get("fuelType")):
+        c.drawString(left_x + 2 * mm, ready, r)
+        c.drawString(left_x + 35 * mm, ready, "")
+        ready -= 4 * mm
+
+    # Footer (OR No + CEC No)
+    foot_y = bottom + 2 * mm
+    c.setFont("Helvetica", 6.5)
+    c.setFillColor(MUTED)
+    c.drawString(15 * mm, foot_y, f"OR No.: {or_no or '—'}")
+    c.drawRightString(width - 15 * mm, foot_y, f"CEC No. {certificate_no}")
+    c.setFillColor(black)
+
+
+# ---------------------------------------------------------------------------
+# Shared drawing helpers
+# ---------------------------------------------------------------------------
+def _draw_photo_box(
+    c: canvas.Canvas,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    image_path: Optional[str],
+    issued_at: datetime,
+) -> None:
+    c.setStrokeColor(LINE)
+    c.setLineWidth(0.5)
+    c.rect(x, y, w, h, stroke=1, fill=0)
+
+    if image_path and Path(image_path).is_file():
+        try:
+            c.drawImage(
+                image_path,
+                x + 0.8 * mm, y + 0.8 * mm,
+                width=w - 1.6 * mm, height=h - 1.6 * mm,
+                preserveAspectRatio=True, anchor="c", mask="auto",
+            )
+        except Exception:
+            _draw_placeholder(c, x, y, w, h, "image unavailable")
+    else:
+        _draw_placeholder(c, x, y, w, h, "no photo")
+
+    # Camera timestamp burn-in (mimics sample's "06/02/2026 10:42:49 AM" overlay)
+    c.setFont("Helvetica", 5.5)
+    c.setFillColor(HexColor("#ffffffcc"))
+    c.rect(x + 0.8 * mm, y + h - 3 * mm, 24 * mm, 2.5 * mm, stroke=0, fill=1)
+    c.setFillColor(black)
+    c.drawString(x + 1.2 * mm, y + h - 2.4 * mm, issued_at.strftime("%m/%d/%Y %I:%M:%S %p"))
+
+
+def _draw_placeholder(
+    c: canvas.Canvas, x: float, y: float, w: float, h: float, msg: str
+) -> None:
+    c.setFillColor(HexColor("#f5f6f8"))
+    c.rect(x + 0.5 * mm, y + 0.5 * mm, w - 1 * mm, h - 1 * mm, stroke=0, fill=1)
+    c.setFillColor(MUTED)
+    c.setFont("Helvetica-Oblique", 7)
+    c.drawCentredString(x + w / 2, y + h / 2, msg)
+    c.setFillColor(black)
+
+
+# ---------------------------------------------------------------------------
+# Pure helpers
 # ---------------------------------------------------------------------------
 def _find_photo(photos: list[dict], preferred_types: tuple[str, ...]) -> Optional[str]:
     by_type = {(p.get("photoType") or "").upper(): p.get("filePath") for p in photos}
@@ -340,22 +441,46 @@ def _safe(value) -> str:
     return str(value)
 
 
+def _join(*parts) -> str:
+    return " - ".join(str(p) for p in parts if p)
+
+
 def _owner_name(owner: dict) -> str:
     if owner.get("ownerType") == "ORGANIZATION":
         return owner.get("organization") or ""
-    return " ".join(
-        part for part in [owner.get("firstName"), owner.get("middleName"), owner.get("lastName")]
-        if part
-    )
+    parts = [owner.get("lastName"), owner.get("firstName"), owner.get("middleName")]
+    name = ", ".join([p for p in [owner.get("lastName")] if p])
+    rest = " ".join(p for p in [owner.get("firstName"), owner.get("middleName")] if p)
+    if name and rest:
+        return f"{name.upper()}, {rest.upper()}"
+    return " ".join(p.upper() for p in parts if p)
 
 
-def _pretty(key: str) -> str:
-    return key.replace("_", " ").upper()
+def _formatted_readings(readings: dict, fuel_type: Optional[str]) -> list[str]:
+    """Render the small numeric readout shown in the sample (e.g. `0.04  86  0`)."""
+    if not readings:
+        return []
+    if (fuel_type or "").upper() == "DIESEL":
+        return [_fmt_num(readings.get("opacity_pct")), _fmt_num(readings.get("k_value"))]
+    return [
+        _fmt_num(readings.get("co_pct")),
+        _fmt_num(readings.get("hc_ppm")),
+        _fmt_num(readings.get("co2_pct") or readings.get("o2_pct")),
+    ]
 
 
-def _fmt_reading(value) -> str:
+def _fmt_num(value) -> str:
     if value is None:
-        return "—"
+        return "0"
     if isinstance(value, float):
         return f"{value:g}"
     return str(value)
+
+
+def _fmt_date_long(iso: str) -> str:
+    """`2026-06-02` → `Tuesday, Jun 2 2026` (matches sample)."""
+    try:
+        d = datetime.strptime(iso, "%Y-%m-%d")
+        return d.strftime("%A, %b %-d %Y")
+    except Exception:
+        return iso

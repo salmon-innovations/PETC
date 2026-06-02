@@ -90,7 +90,7 @@ class SubmissionReconciler:
             pdf_path: Optional[str] = None
 
             if status.state == "ACCEPTED" and status.certificate_no:
-                pdf_path = self._render_cec(sub, status.certificate_no, now)
+                pdf_path = self._render_cec(sub, status, now)
 
             with SessionLocal() as session:
                 row = session.get(LtmsSubmission, sub.id)
@@ -122,7 +122,7 @@ class SubmissionReconciler:
                 status.certificate_no,
             )
 
-    def _render_cec(self, sub, certificate_no: str, now: datetime) -> Optional[str]:
+    def _render_cec(self, sub, status, now: datetime) -> Optional[str]:
         try:
             import json
             from ..cec.pdf import render_cec_pdf
@@ -130,9 +130,13 @@ class SubmissionReconciler:
             payload = json.loads(sub.payload_json) if sub.payload_json else {}
             path = render_cec_pdf(
                 submission_id=sub.id,
-                certificate_no=certificate_no,
+                certificate_no=status.certificate_no,
                 payload=payload,
                 issued_at=now,
+                or_no=status.or_no,
+                dermalog_token=status.dermalog_token,
+                valid_from=status.valid_from,
+                valid_until=status.valid_until,
             )
             return str(path)
         except Exception:

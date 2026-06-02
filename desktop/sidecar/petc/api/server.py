@@ -910,6 +910,10 @@ def submit_upload_v1(
                     certificate_no=cert_no,
                     payload=payload,
                     issued_at=now,
+                    or_no=final_status.or_no,
+                    dermalog_token=final_status.dermalog_token,
+                    valid_from=final_status.valid_from,
+                    valid_until=final_status.valid_until,
                 ))
             except Exception:
                 logger.exception("Failed to render CEC PDF for submission %s", sub_id)
