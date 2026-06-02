@@ -10,7 +10,7 @@ This folder contains the documentation package submitted to the Department of Tr
 | 2 | Set-up and Network Lay-out | `02-setup-and-network-layout.md` | **Draft v0.2** |
 | 3 | System Documentation | `03-system-documentation.md` | **Draft v0.1** |
 | 4 | Client Application Program Source Code | `04-source-code/` (packaged separately) | Pending |
-| 5 | Sample of CEC Documents | `05-cec-samples/` | Pending |
+| 5 | Sample of CEC Documents | `05-cec-samples/` | **Draft v0.1** |
 | 6 | Network Architecture / Diagram | `06-network-architecture.md` | **Draft v0.1** |
 
 ## Export to Word/PDF
