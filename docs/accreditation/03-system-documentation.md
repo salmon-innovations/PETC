@@ -1,6 +1,6 @@
 # System Documentation
 
-**PETC Data Submission SaaS – Client Application**
+**Digiflash – PETC Data Submission Client**
 
 DOTr IT Provider Accreditation – Deliverable #3
 
@@ -10,21 +10,22 @@ DOTr IT Provider Accreditation – Deliverable #3
 
 | Field | Value |
 |---|---|
-| Document title | System Documentation – PETC Data Submission SaaS Client Application |
-| Document version | 0.1 (Draft) |
-| Document date | 2026-06-01 |
+| Document title | System Documentation – Digiflash PETC Data Submission Client |
+| Document version | 0.2 (Draft) |
+| Document date | 2026-06-03 |
+| Product name | Digiflash |
+| IT Provider | Salmon Innovations |
 | Prepared by | Christian Deiniel Y. Silerio (Developer, Salmon Innovations) |
-| Prepared for | Emmanuel Jayson Florendo Jr. (Client) |
-| Submitting agency | Department of Transportation (DOTr) / Land Transportation Office (LTO) |
-| Software product | PETC Data Submission SaaS |
-| Client Application version | 0.1.0 |
-| Source commit | `985bfb0451ff06fc611f1aade018dd274d2f3de8` |
+| Prepared for | Department of Transportation (DOTr) / Land Transportation Office (LTO) |
+| Client Application version | `0.1.0` (from [desktop/package.json](../../desktop/package.json)) |
+| Source commit | resolved by `git rev-list -n 1 accreditation-2026-06-03` |
 
 ### 1.1 Revision History
 
 | Version | Date | Author | Summary |
 |---|---|---|---|
 | 0.1 | 2026-06-01 | C. Silerio | Initial draft for DOTr accreditation submission. |
+| 0.2 | 2026-06-03 | C. Silerio | Re-aligned with the implemented cloud-mediated LTMS path: cloud is the single LTMS / IRDS submitter; desktop talks only to the cloud and S3 (presigned PUT). Updated brand to **Digiflash**, install paths to `Digiflash`. Corrected `cloud/backend/` references to the active `cloud/src/`. Updated migration list (`V1__init`, `V2__submissions`, `V3__submission_cec_fields`). Added `submissions/reconciler.py` and `cloud_client.py` to the sidecar sub-program list. Tightened the update-distribution and code-signing sections to match the present, deferred posture. Source commit replaced with the submission tag name. |
 
 ### 1.2 Scope of this Document
 
@@ -34,7 +35,7 @@ This document satisfies the System Documentation requirement of the DOTr IT Prov
 2. A declaration and list of the main application sub-programs and other files associated with the submitted Client Application.
 3. Screenshots of folder location, file location, and size for each system file.
 
-The "Client Application" referred to throughout this document is the **PETC desktop application** installed at each accredited Private Emission Testing Center. The cloud backend (operator-only, used for analytics, licensing, and mirror ingestion) is described where it intersects with the Client Application but is not itself the subject of this accreditation.
+The "Client Application" referred to throughout this document is the **Digiflash desktop application** installed at each accredited Private Emission Testing Center. The Digiflash cloud service is the entity that holds LTMS / IRDS credentials and submits to LTMS / IRDS on the desktop's behalf; it is included in this document where the desktop intersects with it. Both pieces of software are produced and operated by Salmon Innovations.
 
 ---
 
@@ -42,9 +43,9 @@ The "Client Application" referred to throughout this document is the **PETC desk
 
 ### 2.1 Product Description
 
-The PETC Data Submission SaaS is a multi-tenant emission-testing platform for accredited Private Emission Testing Centers in the Philippines. At each center, a Windows desktop application captures emission readings from supported analyzer hardware, photographs the vehicle and operator workstation, merges captured data with vehicle and owner data retrieved from LTMS and Stradcom, and submits a completed emission test record back to LTMS and Stradcom. A printed Certificate of Emission Compliance (CEC) is issued to the vehicle owner upon a passing result.
+Digiflash is a multi-tenant emission-testing platform for accredited Private Emission Testing Centers in the Philippines. At each center, a Windows desktop application captures emission readings from supported analyzer hardware, photographs the vehicle through a USB webcam, merges the captured data with vehicle and owner data retrieved from LTMS / IRDS **through the Digiflash cloud**, and submits the completed emission test record to LTMS / IRDS **also through the Digiflash cloud**. A printed Certificate of Emission Compliance (CEC) is issued to the vehicle owner once LTMS returns the certificate key, OR number, DERMALOG token, and 60-day validity window.
 
-The desktop application is the source of truth for test records at each center. An optional cloud backend mirrors completed records for cross-center analytics and licensing.
+The desktop application is the source of truth for test records at each center. The cloud service holds the single whitelisted public IP that LTMS and IRDS allow inbound from; no individual PETC IP is whitelisted by either registry.
 
 ### 2.2 Three-Tier Architecture
 
@@ -68,16 +69,25 @@ The desktop application is the source of truth for test records at each center. 
                               |
                               v  (HTTPS, outbound only)
 +--------------------------------------------------------------+
-| Tier 3 – Government Registries and Operator Cloud            |
-|   * LTMS (vehicle / driver registry, submission target)      |
-|   * Stradcom (registry integration)                          |
-|   * PETC Cloud (Spring Boot + Postgres, operator-only)       |
+| Tier 3 – Digiflash Cloud (Spring Boot + Postgres + S3, AWS)  |
+|   * /api/photos/presign   short-lived S3 PUT URL             |
+|   * /api/submissions      enqueue + poll LTMS submission     |
+|   * /api/registry/...     proxy LTMS / IRDS lookups          |
+|   * NAT Gateway elastic IP — the single IP whitelisted by    |
+|     LTMS and IRDS                                            |
++--------------------------------------------------------------+
+                              |
+                              v  (HTTPS, from the cloud only)
++--------------------------------------------------------------+
+| Tier 4 – Government Registries                               |
+|   * LTMS  (LTO)                                              |
+|   * IRDS  (Stradcom)                                         |
 +--------------------------------------------------------------+
 ```
 
 ### 2.3 Source-of-Truth Statement
 
-The local SQLite database (`petc.db`) on each PETC desktop is the authoritative record of emission tests conducted at that center. Cloud mirroring is opportunistic and **must not** block testing, CEC issuance, or LTMS submission. A center can continue to operate while disconnected from the PETC operator cloud, provided LTMS connectivity is available for submission.
+The local SQLite database (`petc.db`) on each Digiflash desktop is the authoritative record of emission tests conducted at that center. The center can continue capturing tests during a temporary cloud or LTMS outage; queued tests are pushed to the cloud when connectivity is restored, and the cloud completes the LTMS submission asynchronously. The CEC is issued only after LTMS returns `ACCEPTED`; if the 60-second short-poll times out the submission enters `WAITING_FOR_LTMS` and a background reconciler on the desktop resolves it when the cloud reports a terminal state.
 
 ---
 
@@ -89,13 +99,13 @@ The Client Application delivered at each PETC consists of three packaged compone
 
 | Property | Value |
 |---|---|
-| Filename | `PETC.exe` |
+| Filename | `Digiflash.exe` |
 | Type | Electron desktop application |
 | Runtime | Embedded Chromium + Node.js (Electron 28+) |
 | Source entry point | [desktop/electron/main.ts](../../desktop/electron/main.ts) |
 | Preload script | [desktop/electron/preload.ts](../../desktop/electron/preload.ts) |
 | Build configuration | [desktop/package.json](../../desktop/package.json), [desktop/installer/](../../desktop/installer/) |
-| Default install location | `C:\Program Files\PETC\` |
+| Default install location | `C:\Program Files\Digiflash\` |
 
 The Electron main process is responsible for: creating the main application window, spawning and supervising the Python sidecar subprocess, mediating IPC between renderer and main, and applying signed auto-updates pulled from the operator cloud update channel.
 
@@ -127,12 +137,13 @@ The sidecar exposes a private FastAPI HTTP server that the React renderer calls 
 
 | Asset | Location |
 |---|---|
-| Local SQLite database | `%APPDATA%\PETC\petc.db` |
-| Photo storage | `%APPDATA%\PETC\photos\` |
-| Application logs | `%APPDATA%\PETC\logs\` |
-| User-specific settings | `%APPDATA%\PETC\settings\` |
+| Local SQLite database | `%APPDATA%\Digiflash\petc.db` |
+| Photo storage | `%APPDATA%\Digiflash\photos\` |
+| CEC PDFs (rendered locally after LTMS accepts) | `%APPDATA%\Digiflash\cec\` |
+| Application logs | `%APPDATA%\Digiflash\logs\` |
+| User-specific settings | `%APPDATA%\Digiflash\settings\` |
 
-The `%APPDATA%\PETC\` directory is created by the installer with NTFS ACLs restricting access to the operating-system user account that runs the application.
+The `%APPDATA%\Digiflash\` directory is created by the installer with NTFS ACLs restricting access to the operating-system user account that runs the application.
 
 ---
 
@@ -155,7 +166,7 @@ This section is the formal Security Policy of the Client Application required by
   - **Supervisor / Admin** – reviews tests, manages operators, configures hardware.
   - **Platform Super Admin** – operates only on the cloud portal; no rights inside the Client Application.
 - Authorization decisions are enforced at every protected sidecar route.
-- Cloud-side enforcement is performed by the stateless JWT filter in the Spring Security configuration: [cloud/backend/src/main/java/com/petc/config/SecurityConfig.java](../../cloud/backend/src/main/java/com/petc/config/SecurityConfig.java).
+- Cloud-side enforcement is performed by the stateless JWT filter in the Spring Security configuration: [cloud/src/main/java/com/petc/auth/SecurityConfig.java](../../cloud/src/main/java/com/petc/auth/SecurityConfig.java) and the per-request `X-Center-Key` filter in [cloud/src/main/java/com/petc/ingest/CenterKeyValidator.java](../../cloud/src/main/java/com/petc/ingest/CenterKeyValidator.java).
 
 ### 4.3 Tenant Isolation
 
@@ -179,16 +190,18 @@ This section is the formal Security Policy of the Client Application required by
 ### 4.6 Network Posture
 
 - The Python sidecar binds to `127.0.0.1` only; it is not reachable from the local network or the internet.
-- Outbound network connections are restricted to the following endpoints:
-  - LTMS submission endpoint
-  - Stradcom registry endpoint
-  - PETC operator cloud (mirror ingestion and update channel)
+- Outbound network connections from the Client Application are restricted to:
+  - The Digiflash cloud API (`api.digiflash.ph` — illustrative; the production hostname is fixed at deployment time) for presign, submission, polling, and registry-lookup proxy calls.
+  - The S3 bucket hostname (`*.s3.<region>.amazonaws.com`) for direct presigned PUT of photo bytes.
+  - The application update feed (see §4.7).
+  - Standard OS endpoints (Windows Update, Windows Time / NTP).
+- The Client Application does **not** open any direct connection to LTMS or Stradcom. Those endpoints are reached only from the Digiflash cloud's NAT gateway, whose elastic IP is the single source IP whitelisted by LTMS / IRDS.
 - No inbound listener is exposed by the Client Application beyond the loopback sidecar.
 
 ### 4.7 Update Distribution
 
-- Application updates are distributed through the operator cloud update channel at `/api/updates/**`.
-- Each release manifest is signed; the Electron auto-updater verifies the manifest signature before applying any update.
+- Application updates are distributed via an `electron-updater` generic feed configured at build time in [desktop/installer/electron-builder.yml](../../desktop/installer/electron-builder.yml). At the time of this submission the feed URL is a placeholder (`https://releases.petc.example.com`); the production feed URL is fixed at deployment time.
+- Code-signing of the Windows installer and signature verification of update manifests are scheduled work items. They are **not** in place at the time of this submission and are tracked as a release-blocking prerequisite before commercial rollout. The accreditation review version of the installer is unsigned and installs only with explicit operator confirmation.
 
 ---
 
@@ -232,17 +245,19 @@ Source root: [desktop/sidecar/petc/](../../desktop/sidecar/petc/)
 
 | Sub-program | Purpose |
 |---|---|
-| `service.py` | FastAPI application factory; sidecar entry point. |
-| `api/` | REST routes (auth, vehicle lookup, tests, upload, ports, settings). |
+| `service.py` | Sidecar entry point — wires analyzer, camera, printer, gov adapter, cloud-sync pusher, and submission reconciler; starts the FastAPI server on loopback. |
+| `api/server.py` | All sidecar HTTP routes (auth, vehicle / driver lookup, tests, photo capture, upload submission, CEC preview + print, ports, settings). |
+| `cloud_client.py` | HTTP client for the Digiflash cloud (`/api/photos/presign`, `/api/submissions`, `/api/submissions/{id}`, `/api/registry/vehicle/{plate}`, `/api/registry/driver/{lic}`). |
+| `submissions/reconciler.py` | Daemon thread that polls the cloud every 30 s for any local `LtmsSubmission` row in `PENDING` or `WAITING_FOR_LTMS`, updates it on a terminal cloud state, and renders the CEC PDF on `ACCEPTED`. |
 | `analyzer/` | Serial hardware adapters (see 5.5). |
-| `camera/` | Webcam capture via OpenCV. |
-| `printer/` | Receipt and CEC printer integration. |
-| `gov/` | LTMS and Stradcom registry clients (mock and real adapters). |
-| `cec/` | Certificate of Emission Compliance PDF rendering. |
-| `db/` | SQLAlchemy ORM models and Alembic migrations. |
-| `cloud_sync/` | Outbound mirror pusher to operator cloud. |
-| `queue/` | Outbox pattern for reliable mirror sync under intermittent connectivity. |
-| `sync/` | Local-to-cloud synchronisation utilities. |
+| `camera/` | Webcam capture (OpenCV) + mock. |
+| `printer/` | Thermal receipt printer integration + mock. |
+| `gov/` | Local LTMS / IRDS adapter (mock for offline / dev path; Stradcom stub). In the production cloud-mediated path these are reached via the cloud rather than the local sidecar. |
+| `cec/pdf.py` | Two-halves-per-A4 CEC PDF renderer (customer copy + center copy on a single sheet). |
+| `db/models.py`, `db/session.py`, `db/migrations/` | SQLAlchemy ORM models, session factory, Alembic env. |
+| `cloud_sync/pusher.py` | Outbound mirror pusher for local-to-cloud sync of completed tests + photos. |
+| `queue/outbox.py` | Outbox pattern with retry + dead-letter. |
+| `sync/` | Reserved for future helpers (empty stub package at the time of submission). |
 
 ### 5.5 Hardware Analyzer Adapters (Python)
 
@@ -274,47 +289,48 @@ Frame formats and unit-test fixtures for the ASCII gas and binary diesel adapter
 | [desktop/package.json](../../desktop/package.json) | Electron / renderer Node dependencies and build scripts. |
 | [desktop/pyproject.toml](../../desktop/pyproject.toml) | Python sidecar package metadata and dependencies. |
 | [desktop/installer/](../../desktop/installer/) | electron-builder and PyInstaller specifications. |
-| [cloud/backend/src/main/resources/application.yml](../../cloud/backend/src/main/resources/application.yml) | Spring Boot cloud configuration (JWT secret, DB, S3, Redis). |
-| [docker-compose.yml](../../docker-compose.yml) | Cloud development services (Postgres, MinIO, Redis). |
+| [cloud/src/main/resources/application.yml](../../cloud/src/main/resources/application.yml) | Spring Boot cloud configuration (datasource, JWT, S3, gov adapter, submission retry policy). |
+| [docker-compose.yml](../../docker-compose.yml) | Local development services (Postgres, MinIO, Redis). |
 
 #### 6.1.1 Environment Variables
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PETC_DATA_DIR` | `%APPDATA%\PETC` | Root directory for SQLite, photos, logs. |
+| `PETC_DATA_DIR` | `%APPDATA%\Digiflash` | Root directory for SQLite, photos, CEC PDFs, logs. |
 | `PETC_PORT` | `8765` | Sidecar HTTP port (loopback only). |
-| `PETC_ANALYZER` | `mock` | Adapter type: `mock`, `serial_gas`, `serial_diesel`, FTY, Fofen variants. |
+| `PETC_ANALYZER` | `mock` | Adapter type: `mock`, `serial_gas`, `serial_diesel`, `fty_opacimeter`, `fofen_gas`, `fofen_ascii`. |
 | `PETC_ANALYZER_PORT` | `COM1` | COM port name (e.g. `COM3`, `/dev/ttyUSB0`). |
-| `PETC_ANALYZER_BAUD` | `9600` | Baud rate. |
-| `PETC_GOV_MOCK` | `true` (dev) | Use mock LTMS/Stradcom client instead of real registry. |
-| `PETC_CLOUD_URL` | unset | Operator cloud base URL for mirror sync. |
-| `PETC_CENTER_ID` | unset | Center identifier registered on cloud. |
-| `PETC_CLOUD_KEY` | unset | Issued center API key for mirror authentication. |
+| `PETC_ANALYZER_BAUD` | `9600` | Baud rate (use 19200 for diesel). |
+| `PETC_GOV_MOCK` | `true` (dev) | Use the **local** mock gov client (offline / dev path). In production this is false and gov calls go via the cloud. |
+| `PETC_CLOUD_URL` | unset (prod: set) | Digiflash cloud base URL. When set, the desktop submits to LTMS / IRDS via the cloud and proxies registry lookups through the cloud. When unset, the desktop falls back to the local mock-gov path. |
+| `PETC_CENTER_ID` | unset | Center identifier issued at commissioning. |
+| `PETC_CLOUD_KEY` | unset | Per-center API key carried on every cloud request in the `X-Center-Key` header. |
 
 ### 6.2 Database Files
 
 #### 6.2.1 Local (SQLite, source of truth)
 
-- Database file: `%APPDATA%\PETC\petc.db`
-- Schema migrations: [desktop/sidecar/petc/db/](../../desktop/sidecar/petc/db/) (Alembic)
-- Core tables: `users`, `emission_tests`, `gas_test_results`, `diesel_test_results`, `test_photos`, `ltms_submissions`, `vehicles_cache`, `app_settings`, outbox tables.
+- Database file: `%APPDATA%\Digiflash\petc.db`
+- Schema migrations: [desktop/sidecar/petc/db/](../../desktop/sidecar/petc/db/) (Alembic).
+- Core tables: `users`, `emission_tests`, `gas_test_results`, `diesel_test_results`, `test_photos` (incl. `s3_key`, `uploaded_at`), `ltms_submissions` (incl. `cloud_submission_id`, `or_no`, `dermalog_token`, `valid_from`, `valid_until`, `pdf_path`), `vehicles_cache`, `drivers_cache`, `receipts`, `gov_outbox`, `cloud_outbox`, `app_settings`, `audit_log`.
 
-#### 6.2.2 Cloud (PostgreSQL, mirror)
+#### 6.2.2 Cloud (PostgreSQL)
 
-Schema migrations under [cloud/backend/src/main/resources/db/migration/](../../cloud/backend/src/main/resources/db/migration/):
+Schema migrations under [cloud/src/main/resources/db/migration/](../../cloud/src/main/resources/db/migration/):
 
 | Migration | Purpose |
 |---|---|
-| `V1__initial_schema.sql` | Core tables: users, tenants, licenses. |
-| `V2__mirror_tables.sql` | Mirror ingest: `mirror_events`, `mirror_emission_tests`, `mirror_test_photos`, `mirror_ltms_submissions`. |
-| `V3__mirror_phase3.sql` | Phase-3 mirror enhancements. |
+| `V1__init.sql` | Core tables: `tenants`, `users`, `refresh_tokens`, `audit_log`, mirror tables (`mirror_emission_tests`, `mirror_test_photos`, `mirror_ltms_submissions`). Row-Level Security policies. |
+| `V2__submissions.sql` | `center_licenses` (bcrypt-hashed X-Center-Key per tenant) + `submissions` (LTMS submission queue with state machine, attempts, backoff). |
+| `V3__submission_cec_fields.sql` | Adds the CEC presentation fields LTMS returns: `or_no`, `dermalog_token`, `valid_from`, `valid_until`. |
 
 ### 6.3 Runtime Data
 
 | Asset | Location | Notes |
 |---|---|---|
-| Photo storage | `%APPDATA%\PETC\photos\` | Files named by SHA-256 hash of contents. |
-| Application logs | `%APPDATA%\PETC\logs\` | Rolling daily files; retained 30 days. |
+| Photo storage | `%APPDATA%\Digiflash\photos\` | Files named `<photoId>.jpg` under the per-test folder. Also uploaded to S3 by presigned PUT once the wizard reaches step 6. |
+| CEC PDFs | `%APPDATA%\Digiflash\cec\` | Two-halves-per-A4 PDF per accepted submission; filename is the submission UUID. |
+| Application logs | `%APPDATA%\Digiflash\logs\` | Rolling daily files; retained 30 days. |
 
 ### 6.4 Test Fixtures (for inspector verification)
 
@@ -356,30 +372,33 @@ and paste the formatted output.
 
 | # | Path | Captured |
 |---|---|---|
-| 1 | `C:\Program Files\PETC\` (root install directory) | ☐ |
-| 2 | `C:\Program Files\PETC\resources\app.asar.unpacked\sidecar\` (sidecar exe folder) | ☐ |
-| 3 | `C:\Program Files\PETC\resources\app.asar\renderer\dist\` (renderer assets) | ☐ |
-| 4 | `%APPDATA%\PETC\` (runtime data root) | ☐ |
-| 5 | `%APPDATA%\PETC\petc.db` (SQLite database, showing file size) | ☐ |
-| 6 | `%APPDATA%\PETC\photos\` (photo storage) | ☐ |
-| 7 | `%APPDATA%\PETC\logs\` (application logs) | ☐ |
-| 8 | Source: `desktop\electron\` (main process source) | ☐ |
-| 9 | Source: `desktop\renderer\src\pages\` (UI sub-programs) | ☐ |
-| 10 | Source: `desktop\sidecar\petc\` (sidecar root) | ☐ |
-| 11 | Source: `desktop\sidecar\petc\analyzer\` (all analyzer adapter files) | ☐ |
-| 12 | Source: `desktop\sidecar\petc\gov\` (LTMS / Stradcom clients) | ☐ |
-| 13 | Source: `desktop\sidecar\petc\cec\` (CEC generation) | ☐ |
-| 14 | Source: `desktop\sidecar\petc\db\` (DB models and migrations) | ☐ |
-| 15 | Config: `desktop\package.json`, `desktop\pyproject.toml` | ☐ |
-| 16 | Build: `desktop\installer\` | ☐ |
-| 17 | Cloud config: `cloud\backend\src\main\resources\application.yml` | ☐ |
-| 18 | Cloud migrations: `cloud\backend\src\main\resources\db\migration\` | ☐ |
+| 1 | `C:\Program Files\Digiflash\` (root install directory) | ☐ |
+| 2 | `C:\Program Files\Digiflash\resources\app.asar.unpacked\sidecar\` (sidecar exe folder) | ☐ |
+| 3 | `C:\Program Files\Digiflash\resources\app.asar\renderer\dist\` (renderer assets) | ☐ |
+| 4 | `%APPDATA%\Digiflash\` (runtime data root) | ☐ |
+| 5 | `%APPDATA%\Digiflash\petc.db` (SQLite database, showing file size) | ☐ |
+| 6 | `%APPDATA%\Digiflash\photos\` (photo storage) | ☐ |
+| 7 | `%APPDATA%\Digiflash\cec\` (CEC PDFs) | ☐ |
+| 8 | `%APPDATA%\Digiflash\logs\` (application logs) | ☐ |
+| 9 | Source: `desktop\electron\` (main process source) | ☐ |
+| 10 | Source: `desktop\renderer\src\pages\` (UI sub-programs) | ☐ |
+| 11 | Source: `desktop\sidecar\petc\` (sidecar root) | ☐ |
+| 12 | Source: `desktop\sidecar\petc\analyzer\` (all analyzer adapter files) | ☐ |
+| 13 | Source: `desktop\sidecar\petc\submissions\` (reconciler) | ☐ |
+| 14 | Source: `desktop\sidecar\petc\cec\` (CEC generation) | ☐ |
+| 15 | Source: `desktop\sidecar\petc\db\` (DB models and migrations) | ☐ |
+| 16 | Source: `cloud\src\main\java\com\petc\submissions\` (cloud LTMS submitter) | ☐ |
+| 17 | Source: `cloud\src\main\java\com\petc\gov\` (cloud LTMS / IRDS adapters) | ☐ |
+| 18 | Config: `desktop\package.json`, `desktop\pyproject.toml` | ☐ |
+| 19 | Build: `desktop\installer\` | ☐ |
+| 20 | Cloud config: `cloud\src\main\resources\application.yml` | ☐ |
+| 21 | Cloud migrations: `cloud\src\main\resources\db\migration\` | ☐ |
 
 ### 7.3 Screenshot Placeholders
 
 > _The numbered headings below correspond to each row in the checklist. Insert the captured screenshot under the matching heading._
 
-#### 7.3.1 Install root – `C:\Program Files\PETC\`
+#### 7.3.1 Install root – `C:\Program Files\Digiflash\`
 *(screenshot to be inserted)*
 
 #### 7.3.2 Sidecar executable folder
@@ -388,7 +407,7 @@ and paste the formatted output.
 #### 7.3.3 Renderer asset folder
 *(screenshot to be inserted)*
 
-#### 7.3.4 Runtime data root – `%APPDATA%\PETC\`
+#### 7.3.4 Runtime data root – `%APPDATA%\Digiflash\`
 *(screenshot to be inserted)*
 
 #### 7.3.5 Local SQLite database – `petc.db`
@@ -397,40 +416,49 @@ and paste the formatted output.
 #### 7.3.6 Photo storage directory
 *(screenshot to be inserted)*
 
-#### 7.3.7 Application log directory
+#### 7.3.7 CEC PDF storage directory
 *(screenshot to be inserted)*
 
-#### 7.3.8 Electron main-process source
+#### 7.3.8 Application log directory
 *(screenshot to be inserted)*
 
-#### 7.3.9 React renderer pages
+#### 7.3.9 Electron main-process source
 *(screenshot to be inserted)*
 
-#### 7.3.10 Python sidecar root
+#### 7.3.10 React renderer pages
 *(screenshot to be inserted)*
 
-#### 7.3.11 Hardware analyzer adapters
+#### 7.3.11 Python sidecar root
 *(screenshot to be inserted)*
 
-#### 7.3.12 LTMS / Stradcom client folder
+#### 7.3.12 Hardware analyzer adapters
 *(screenshot to be inserted)*
 
-#### 7.3.13 CEC generation folder
+#### 7.3.13 Submission reconciler
 *(screenshot to be inserted)*
 
-#### 7.3.14 Database models and migrations folder
+#### 7.3.14 CEC generation folder
 *(screenshot to be inserted)*
 
-#### 7.3.15 Build configuration files
+#### 7.3.15 Database models and migrations folder
 *(screenshot to be inserted)*
 
-#### 7.3.16 Installer specification folder
+#### 7.3.16 Cloud LTMS submitter (`cloud/src/.../submissions/`)
 *(screenshot to be inserted)*
 
-#### 7.3.17 Cloud `application.yml`
+#### 7.3.17 Cloud LTMS / IRDS adapters (`cloud/src/.../gov/`)
 *(screenshot to be inserted)*
 
-#### 7.3.18 Cloud Flyway migration folder
+#### 7.3.18 Build configuration files
+*(screenshot to be inserted)*
+
+#### 7.3.19 Installer specification folder
+*(screenshot to be inserted)*
+
+#### 7.3.20 Cloud `application.yml`
+*(screenshot to be inserted)*
+
+#### 7.3.21 Cloud Flyway migration folder
 *(screenshot to be inserted)*
 
 ---
@@ -440,11 +468,11 @@ and paste the formatted output.
 | Item | Value |
 |---|---|
 | Client Application version | `0.1.0` (from [desktop/package.json](../../desktop/package.json)) |
-| Source repository commit at submission | `985bfb0451ff06fc611f1aade018dd274d2f3de8` |
+| Source repository submission tag | `accreditation-2026-06-03` (annotated; commit resolved by `git rev-list -n 1 accreditation-2026-06-03`) |
 | Node.js (renderer / main process build) | 20.x LTS |
 | Python (sidecar runtime) | 3.11 |
-| Java (cloud backend build) | 21 |
-| Build tooling | `npm`, `electron-builder`, `PyInstaller`, Gradle |
+| Java (cloud build) | 21 |
+| Build tooling | `npm`, `electron-builder`, `PyInstaller`, Gradle 8.10 |
 | Target operating system | Windows 10 / 11 (64-bit) |
 | Installer format | NSIS (electron-builder default) |
 
@@ -456,9 +484,16 @@ and paste the formatted output.
 - Repository [README.md](../../README.md): desktop setup, analyzer protocols, mock LTMS workflow, cloud mirror testing.
 - [desktop/electron/main.ts](../../desktop/electron/main.ts) – Electron entry point.
 - [desktop/sidecar/petc/service.py](../../desktop/sidecar/petc/service.py) – Python sidecar entry point.
+- [desktop/sidecar/petc/api/server.py](../../desktop/sidecar/petc/api/server.py) – sidecar HTTP routes.
+- [desktop/sidecar/petc/cloud_client.py](../../desktop/sidecar/petc/cloud_client.py) – Digiflash cloud client.
+- [desktop/sidecar/petc/submissions/reconciler.py](../../desktop/sidecar/petc/submissions/reconciler.py) – background reconciler for `WAITING_FOR_LTMS`.
+- [desktop/sidecar/petc/cec/pdf.py](../../desktop/sidecar/petc/cec/pdf.py) – CEC PDF renderer.
 - [desktop/renderer/src/main.tsx](../../desktop/renderer/src/main.tsx) – React renderer entry point.
-- [cloud/backend/src/main/java/com/petc/PetcCloudApplication.java](../../cloud/backend/src/main/java/com/petc/PetcCloudApplication.java) – Spring Boot cloud entry point.
-- [cloud/backend/src/main/java/com/petc/config/SecurityConfig.java](../../cloud/backend/src/main/java/com/petc/config/SecurityConfig.java) – security configuration.
+- [cloud/src/main/java/com/petc/PetcApplication.java](../../cloud/src/main/java/com/petc/PetcApplication.java) – Spring Boot cloud entry point.
+- [cloud/src/main/java/com/petc/auth/SecurityConfig.java](../../cloud/src/main/java/com/petc/auth/SecurityConfig.java) – cloud security configuration.
+- [cloud/src/main/java/com/petc/submissions/SubmissionsController.java](../../cloud/src/main/java/com/petc/submissions/SubmissionsController.java) – cloud LTMS submission endpoint.
+- [cloud/src/main/java/com/petc/gov/GovRegistryClient.java](../../cloud/src/main/java/com/petc/gov/GovRegistryClient.java) – LTMS / IRDS adapter interface.
+- Companion accreditation documents: `01-client-application-manual.md`, `02-setup-and-network-layout.md`, `04-source-code/`, `05-cec-samples/`, `06-network-architecture.md`.
 
 ---
 
