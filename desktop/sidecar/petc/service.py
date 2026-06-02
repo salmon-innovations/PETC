@@ -96,12 +96,17 @@ def run() -> None:
     )
     cloud_sync.start()
 
+    from .submissions.reconciler import SubmissionReconciler
+    reconciler = SubmissionReconciler()
+    reconciler.start()
+
     init_api(analyzer, camera, printer, gov_client, cloud_sync)
 
     logger.info("PETC sidecar starting on port %s", _CONFIG["port"])
     try:
         run_api(host="127.0.0.1", port=_CONFIG["port"])
     finally:
+        reconciler.stop()
         cloud_sync.stop()
         camera.close()
         analyzer.disconnect()

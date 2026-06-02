@@ -1,0 +1,138 @@
+"""
+Background reconciler for cloud LTMS submissions.
+
+Polls the cloud every 30 s for any LtmsSubmission rows stuck in
+PENDING or WAITING_FOR_LTMS that have a cloud_submission_id.
+When the cloud reports a terminal state (ACCEPTED / REJECTED / DEAD),
+updates the local row and renders the CEC PDF if accepted.
+
+Started as a daemon thread by service.py alongside the CloudSyncPusher.
+Silently no-ops when PETC_CLOUD_URL is not configured.
+"""
+from __future__ import annotations
+
+import logging
+import threading
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+_POLL_INTERVAL_S = 30.0
+_WAITING_STATES = ("PENDING", "WAITING_FOR_LTMS")
+
+
+class SubmissionReconciler:
+    """Daemon thread that reconciles local LTMS submission rows with the cloud."""
+
+    def __init__(self, poll_interval_s: float = _POLL_INTERVAL_S) -> None:
+        self._interval = poll_interval_s
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self) -> None:
+        self._thread = threading.Thread(
+            target=self._run, daemon=True, name="petc-submission-reconciler"
+        )
+        self._thread.start()
+        logger.info("SubmissionReconciler started (interval=%ss)", self._interval)
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=10)
+
+    # ── main loop ─────────────────────────────────────────────────────────
+
+    def _run(self) -> None:
+        from .. import cloud_client as cc
+
+        while not self._stop.wait(self._interval):
+            if not cc.is_available():
+                continue
+            try:
+                self._reconcile_once(cc.get_client())
+            except Exception:
+                logger.exception("SubmissionReconciler error")
+
+    def _reconcile_once(self, cloud) -> None:
+        from ..db.session import SessionLocal
+        from ..db.models import EmissionTest, LtmsSubmission
+
+        with SessionLocal() as session:
+            pending = (
+                session.query(LtmsSubmission)
+                .filter(
+                    LtmsSubmission.state.in_(list(_WAITING_STATES)),
+                    LtmsSubmission.cloud_submission_id.isnot(None),
+                )
+                .all()
+            )
+
+        if not pending:
+            return
+
+        logger.debug("Reconciling %d pending submission(s)", len(pending))
+
+        for sub in pending:
+            try:
+                status = cloud.get_submission(sub.cloud_submission_id)
+            except Exception:
+                logger.warning(
+                    "Could not poll cloud submission %s", sub.cloud_submission_id, exc_info=True
+                )
+                continue
+
+            if not status.is_terminal:
+                continue
+
+            now = datetime.now(timezone.utc)
+            pdf_path: Optional[str] = None
+
+            if status.state == "ACCEPTED" and status.certificate_no:
+                pdf_path = self._render_cec(sub, status.certificate_no, now)
+
+            with SessionLocal() as session:
+                row = session.get(LtmsSubmission, sub.id)
+                if row is None:
+                    continue
+                row.state = status.state
+                row.certificate_no = status.certificate_no
+                row.ltms_reference_no = status.ltms_ref_no
+                row.last_error = status.rejection_reason
+                row.accepted_at = now if status.state == "ACCEPTED" else None
+                if pdf_path:
+                    row.pdf_path = pdf_path
+
+                if status.state == "ACCEPTED":
+                    test_row = session.get(EmissionTest, row.test_id)
+                    if test_row:
+                        test_row.uploaded_at = now
+
+                session.commit()
+
+            logger.info(
+                "Submission %s resolved → %s (cert=%s)",
+                sub.id,
+                status.state,
+                status.certificate_no,
+            )
+
+    def _render_cec(self, sub, certificate_no: str, now: datetime) -> Optional[str]:
+        try:
+            import json
+            from ..cec.pdf import render_cec_pdf
+
+            payload = json.loads(sub.payload_json) if sub.payload_json else {}
+            path = render_cec_pdf(
+                submission_id=sub.id,
+                certificate_no=certificate_no,
+                payload=payload,
+                issued_at=now,
+            )
+            return str(path)
+        except Exception:
+            logger.exception("Failed to render CEC PDF for submission %s", sub.id)
+            return None
