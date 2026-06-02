@@ -57,7 +57,15 @@ public class SubmissionJobRunner {
             EmissionPayload payload = toEmissionPayload(sub);
             SubmissionResult result = govClient.submitEmissionResult(payload);
             if (result.isAccepted()) {
-                service.markAccepted(sub.id(), result.certificateNo(), null);
+                service.markAccepted(
+                        sub.id(),
+                        result.certificateNo(),
+                        null,
+                        result.orNo(),
+                        result.dermalogToken(),
+                        result.validFrom(),
+                        result.validUntil()
+                );
             } else {
                 // Gov rejections are definitive — do not retry
                 service.markRejected(sub.id(), result.rejectionReason());

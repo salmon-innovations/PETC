@@ -6,8 +6,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Map;
 import java.util.Optional;
 
@@ -53,7 +55,8 @@ public class SubmissionService {
     /** Returns the current status of a submission by its ID. */
     public Optional<SubmissionStatus> getStatus(String submissionId) {
         var rows = jdbc.queryForList("""
-                SELECT state, certificate_no, ltms_ref_no, rejection_reason
+                SELECT state, certificate_no, ltms_ref_no, rejection_reason,
+                       or_no, dermalog_token, valid_from, valid_until
                 FROM submissions WHERE id = ?::uuid
                 """, submissionId);
         if (rows.isEmpty()) return Optional.empty();
@@ -62,7 +65,11 @@ public class SubmissionService {
                 (String) row.get("state"),
                 (String) row.get("certificate_no"),
                 (String) row.get("ltms_ref_no"),
-                (String) row.get("rejection_reason")
+                (String) row.get("rejection_reason"),
+                (String) row.get("or_no"),
+                (String) row.get("dermalog_token"),
+                row.get("valid_from") instanceof Date d ? d.toLocalDate() : null,
+                row.get("valid_until") instanceof Date d ? d.toLocalDate() : null
         ));
     }
 
@@ -75,14 +82,35 @@ public class SubmissionService {
                 """, submissionId);
     }
 
-    /** Record a successful LTMS acceptance. */
-    void markAccepted(String submissionId, String certificateNo, String ltmsRefNo) {
+    /** Record a successful LTMS acceptance with the CEC presentation fields. */
+    void markAccepted(
+            String submissionId,
+            String certificateNo,
+            String ltmsRefNo,
+            String orNo,
+            String dermalogToken,
+            LocalDate validFrom,
+            LocalDate validUntil
+    ) {
         jdbc.update("""
                 UPDATE submissions
-                SET state = 'ACCEPTED', certificate_no = ?, ltms_ref_no = ?,
+                SET state = 'ACCEPTED',
+                    certificate_no = ?,
+                    ltms_ref_no = ?,
+                    or_no = ?,
+                    dermalog_token = ?,
+                    valid_from = ?,
+                    valid_until = ?,
                     accepted_at = now()
                 WHERE id = ?::uuid
-                """, certificateNo, ltmsRefNo, submissionId);
+                """,
+                certificateNo,
+                ltmsRefNo,
+                orNo,
+                dermalogToken,
+                validFrom != null ? Date.valueOf(validFrom) : null,
+                validUntil != null ? Date.valueOf(validUntil) : null,
+                submissionId);
         log.info("Submission {} accepted cert={}", submissionId, certificateNo);
     }
 
@@ -131,7 +159,16 @@ public class SubmissionService {
                 batchSize);
     }
 
-    record SubmissionStatus(String state, String certificateNo, String ltmsRefNo, String rejectionReason) {}
+    record SubmissionStatus(
+            String state,
+            String certificateNo,
+            String ltmsRefNo,
+            String rejectionReason,
+            String orNo,
+            String dermalogToken,
+            LocalDate validFrom,
+            LocalDate validUntil
+    ) {}
     record PendingSubmission(String id, String tenantId, String centerId, String testId,
                              String payloadJson, int attempts) {}
 }

@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.Map;
 
 /**
@@ -56,8 +57,16 @@ public class SubmissionsController {
         keyValidator.validate(centerKey); // auth check; tenant scoping handled by RLS
         return service.getStatus(submissionId)
                 .map(s -> ResponseEntity.ok(new StatusResponse(
-                        submissionId, s.state(), s.certificateNo(),
-                        s.ltmsRefNo(), s.rejectionReason())))
+                        submissionId,
+                        s.state(),
+                        s.certificateNo(),
+                        s.ltmsRefNo(),
+                        s.rejectionReason(),
+                        s.orNo(),
+                        s.dermalogToken(),
+                        s.validFrom(),
+                        s.validUntil()
+                )))
                 .orElse(ResponseEntity.notFound().build());
     }
 
@@ -76,6 +85,10 @@ public class SubmissionsController {
             String state,
             String certificateNo,
             String ltmsRefNo,
-            String rejectionReason
+            String rejectionReason,
+            String orNo,
+            String dermalogToken,
+            LocalDate validFrom,
+            LocalDate validUntil
     ) {}
 }

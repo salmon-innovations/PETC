@@ -76,7 +76,14 @@ public class MockGovRegistryClient implements GovRegistryClient {
         if (payload.plateNumber().toUpperCase().startsWith("FAIL")) {
             return SubmissionResult.rejected("Mock rejection: plate starts with FAIL");
         }
-        String certNo = "CERT-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
-        return SubmissionResult.accepted(certNo);
+        String hex = UUID.randomUUID().toString().replace("-", "").toUpperCase();
+        String certNo = "CERT-" + hex.substring(0, 8);
+        // OR No on the LTMS receipt: 17-digit numeric in real LTMS; mock uses a deterministic stand-in.
+        String orNo = "2026" + String.format("%013d", Math.abs(payload.plateNumber().hashCode() % 10_000_000_000_000L));
+        // DERMALOG seal: 32-char hex in real LTMS; mock reuses the cert UUID hex.
+        String dermalogToken = hex;
+        LocalDate validFrom = LocalDate.now();
+        LocalDate validUntil = validFrom.plusDays(60);
+        return SubmissionResult.accepted(certNo, orNo, dermalogToken, validFrom, validUntil);
     }
 }

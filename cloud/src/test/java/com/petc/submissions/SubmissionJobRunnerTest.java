@@ -11,6 +11,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -52,8 +53,20 @@ class SubmissionJobRunnerTest {
 
         verify(service).markInFlight("sub-1");
         ArgumentCaptor<String> certCaptor = ArgumentCaptor.forClass(String.class);
-        verify(service).markAccepted(eq("sub-1"), certCaptor.capture(), isNull());
+        ArgumentCaptor<String> orCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> dermalogCaptor = ArgumentCaptor.forClass(String.class);
+        verify(service).markAccepted(
+                eq("sub-1"),
+                certCaptor.capture(),
+                isNull(),
+                orCaptor.capture(),
+                dermalogCaptor.capture(),
+                any(LocalDate.class),
+                any(LocalDate.class)
+        );
         assertThat(certCaptor.getValue()).startsWith("CERT-");
+        assertThat(orCaptor.getValue()).isNotBlank();
+        assertThat(dermalogCaptor.getValue()).isNotBlank();
         verify(service, never()).markRejected(any(), any());
     }
 
@@ -75,7 +88,7 @@ class SubmissionJobRunnerTest {
 
         verify(service).markInFlight("sub-2");
         verify(service).markRejected(eq("sub-2"), anyString());
-        verify(service, never()).markAccepted(any(), any(), any());
+        verify(service, never()).markAccepted(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -95,7 +108,7 @@ class SubmissionJobRunnerTest {
         runner.processPending();
 
         verify(service).markRetry(eq("sub-3"), eq(1), eq(5), any(int[].class));
-        verify(service, never()).markAccepted(any(), any(), any());
+        verify(service, never()).markAccepted(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
