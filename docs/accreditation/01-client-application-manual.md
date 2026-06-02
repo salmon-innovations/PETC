@@ -11,8 +11,8 @@ DOTr IT Provider Accreditation – Deliverable #1
 | Field | Value |
 |---|---|
 | Document title | Client Application Program Manual – Digiflash PETC Data Submission Client |
-| Document version | 0.1 (Draft) |
-| Document date | 2026-06-02 |
+| Document version | 0.2 (Draft) |
+| Document date | 2026-06-03 |
 | Product name | Digiflash |
 | IT Provider | Salmon Innovations |
 | Prepared by | Christian Deiniel Y. Silerio |
@@ -25,6 +25,7 @@ DOTr IT Provider Accreditation – Deliverable #1
 | Version | Date | Author | Summary |
 |---|---|---|---|
 | 0.1 | 2026-06-02 | C. Silerio | Initial draft for DOTr accreditation submission. |
+| 0.2 | 2026-06-03 | C. Silerio | Aligned wizard chapter and printing chapter with the implemented code: corrected Step-1 vehicle fields incl. classification, Step-2 owner fields, Step-3 engine flags (turbo / aspiration / condition), Step-4 technician fields, Step-5 single mandatory FRONT photo. Added `WAITING_FOR_LTMS` outcome + matching History/troubleshooting entry. Split the CEC printing chapter into the A4 PDF (formal) and thermal-receipt (hand-off) outputs. Clarified that LTMS / IRDS lookups are cloud-proxied. |
 
 ---
 
@@ -39,11 +40,11 @@ This manual describes the day-to-day operation of the **Digiflash PETC Data Subm
 Digiflash is a Windows desktop application installed at each accredited PETC. It:
 
 1. Captures emission readings from the connected analyzer (Fofen petrol gas analyzer or Fofen diesel opacimeter at the pilot center).
-2. Photographs the vehicle and operator workstation through a USB webcam.
-3. Looks up vehicle and owner data from LTMS / IRDS.
+2. Photographs the vehicle through a USB webcam.
+3. Looks up vehicle and owner data from LTMS / IRDS **through the Digiflash cloud** (the desktop never contacts LTMS or Stradcom directly).
 4. Combines all of the above into a single emission test record.
 5. Submits the completed record to LTMS and IRDS through the Digiflash cloud service.
-6. Prints a Certificate of Emission Compliance (CEC) for the vehicle owner on a thermal receipt printer.
+6. Produces a Certificate of Emission Compliance (CEC) in two forms once LTMS returns the certificate key: an **A4 PDF** (two halves per sheet — Customer copy + Center copy, the formal record kept on file at the center) and an **80 mm thermal receipt** (a printed summary the operator hands to the vehicle owner on the spot).
 
 The desktop application is the source of truth at the center. A center can continue capturing tests during a temporary internet outage; queued tests will be uploaded automatically when connectivity is restored.
 
@@ -225,22 +226,43 @@ The LTMS Upload wizard takes a saved test through a six-step review before submi
 
 ### 7.2 Step 1 – Vehicle Details
 
-Review and correct (if needed) the vehicle's plate number, make, model, year, fuel type, engine displacement, and MV file number. Click **Next**.
+Review and correct (if needed) the following fields, most of which are pre-filled from the LTMS plate lookup. Fields the LTMS lookup populated are tagged **From LTMS**; fields you change are re-tagged **Edited**.
+
+- Plate No, MV File No, Engine No, Chassis No
+- OR Type, CR Date, CR No, District Office
+- Make, Series, Vehicle Type, Year Model, Color
+- Transmission (M/T or A/T)
+- Fuel Type (GAS, DIESEL, or MOTORCYCLE)
+- **Classification** (PRIVATE, PUBLIC, GOVERNMENT, or DIPLOMATIC) — this prints on the CEC.
+
+Plate No, Make, Series, Engine No, and Chassis No are required before the wizard will let you proceed. Click **Next**.
 
 > **Screenshot placeholder 7.2** – Wizard Step 1, vehicle details.
 
 ### 7.3 Step 2 – Owner Details
 
-Review the owner's name, address, contact number, and ID type. For organisation-owned vehicles, the organisation name is shown in addition to the authorised representative. Click **Next**.
+Choose the **Owner Type**:
+
+- **INDIVIDUAL** — enter Last Name, First Name, Middle Name, Address, City.
+- **ORGANIZATION** — enter Organization name, Address, City.
+
+For individual owners, Last Name, First Name, Address, and City are required. For organisation owners, Organization, Address, and City are required. The wizard will not advance until the required fields are filled.
+
+Click **Next**.
 
 > **Screenshot placeholder 7.3** – Wizard Step 2, owner details.
 
 ### 7.4 Step 3 – Engine Flags and Readings
 
-Review the captured analyzer readings shown above the engine flags. Set:
+Review the captured analyzer readings shown on this step. The verdict (PASS / FAIL) is computed automatically from the readings against the configured emission limits and is shown in a green or red banner with the supporting reasons.
 
-- Engine condition flags (visible smoke, oil leaks, tampering).
-- Final pass / fail determination, which defaults to the analyzer's own determination.
+Set the three engine flags shown above the readings:
+
+- **Turbo** — TURBO or NON_TURBO.
+- **Aspiration** — ELEVATION or N_ASPIRATED.
+- **Condition** — REBUILT or CONVENTIONAL.
+
+These flags appear on the LTMS submission and influence how LTMS interprets the readings. The verdict updates live when you change a flag.
 
 Click **Next**.
 
@@ -248,13 +270,21 @@ Click **Next**.
 
 ### 7.5 Step 4 – Technician and Certification
 
-Select your technician name and license number from the drop-down. The certification statement is shown verbatim and must be acknowledged with a checkbox. Click **Next**.
+Three fields are shown, pre-filled from your operator profile:
+
+- **Technician Name** — the certifying technician's name as it should appear on the CEC.
+- **TESDA Cert. No** — TESDA certification number.
+- **Certification No** — the PETC technician certification number issued under DOTr / LTO accreditation.
+
+All three are required. Correct any errors before continuing. Click **Next**.
 
 > **Screenshot placeholder 7.5** – Wizard Step 4, technician and certification.
 
 ### 7.6 Step 5 – Photos
 
-Confirm that at least one **front** and one **rear** photo are attached. If a photo is missing, click **Add Photo** to capture an additional one from the webcam. Click **Next**.
+A single **Vehicle photo** (type `FRONT`) is required. If the photo has not yet been captured, position the vehicle so the plate is visible in the webcam preview on the left of the screen and click **Take photo**. To replace an existing photo, click **Retake photo**. The mandatory photo is shown as a thumbnail on the right when captured.
+
+Click **Next** once at least one Vehicle photo is attached. (A second supplementary photo can be captured if the operator wishes — the LTMS submission and the printed CEC support a second photo slot.)
 
 > **Screenshot placeholder 7.6** – Wizard Step 5, photos.
 
@@ -268,35 +298,49 @@ The wizard shows a progress indicator while the Digiflash cloud submits the reco
 
 ### 7.8 Outcomes
 
+The wizard waits up to 60 seconds for LTMS to return a verdict. Possible outcomes:
+
 | Outcome | What you will see | What to do |
 |---|---|---|
-| **Accepted** | A green confirmation with the CEC number (`CERT-…`) and the option **Print CEC**. | Print the CEC and hand it to the vehicle owner. |
-| **Rejected** | A red banner showing the rejection reason returned by LTMS/IRDS. | Correct the noted issue, then re-submit from the **LTMS Upload** queue. |
-| **Queued (offline)** | A yellow banner: "Saved. Will upload when connection is restored." | Continue working; the upload will retry automatically. |
+| **Accepted** | A green confirmation with the CEC number (`CERT-…`), the LTMS OR No., and the option **Print CEC**. The A4 CEC PDF is rendered in a preview pane. | Click **Print CEC ×2** to send the A4 PDF to the printer for the customer + center copies, and use **/print/receipt** at the bay (or the History row's print action) to hand the owner a thermal-receipt summary. |
+| **Rejected** | A red banner showing the rejection reason returned by LTMS / IRDS. No CEC is issued. | Correct the noted issue, then re-submit from the **LTMS Upload** queue. |
+| **Awaiting LTMS** (`WAITING_FOR_LTMS`) | A blue banner: "Queued — awaiting LTMS response." The test has been received by the Digiflash cloud but LTMS has not yet returned a verdict within the 60-second window. | Click **Go to History**. The Digiflash desktop will check LTMS every 30 seconds in the background; when LTMS responds, the History row updates automatically — the **Print CEC** button appears for an Accepted result, or the rejection reason appears for a Rejected one. |
+| **Queued (offline)** | A yellow banner: "Saved. Will upload when connection is restored." | Continue working; the upload will retry automatically when connectivity returns. |
 
-> **Screenshot placeholder 7.8** – Accepted result with print button.
+> **Screenshot placeholder 7.8** – Accepted result with print button and A4 CEC preview.
 
 ---
 
 ## 8. Printing the CEC
 
-### 8.1 Printing After Submission
+Digiflash produces two outputs for every Accepted submission. Both are issued only after LTMS returns the certificate number (`CERT-…`), OR number, and DERMALOG token; nothing is printed before LTMS accepts the submission.
 
-When LTMS accepts the test, click **Print CEC** on the result screen. A two-copy receipt is produced on the 80 mm thermal printer:
+### 8.1 A4 CEC PDF (formal record)
 
-1. **Customer copy** – given to the vehicle owner.
-2. **LTO copy** – retained at the center.
+The A4 PDF is the formal Certificate of Emission Compliance described in deliverable #5 (`05-cec-samples/`). One A4 sheet carries two halves:
 
-### 8.2 Re-printing a CEC
+1. **Customer Copy** (top half) — given to the vehicle owner for presentation at LTO during registration renewal.
+2. **Center Copy** (bottom half) — retained by the PETC for the regulatory audit trail.
+
+Both halves carry the same CEC No., OR No., DERMALOG cryptographic token, validity window, vehicle and owner identifiers, technician identification, emission readings, and verdict.
+
+To print: click **Print CEC ×2** on the wizard result screen (or on the History row for an Accepted submission). The PDF can also be previewed in the application before printing via the embedded viewer on the result screen, and re-opened from History.
+
+### 8.2 Thermal Receipt (operator hand-off)
+
+A short thermal-receipt summary is produced on the 80 mm thermal printer for the operator to hand the owner immediately. It contains the plate, vehicle make/model/year, fuel type, verdict, technician name, center name, CEC number, and timestamp. The thermal receipt is **a convenience artifact** — the A4 PDF is the formal CEC.
+
+The thermal receipt is printed via the **Print Receipt** action available on the Run-Test result screen and at the History row.
+
+### 8.3 Re-printing a CEC
 
 1. From the navigation strip, click **History**.
-2. Find the test by plate number, date, or CEC number.
-3. Open the test row.
-4. Click **Re-print CEC**.
+2. Find the test by plate number, date, or CEC number. Rows whose state is `ACCEPTED` show a **Print CEC** button on the right.
+3. Click **Print CEC** to re-print the A4 PDF, or use the receipt action to re-print the thermal slip.
 
 Re-prints are logged in the audit trail with the operator ID and timestamp.
 
-> **Screenshot placeholder 8.2** – History row with re-print button.
+> **Screenshot placeholder 8.3** – History row with Print CEC button next to an ACCEPTED state badge.
 
 ---
 
@@ -380,10 +424,20 @@ The rejection banner shows the reason text returned by LTMS or IRDS. Common reas
 |---|---|
 | "Vehicle not found" | Re-verify the plate number and re-submit; if still unfound, capture the issue and contact the vehicle owner to confirm the LTMS record. |
 | "Owner mismatch" | Re-check owner details against the LTMS lookup. |
-| "Duplicate submission" | The test was already submitted; open **History** to find the existing CEC and re-print if needed. |
-| "Certification missing" | Return to Step 4 of the wizard and re-confirm the technician acknowledgement. |
+| "Certification expired" / "Technician not authorised" | Verify the technician's TESDA and DOTr/LTO certification numbers on Step 4 of the wizard; if they are correct, the certification has likely expired and must be renewed. |
+| Anything else | Read the reason verbatim, escalate to the center supervisor; the cloud and desktop both retain the full LTMS error text in the History row for support to inspect. |
 
-### 11.5 Cloud status stays Yellow for a long time
+> The desktop does **not** generate "Duplicate submission" errors for re-attempts of the same test — the cloud is idempotent on `(center, testId)`, so re-submitting the same test returns the existing submission identifier rather than an error.
+
+### 11.5 A test in History stays in `WAITING_FOR_LTMS`
+
+A test in `WAITING_FOR_LTMS` has reached the Digiflash cloud and the cloud is waiting for LTMS to respond. The desktop polls the cloud every 30 seconds, so a row will normally transition to `ACCEPTED` or `REJECTED` within a few minutes once LTMS replies.
+
+1. Wait. Most rows clear within minutes.
+2. If a row stays in `WAITING_FOR_LTMS` for **more than 24 hours**, check the cloud status pill on the home screen and contact Digiflash support — this generally indicates an LTMS-side outage rather than a center-side problem.
+3. Do not delete or re-submit the test; the cloud will resolve it automatically when LTMS recovers.
+
+### 11.6 Cloud status stays Yellow for a long time
 
 Yellow means the desktop is saving tests locally but the Digiflash cloud is not reachable. This is normal during a temporary internet outage; tests will upload automatically when connectivity is restored. If the status stays yellow for more than one business day:
 
@@ -391,7 +445,7 @@ Yellow means the desktop is saving tests locally but the Digiflash cloud is not 
 2. Open **Settings → Cloud** and verify the last sync timestamp.
 3. If both internet and timestamp look normal, contact Digiflash support.
 
-### 11.6 Application will not start
+### 11.7 Application will not start
 
 1. Reboot the PC.
 2. If the issue persists, run the **Digiflash Repair** entry from the Start menu, which restarts the embedded services.
