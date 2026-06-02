@@ -41,3 +41,9 @@ Thumbs.db
 *.env
 .env.local
 application-local.yml
+
+# Local CEC PDFs (rendered at runtime under PETC_DATA_DIR or desktop/)
+desktop/cec/
+
+# Claude session state
+.claude/
