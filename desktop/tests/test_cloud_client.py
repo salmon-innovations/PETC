@@ -74,6 +74,10 @@ class PatchedCloudClient(CloudClient):
             certificate_no=body.get("certificateNo"),
             ltms_ref_no=body.get("ltmsRefNo"),
             rejection_reason=body.get("rejectionReason"),
+            or_no=body.get("orNo"),
+            dermalog_token=body.get("dermalogToken"),
+            valid_from=body.get("validFrom"),
+            valid_until=body.get("validUntil"),
         )
 
     def lookup_vehicle(self, plate: str):
@@ -202,6 +206,10 @@ def test_get_submission_accepted():
             "certificateNo": "CERT-2024-001",
             "ltmsRefNo": "LTMS-REF-001",
             "rejectionReason": None,
+            "orNo": "20260425900005497",
+            "dermalogToken": "533D2153B7D085DDE0630C14640AF02B",
+            "validFrom": "2026-06-02",
+            "validUntil": "2026-08-01",
         }),
     })
     status = c.get_submission("sub-001")
@@ -210,6 +218,10 @@ def test_get_submission_accepted():
     assert status.certificate_no == "CERT-2024-001"
     assert status.ltms_ref_no == "LTMS-REF-001"
     assert status.rejection_reason is None
+    assert status.or_no == "20260425900005497"
+    assert status.dermalog_token == "533D2153B7D085DDE0630C14640AF02B"
+    assert status.valid_from == "2026-06-02"
+    assert status.valid_until == "2026-08-01"
     assert status.is_terminal is True
 
 

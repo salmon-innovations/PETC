@@ -43,6 +43,10 @@ class SubmissionStatus:
     certificate_no: Optional[str]
     ltms_ref_no: Optional[str]
     rejection_reason: Optional[str]
+    or_no: Optional[str] = None
+    dermalog_token: Optional[str] = None
+    valid_from: Optional[str] = None    # ISO date string
+    valid_until: Optional[str] = None   # ISO date string
 
     @property
     def is_terminal(self) -> bool:
@@ -116,6 +120,10 @@ class CloudClient:
             certificate_no=body.get("certificateNo"),
             ltms_ref_no=body.get("ltmsRefNo"),
             rejection_reason=body.get("rejectionReason"),
+            or_no=body.get("orNo"),
+            dermalog_token=body.get("dermalogToken"),
+            valid_from=body.get("validFrom"),
+            valid_until=body.get("validUntil"),
         )
 
     # ── registry ─────────────────────────────────────────────────────────

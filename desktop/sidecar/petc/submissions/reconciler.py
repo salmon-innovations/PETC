@@ -13,9 +13,7 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -101,6 +99,10 @@ class SubmissionReconciler:
                 row.state = status.state
                 row.certificate_no = status.certificate_no
                 row.ltms_reference_no = status.ltms_ref_no
+                row.or_no = status.or_no
+                row.dermalog_token = status.dermalog_token
+                row.valid_from = status.valid_from
+                row.valid_until = status.valid_until
                 row.last_error = status.rejection_reason
                 row.accepted_at = now if status.state == "ACCEPTED" else None
                 if pdf_path:

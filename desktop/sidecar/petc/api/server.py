@@ -920,6 +920,10 @@ def submit_upload_v1(
                 sub.state = result_state
                 sub.certificate_no = cert_no
                 sub.ltms_reference_no = ltms_ref_no
+                sub.or_no = final_status.or_no
+                sub.dermalog_token = final_status.dermalog_token
+                sub.valid_from = final_status.valid_from
+                sub.valid_until = final_status.valid_until
                 sub.accepted_at = now if result_state == "ACCEPTED" else None
                 sub.last_error = rejection_reason
                 sub.pdf_path = pdf_path

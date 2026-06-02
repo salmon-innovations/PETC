@@ -147,6 +147,10 @@ class LtmsSubmission(Base):
     cloud_submission_id: Mapped[Optional[str]] = mapped_column(String)  # cloud UUID from POST /api/submissions
     certificate_no: Mapped[Optional[str]] = mapped_column(String)
     ltms_reference_no: Mapped[Optional[str]] = mapped_column(String)
+    or_no: Mapped[Optional[str]] = mapped_column(String)              # LTMS receipt number printed on CEC
+    dermalog_token: Mapped[Optional[str]] = mapped_column(String)     # LTMS cryptographic submission seal
+    valid_from: Mapped[Optional[str]] = mapped_column(String)         # ISO date — CEC validity start
+    valid_until: Mapped[Optional[str]] = mapped_column(String)        # ISO date — CEC validity end (test date + 60d)
     submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     last_error: Mapped[Optional[str]] = mapped_column(Text)
