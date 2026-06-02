@@ -129,7 +129,8 @@ class TestPhoto(Base):
     file_path: Mapped[str] = mapped_column(String, nullable=False)
     mime_type: Mapped[str] = mapped_column(String, nullable=False, default="image/jpeg")
     camera_id: Mapped[Optional[str]] = mapped_column(String)
-    s3_key: Mapped[Optional[str]] = mapped_column(String)   # set once mirrored
+    s3_key: Mapped[Optional[str]] = mapped_column(String)
+    uploaded_at: Mapped[Optional[datetime]] = mapped_column(DateTime)  # set once PUT to S3
     captured_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     test: Mapped["EmissionTest"] = relationship(back_populates="photos")
@@ -141,7 +142,9 @@ class LtmsSubmission(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     test_id: Mapped[str] = mapped_column(String(36), ForeignKey("emission_tests.id"), nullable=False)
     payload_json: Mapped[Optional[str]] = mapped_column(Text)
+    # PENDING | IN_FLIGHT | ACCEPTED | REJECTED | DEAD | WAITING_FOR_LTMS
     state: Mapped[str] = mapped_column(String, nullable=False, default="PENDING")
+    cloud_submission_id: Mapped[Optional[str]] = mapped_column(String)  # cloud UUID from POST /api/submissions
     certificate_no: Mapped[Optional[str]] = mapped_column(String)
     ltms_reference_no: Mapped[Optional[str]] = mapped_column(String)
     submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime)

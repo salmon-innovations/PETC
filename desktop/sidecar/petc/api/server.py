@@ -555,10 +555,12 @@ def lookup_vehicle_v1(
 ) -> dict:
     from ..db.session import SessionLocal
     from ..db.models import VehicleCache
+    from .. import cloud_client as cc
 
     plate = _normalize_plate(req.plate)
     now = datetime.now(timezone.utc).replace(tzinfo=None)
 
+    # Check local cache first regardless of source
     with SessionLocal() as session:
         cached = session.query(VehicleCache).filter(VehicleCache.plate_number == plate).first()
         if cached and cached.expires_at > now:
@@ -569,6 +571,54 @@ def lookup_vehicle_v1(
                 **_vehicle_cache_to_response(cached),
             }
 
+    # Fetch from cloud proxy (production) or local mock (dev)
+    if cc.is_available():
+        raw = cc.get_client().lookup_vehicle(plate)
+        if raw is None:
+            return {"found": False, "source": "LTMS", "vehicle": None, "owner": None, "fetchedAt": None}
+
+        fetched_at = now
+        expires_at = fetched_at + timedelta(hours=24)
+        with SessionLocal() as session:
+            cached = session.query(VehicleCache).filter(VehicleCache.plate_number == plate).first()
+            if cached is None:
+                cached = VehicleCache(id=str(uuid.uuid4()), plate_number=plate, expires_at=expires_at)
+                session.add(cached)
+            # raw is a plain dict from the cloud response
+            cached.mv_no = raw.get("mvNo")
+            cached.make = raw.get("make")
+            cached.series = raw.get("series")
+            cached.vehicle_type = raw.get("vehicleType")
+            cached.year_model = raw.get("yearModel")
+            cached.fuel_type = raw.get("fuelType")
+            cached.engine_no = raw.get("engineNo")
+            cached.chassis_no = raw.get("chassisNo")
+            cached.color = raw.get("color")
+            cached.transmission = raw.get("transmission")
+            cached.last_name = raw.get("lastName")
+            cached.first_name = raw.get("firstName")
+            cached.middle_name = raw.get("middleName")
+            cached.organization = raw.get("organization")
+            cached.address = raw.get("address")
+            cached.city = raw.get("city")
+            cached.or_type = raw.get("orType")
+            cached.cr_date = raw.get("crDate")
+            cached.cr_no = raw.get("crNo")
+            cached.district_office = raw.get("districtOffice")
+            cached.owner_type = raw.get("ownerType")
+            cached.source = "LTMS"
+            cached.fetched_at = fetched_at
+            cached.expires_at = expires_at
+            session.commit()
+
+        return {
+            "found": True,
+            "source": "LTMS",
+            "fetchedAt": fetched_at.isoformat(),
+            **_vehicle_cache_to_response(cached),
+        }
+
+    # Local mock fallback
     info = gov.find_vehicle(plate)
     if info is None:
         return {"found": False, "source": "LTMS", "vehicle": None, "owner": None, "fetchedAt": None}
@@ -596,6 +646,12 @@ def lookup_vehicle(
     plate_number: str,
     gov: GovRegistryClient = Depends(_get_gov),
 ) -> dict:
+    from .. import cloud_client as cc
+    if cc.is_available():
+        raw = cc.get_client().lookup_vehicle(plate_number)
+        if raw is None:
+            return {"found": False, "vehicle": None}
+        return {"found": True, **raw}
     info = gov.find_vehicle(plate_number)
     if info is None:
         return {"found": False, "vehicle": None}
@@ -607,6 +663,12 @@ def lookup_driver(
     license_no: str,
     gov: GovRegistryClient = Depends(_get_gov),
 ) -> dict:
+    from .. import cloud_client as cc
+    if cc.is_available():
+        raw = cc.get_client().lookup_driver(license_no)
+        if raw is None:
+            return {"found": False, "driver": None}
+        return {"found": True, "driver": raw}
     info = gov.find_driver(license_no)
     if info is None:
         return {"found": False, "driver": None}
@@ -701,9 +763,17 @@ def submit_upload_v1(
     gov: GovRegistryClient = Depends(_get_gov),
     cloud_sync: CloudSyncPusher = Depends(_get_cloud_sync),
 ) -> dict:
-    from ..gov.base import EmissionPayload
+    """Submit an emission test result.
+
+    Cloud path (default): presign + upload photos to S3, POST to cloud
+    /api/submissions, short-poll up to 60s for LTMS result.
+
+    Local-mock path (fallback when PETC_CLOUD_URL unset and PETC_GOV_MOCK=true):
+    call the local mock gov client directly — preserves developer workflow.
+    """
     from ..db.session import SessionLocal
-    from ..db.models import EmissionTest, GovOutbox, LtmsSubmission
+    from ..db.models import EmissionTest, GovOutbox, LtmsSubmission, TestPhoto
+    from .. import cloud_client as cc
 
     payload = req.payload
     test_id = payload.get("testId")
@@ -711,7 +781,7 @@ def submit_upload_v1(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "payload.testId is required")
 
     now = datetime.now(timezone.utc)
-    request_json = json.dumps(payload, default=str)
+    center_id = payload.get("centerId") or os.environ.get("PETC_CENTER_ID", "dev-center")
 
     with SessionLocal() as session:
         test = session.get(EmissionTest, test_id)
@@ -719,8 +789,168 @@ def submit_upload_v1(
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"Test {test_id} not found")
 
         vehicle = payload.get("vehicle", {})
-        photos = payload.get("photos", [])
         readings = payload.get("readings") or _readings_for_test(test)
+
+        # Collect photo rows now (before session closes)
+        photo_rows: list[tuple[str, str, str, str]] = [
+            (p.id, p.file_path, p.photo_type, p.mime_type)
+            for p in test.photos
+        ]
+
+    request_json = json.dumps(payload, default=str)
+
+    # ── Cloud submission path ─────────────────────────────────────────────
+    if cc.is_available():
+        cloud = cc.get_client()
+
+        # 1. Presign + upload photos; collect s3_keys
+        photo_refs: list[dict] = []
+        with SessionLocal() as session:
+            for photo_id, file_path, photo_type, mime_type in photo_rows:
+                try:
+                    presign = cloud.presign_photo(
+                        test_id=test_id,
+                        photo_id=photo_id,
+                        photo_type=photo_type,
+                        content_type=mime_type,
+                    )
+                    data = Path(file_path).read_bytes()
+                    cloud.upload_photo(presign.upload_url, data, mime_type)
+                    photo_refs.append({
+                        "photoId": photo_id,
+                        "s3Key": presign.s3_key,
+                        "photoType": photo_type,
+                    })
+                    # Persist s3_key + uploaded_at on the local photo row
+                    photo_row = session.get(TestPhoto, photo_id)
+                    if photo_row:
+                        photo_row.s3_key = presign.s3_key
+                        photo_row.uploaded_at = now
+                except Exception:
+                    logger.exception("Failed to presign/upload photo %s for test %s", photo_id, test_id)
+                    # Non-fatal: continue without this photo
+            session.commit()
+
+        # 2. Build cloud submission payload and enqueue
+        cloud_payload = {
+            **payload,
+            "vehicle": {
+                **vehicle,
+                "plateNo": vehicle.get("plateNo") or "",
+                "fuelType": vehicle.get("fuelType") or "",
+            },
+            "readings": readings,
+            "photos": photo_refs,
+        }
+        created = cloud.create_submission(center_id, test_id, cloud_payload)
+        cloud_submission_id = created.submission_id
+
+        # 3. Persist local LtmsSubmission row immediately
+        sub_id = str(uuid.uuid4())
+        with SessionLocal() as session:
+            outbox = GovOutbox(
+                id=str(uuid.uuid4()),
+                event_type="LTMS_SUBMIT",
+                payload_json=request_json,
+                status="IN_FLIGHT",
+            )
+            session.add(outbox)
+            sub = LtmsSubmission(
+                id=sub_id,
+                test_id=test_id,
+                payload_json=request_json,
+                state="PENDING",
+                cloud_submission_id=cloud_submission_id,
+                submitted_at=now,
+            )
+            session.add(sub)
+            session.commit()
+
+        # 4. Short-poll for up to 60s
+        import time
+        deadline = time.monotonic() + 60.0
+        final_status = None
+        while time.monotonic() < deadline:
+            try:
+                st = cloud.get_submission(cloud_submission_id)
+                if st.is_terminal:
+                    final_status = st
+                    break
+            except Exception:
+                logger.exception("Error polling submission %s", cloud_submission_id)
+            time.sleep(1)
+
+        if final_status is None:
+            # Timed out — leave in WAITING_FOR_LTMS; reconciler will pick it up
+            with SessionLocal() as session:
+                sub = session.get(LtmsSubmission, sub_id)
+                if sub:
+                    sub.state = "WAITING_FOR_LTMS"
+                session.commit()
+            return {
+                "state": "WAITING_FOR_LTMS",
+                "certificateNo": None,
+                "rejectionReason": None,
+                "queued": True,
+                "submissionId": sub_id,
+            }
+
+        # 5. Terminal result received — persist and optionally render CEC
+        result_state = final_status.state
+        cert_no = final_status.certificate_no
+        rejection_reason = final_status.rejection_reason
+        ltms_ref_no = final_status.ltms_ref_no
+
+        pdf_path: Optional[str] = None
+        if result_state == "ACCEPTED" and cert_no:
+            from ..cec.pdf import render_cec_pdf
+            try:
+                pdf_path = str(render_cec_pdf(
+                    submission_id=sub_id,
+                    certificate_no=cert_no,
+                    payload=payload,
+                    issued_at=now,
+                ))
+            except Exception:
+                logger.exception("Failed to render CEC PDF for submission %s", sub_id)
+
+        with SessionLocal() as session:
+            sub = session.get(LtmsSubmission, sub_id)
+            if sub:
+                sub.state = result_state
+                sub.certificate_no = cert_no
+                sub.ltms_reference_no = ltms_ref_no
+                sub.accepted_at = now if result_state == "ACCEPTED" else None
+                sub.last_error = rejection_reason
+                sub.pdf_path = pdf_path
+            test_row = session.get(EmissionTest, test_id)
+            if test_row and result_state == "ACCEPTED":
+                test_row.uploaded_at = now
+            session.commit()
+
+        cloud_sync.enqueue("ltms_submission", sub_id, {
+            "test_id": test_id,
+            "state": result_state,
+            "certificate_no": cert_no,
+            "rejection_reason": rejection_reason,
+            "submitted_at": now.isoformat(),
+        })
+
+        return {
+            "state": result_state,
+            "certificateNo": cert_no,
+            "rejectionReason": rejection_reason,
+            "queued": False,
+            "submissionId": sub_id,
+        }
+
+    # ── Local-mock path (dev / offline) ───────────────────────────────────
+    from ..gov.base import EmissionPayload
+
+    with SessionLocal() as session:
+        test = session.get(EmissionTest, test_id)
+        readings_local = payload.get("readings") or _readings_for_test(test)
+        photos_local = payload.get("photos", [])
 
         emission_payload = EmissionPayload(
             test_id=test_id,
@@ -728,10 +958,10 @@ def submit_upload_v1(
             license_no="",
             fuel_type=vehicle.get("fuelType") or test.fuel_type,
             pass_fail=bool(payload.get("verdict", {}).get("pass", test.pass_fail)),
-            readings=readings,
-            photo_paths=[p.get("filePath", "") for p in photos if p.get("filePath")],
+            readings=readings_local,
+            photo_paths=[p.get("filePath", "") for p in photos_local if p.get("filePath")],
             operator_id=test.operator_id,
-            center_id=payload.get("centerId") or os.environ.get("PETC_CENTER_ID", "dev-center"),
+            center_id=center_id,
             tested_at=test.tested_at,
         )
 
@@ -746,13 +976,11 @@ def submit_upload_v1(
         try:
             result = gov.submit_emission_result(emission_payload)
             outbox.status = "DONE"
-            outbox.response_json = json.dumps(
-                {
-                    "state": result.state,
-                    "certificateNo": result.certificate_no,
-                    "rejectionReason": result.rejection_reason,
-                }
-            )
+            outbox.response_json = json.dumps({
+                "state": result.state,
+                "certificateNo": result.certificate_no,
+                "rejectionReason": result.rejection_reason,
+            })
         except Exception as exc:
             sub_id = str(uuid.uuid4())
             sub = LtmsSubmission(
@@ -775,7 +1003,7 @@ def submit_upload_v1(
             }
 
         sub_id = str(uuid.uuid4())
-        pdf_path: Optional[str] = None
+        pdf_path = None
         if result.state == "ACCEPTED" and result.certificate_no:
             from ..cec.pdf import render_cec_pdf
             try:
@@ -807,17 +1035,13 @@ def submit_upload_v1(
 
         session.commit()
 
-    cloud_sync.enqueue(
-        "ltms_submission",
-        sub_id,
-        {
-            "test_id": test_id,
-            "state": result.state,
-            "certificate_no": result.certificate_no,
-            "rejection_reason": result.rejection_reason,
-            "submitted_at": now.isoformat(),
-        },
-    )
+    cloud_sync.enqueue("ltms_submission", sub_id, {
+        "test_id": test_id,
+        "state": result.state,
+        "certificate_no": result.certificate_no,
+        "rejection_reason": result.rejection_reason,
+        "submitted_at": now.isoformat(),
+    })
 
     return {
         "state": result.state,
@@ -1040,7 +1264,7 @@ def get_test_detail(test_id: str) -> dict:
 @app.get("/analytics/summary")
 def analytics_summary() -> dict:
     from ..db.session import SessionLocal
-    from ..db.models import EmissionTest, LtmsSubmission
+    from ..db.models import EmissionTest
     from sqlalchemy import func
 
     with SessionLocal() as session:
