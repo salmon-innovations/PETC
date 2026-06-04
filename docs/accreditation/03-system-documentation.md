@@ -239,6 +239,32 @@ Source root: [desktop/renderer/src/](../../desktop/renderer/src/)
 | `store/` | Zustand state (auth, current test, settings). |
 | `api/` | Typed HTTP client for the local sidecar. |
 
+The principal renderer pages, as they appear to the operator at runtime:
+
+![pages/auth — operator login screen](../../photos/manual/login.png)
+
+*Figure 5.3-A — `pages/auth/`: operator login.*
+
+![pages/test — Run Test workflow](../../photos/manual/run-test.png)
+
+*Figure 5.3-B — `pages/test/`: Run Test workflow (plate lookup, fuel-type, analyzer readings).*
+
+![pages/upload — LTMS upload wizard review step](../../photos/manual/review_tab.png)
+
+*Figure 5.3-C — `pages/upload/`: LTMS upload wizard (review & submit step).*
+
+![pages/history — past tests and CEC re-print](../../photos/manual/test%20history.png)
+
+*Figure 5.3-D — `pages/history/`: past tests, filtering, CEC re-print.*
+
+![pages/settings — analyzer, camera and printer configuration](../../photos/manual/settings.png)
+
+*Figure 5.3-E — `pages/settings/`: analyzer / camera / printer configuration.*
+
+![pages/analytics — local center analytics dashboard](../../photos/manual/analytics.png)
+
+*Figure 5.3-F — `pages/analytics/`: local center analytics dashboard.*
+
 ### 5.4 Python Sidecar (Python 3.11 / FastAPI)
 
 Source root: [desktop/sidecar/petc/](../../desktop/sidecar/petc/)
@@ -370,6 +396,13 @@ and paste the formatted output.
 
 ### 7.2 Screenshot Checklist
 
+The items below are split into two groups:
+
+- **Group A — Installed-machine screenshots (captured here, §7.3).** These show the *deployed* footprint of the Client Application — installed binaries and the runtime data the program creates on disk, with file sizes. They can only be produced on an installed Windows machine and so are captured in this document.
+- **Group B — Source and configuration files.** These are the on-disk *sources* of the same sub-programs. To avoid duplicating evidence, they are not re-screenshotted here: the complete source tree (with per-file paths and sizes) is submitted in full as **Deliverable #4 — Source Code** (see [04-source-code/manifest.md](04-source-code/manifest.md), which lists every file with its size). A single consolidated pointer is given in §7.3.9.
+
+**Group A — Installed-machine screenshots**
+
 | # | Path | Captured |
 |---|---|---|
 | 1 | `C:\Program Files\Digiflash\` (root install directory) | ☐ |
@@ -380,19 +413,24 @@ and paste the formatted output.
 | 6 | `%APPDATA%\Digiflash\photos\` (photo storage) | ☐ |
 | 7 | `%APPDATA%\Digiflash\cec\` (CEC PDFs) | ☐ |
 | 8 | `%APPDATA%\Digiflash\logs\` (application logs) | ☐ |
-| 9 | Source: `desktop\electron\` (main process source) | ☐ |
-| 10 | Source: `desktop\renderer\src\pages\` (UI sub-programs) | ☐ |
-| 11 | Source: `desktop\sidecar\petc\` (sidecar root) | ☐ |
-| 12 | Source: `desktop\sidecar\petc\analyzer\` (all analyzer adapter files) | ☐ |
-| 13 | Source: `desktop\sidecar\petc\submissions\` (reconciler) | ☐ |
-| 14 | Source: `desktop\sidecar\petc\cec\` (CEC generation) | ☐ |
-| 15 | Source: `desktop\sidecar\petc\db\` (DB models and migrations) | ☐ |
-| 16 | Source: `cloud\src\main\java\com\petc\submissions\` (cloud LTMS submitter) | ☐ |
-| 17 | Source: `cloud\src\main\java\com\petc\gov\` (cloud LTMS / IRDS adapters) | ☐ |
-| 18 | Config: `desktop\package.json`, `desktop\pyproject.toml` | ☐ |
-| 19 | Build: `desktop\installer\` | ☐ |
-| 20 | Cloud config: `cloud\src\main\resources\application.yml` | ☐ |
-| 21 | Cloud migrations: `cloud\src\main\resources\db\migration\` | ☐ |
+
+**Group B — Source and configuration files (provided as Deliverable #4)**
+
+| Source path | Sub-program | Evidence |
+|---|---|---|
+| `desktop\electron\` | Electron main process | Deliverable #4 |
+| `desktop\renderer\src\pages\` | React UI sub-programs | Deliverable #4 |
+| `desktop\sidecar\petc\` | Python sidecar root | Deliverable #4 |
+| `desktop\sidecar\petc\analyzer\` | Analyzer adapters | Deliverable #4 |
+| `desktop\sidecar\petc\submissions\` | Submission reconciler | Deliverable #4 |
+| `desktop\sidecar\petc\cec\` | CEC generation | Deliverable #4 |
+| `desktop\sidecar\petc\db\` | DB models and migrations | Deliverable #4 |
+| `cloud\src\main\java\com\petc\submissions\` | Cloud LTMS submitter | Deliverable #4 |
+| `cloud\src\main\java\com\petc\gov\` | Cloud LTMS / IRDS adapters | Deliverable #4 |
+| `desktop\package.json`, `desktop\pyproject.toml` | Build / dependency manifests | Deliverable #4 |
+| `desktop\installer\` | Installer specification | Deliverable #4 |
+| `cloud\src\main\resources\application.yml` | Cloud configuration | Deliverable #4 |
+| `cloud\src\main\resources\db\migration\` | Cloud Flyway migrations | Deliverable #4 |
 
 ### 7.3 Screenshot Placeholders
 
@@ -422,44 +460,9 @@ and paste the formatted output.
 #### 7.3.8 Application log directory
 *(screenshot to be inserted)*
 
-#### 7.3.9 Electron main-process source
-*(screenshot to be inserted)*
+#### 7.3.9 Source and configuration files — see Deliverable #4
 
-#### 7.3.10 React renderer pages
-*(screenshot to be inserted)*
-
-#### 7.3.11 Python sidecar root
-*(screenshot to be inserted)*
-
-#### 7.3.12 Hardware analyzer adapters
-*(screenshot to be inserted)*
-
-#### 7.3.13 Submission reconciler
-*(screenshot to be inserted)*
-
-#### 7.3.14 CEC generation folder
-*(screenshot to be inserted)*
-
-#### 7.3.15 Database models and migrations folder
-*(screenshot to be inserted)*
-
-#### 7.3.16 Cloud LTMS submitter (`cloud/src/.../submissions/`)
-*(screenshot to be inserted)*
-
-#### 7.3.17 Cloud LTMS / IRDS adapters (`cloud/src/.../gov/`)
-*(screenshot to be inserted)*
-
-#### 7.3.18 Build configuration files
-*(screenshot to be inserted)*
-
-#### 7.3.19 Installer specification folder
-*(screenshot to be inserted)*
-
-#### 7.3.20 Cloud `application.yml`
-*(screenshot to be inserted)*
-
-#### 7.3.21 Cloud Flyway migration folder
-*(screenshot to be inserted)*
+The source files for every sub-program listed in Group B of §7.2 (Electron main process, React renderer pages, Python sidecar and its analyzer / submissions / cec / db packages, the cloud submitter and gov adapters, and all build / configuration files) are submitted **in full** as **Deliverable #4 — Source Code**. The accompanying [source-code manifest](04-source-code/manifest.md) enumerates every file with its repository path and size, which is the same folder/location/size evidence DOTr requires — provided once, at higher fidelity, rather than duplicated as Explorer screenshots here.
 
 ---
 
