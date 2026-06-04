@@ -14,8 +14,8 @@ DOTr IT Provider Accreditation – Deliverable #2
 | Document version | 0.2 (Draft) |
 | Document date | 2026-06-02 |
 | Product name | Digiflash |
-| IT Provider | Salmon Innovations |
-| Prepared by | Christian Deiniel Y. Silerio |
+| IT Provider | Digiflash |
+| Prepared by | Christian Deiniel Y. Silerio (Lead Developer, Digiflash) |
 | Prepared for | Department of Transportation (DOTr) / Land Transportation Office (LTO) |
 | Reference center | Pilot PETC (Fofen gas + Fofen diesel) |
 
@@ -30,7 +30,7 @@ DOTr IT Provider Accreditation – Deliverable #2
 
 ## 1. Scope
 
-This document describes the **physical set-up** and **network layout** required to deploy the Digiflash PETC Data Submission Client at one accredited Private Emission Testing Center. It establishes a minimum-viable reference design that meets DOTr functional requirements and can be replicated at every center on-boarded by Salmon Innovations.
+This document describes the **physical set-up** and **network layout** required to deploy the Digiflash PETC Data Submission Client at one accredited Private Emission Testing Center. It establishes a minimum-viable reference design that meets DOTr functional requirements and can be replicated at every center on-boarded by Digiflash.
 
 The document covers:
 
@@ -48,7 +48,7 @@ The accompanying Network Architecture document (deliverable #6) shows the same t
 
 ## 2. Reference Center Hardware (Budget Tier)
 
-Salmon Innovations recommends the following minimum-viable hardware per accredited PETC. The specification is sized for the operational ceiling of **80 emission tests per day** per center.
+Digiflash recommends the following minimum-viable hardware per accredited PETC. The specification is sized for the operational ceiling of **80 emission tests per day** per center.
 
 ### 2.1 Workstation
 
@@ -146,9 +146,9 @@ Neither issuance publishes a numeric webcam specification (resolution, frame rat
 
 LTO MC 2020-2195 and MC 2020-2241 are reported to contain additional PETC equipment rules but are not publicly retrievable for citation. The detailed interface specification, if any, is part of the LTO-IT System Interface Specification released only to accredited IT Providers under NDA.
 
-### 4.2 Salmon Innovations Functional-Compliance Spec
+### 4.2 Digiflash Functional-Compliance Spec
 
-In the absence of a public numeric spec, Salmon Innovations adopts the following functional-compliance specification, which meets every functional requirement named in the cited issuances:
+In the absence of a public numeric spec, Digiflash adopts the following functional-compliance specification, which meets every functional requirement named in the cited issuances:
 
 | Attribute | Value | Rationale |
 |---|---|---|
@@ -162,7 +162,7 @@ In the absence of a public numeric spec, Salmon Innovations adopts the following
 
 ### 4.3 Action Item
 
-Salmon Innovations will send a written request to LTO Law Enforcement Service / DOTr Road Transport for confirmation of the current LTO-IT System Interface Specification, including any numeric camera requirements. If LTO publishes a stricter spec, this section is updated and the field-installed webcams refreshed accordingly.
+Digiflash will send a written request to LTO Law Enforcement Service / DOTr Road Transport for confirmation of the current LTO-IT System Interface Specification, including any numeric camera requirements. If LTO publishes a stricter spec, this section is updated and the field-installed webcams refreshed accordingly.
 
 ---
 
@@ -355,7 +355,7 @@ If the workstation hardware fails, a replacement PC is provisioned by Digiflash,
 
 ## 10. Commissioning Checklist
 
-The Salmon Innovations field engineer completes the following checklist at every new center before the center goes live.
+The Digiflash field engineer completes the following checklist at every new center before the center goes live.
 
 | # | Step | Verified |
 |---|---|---|

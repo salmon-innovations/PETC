@@ -47,3 +47,7 @@ desktop/cec/
 
 # Claude session state
 .claude/
+
+# Docs PDF build tooling (mermaid-cli + md-to-pdf; build.mjs/rebrand.mjs tracked, deps not)
+docs/accreditation/.pdfbuild/node_modules/
+docs/accreditation/.pdfbuild/package-lock.json

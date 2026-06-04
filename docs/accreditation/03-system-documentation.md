@@ -14,8 +14,8 @@ DOTr IT Provider Accreditation – Deliverable #3
 | Document version | 0.2 (Draft) |
 | Document date | 2026-06-03 |
 | Product name | Digiflash |
-| IT Provider | Salmon Innovations |
-| Prepared by | Christian Deiniel Y. Silerio (Developer, Salmon Innovations) |
+| IT Provider | Digiflash |
+| Prepared by | Christian Deiniel Y. Silerio (Lead Developer, Digiflash) |
 | Prepared for | Department of Transportation (DOTr) / Land Transportation Office (LTO) |
 | Client Application version | `0.1.0` (from [desktop/package.json](../../desktop/package.json)) |
 | Source commit | resolved by `git rev-list -n 1 accreditation-2026-06-03` |
@@ -35,7 +35,7 @@ This document satisfies the System Documentation requirement of the DOTr IT Prov
 2. A declaration and list of the main application sub-programs and other files associated with the submitted Client Application.
 3. Screenshots of folder location, file location, and size for each system file.
 
-The "Client Application" referred to throughout this document is the **Digiflash desktop application** installed at each accredited Private Emission Testing Center. The Digiflash cloud service is the entity that holds LTMS / IRDS credentials and submits to LTMS / IRDS on the desktop's behalf; it is included in this document where the desktop intersects with it. Both pieces of software are produced and operated by Salmon Innovations.
+The "Client Application" referred to throughout this document is the **Digiflash desktop application** installed at each accredited Private Emission Testing Center. The Digiflash cloud service is the entity that holds LTMS / IRDS credentials and submits to LTMS / IRDS on the desktop's behalf; it is included in this document where the desktop intersects with it. Both pieces of software are produced and operated by Digiflash.
 
 ---
 
@@ -209,7 +209,7 @@ This section is the formal Security Policy of the Client Application required by
 
 ### 5.1 Declaration
 
-I, **Christian Deiniel Y. Silerio**, in my capacity as Developer of the PETC Data Submission SaaS, declare that the sub-programs and files enumerated in this Section 5 and in Section 6 constitute the complete set of sub-programs and associated files that comprise the Client Application submitted under this accreditation. No undeclared executable code is included in the installer beyond standard third-party runtime dependencies declared in [desktop/package.json](../../desktop/package.json) and [desktop/pyproject.toml](../../desktop/pyproject.toml).
+I, **Christian Deiniel Y. Silerio**, in my capacity as Lead Developer of the PETC Data Submission SaaS, declare that the sub-programs and files enumerated in this Section 5 and in Section 6 constitute the complete set of sub-programs and associated files that comprise the Client Application submitted under this accreditation. No undeclared executable code is included in the installer beyond standard third-party runtime dependencies declared in [desktop/package.json](../../desktop/package.json) and [desktop/pyproject.toml](../../desktop/pyproject.toml).
 
 Signed: _______________________ Date: ________________
 

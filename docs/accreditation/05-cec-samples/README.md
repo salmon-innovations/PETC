@@ -14,8 +14,8 @@ DOTr IT Provider Accreditation – Deliverable #5
 | Document version | 0.1 (Draft) |
 | Document date | 2026-06-03 |
 | Product name | Digiflash |
-| IT Provider | Salmon Innovations |
-| Prepared by | Christian Deiniel Y. Silerio |
+| IT Provider | Digiflash |
+| Prepared by | Christian Deiniel Y. Silerio (Lead Developer, Digiflash) |
 | Prepared for | Department of Transportation (DOTr) / Land Transportation Office (LTO) |
 | Companion documents | `01-client-application-manual.md` §"Printing the CEC", `03-system-documentation.md` §CEC renderer |
 
@@ -36,7 +36,7 @@ This deliverable contains one rendered sample of the Digiflash Certificate of Em
 | `sample-cec-mock-data.pdf` | A4 portrait PDF rendered by `desktop/sidecar/petc/cec/pdf.py` from a mock test bundle whose data fields mirror an existing-provider CEC sample provided by the client (plate `NDA5636`, vehicle `2019 TOYOTA VIOS`, owner `ALUDO, COLEEN ANN S`). |
 | `README.md` (this file) | Layout rationale, field-by-field mapping to the existing-provider CEC, regulatory references, and the protocol for replacing this sample with a live-LTMS sample during accreditation review. |
 
-A second sample produced from a real LTMS sandbox submission will be added to this folder once Salmon Innovations completes the IT-Provider onboarding handshake with LTO Law Enforcement Service and Stradcom (TBC; see §5).
+A second sample produced from a real LTMS sandbox submission will be added to this folder once Digiflash completes the IT-Provider onboarding handshake with LTO Law Enforcement Service and Stradcom (TBC; see §5).
 
 ---
 
@@ -75,7 +75,7 @@ Both copies carry the same CEC No., OR No., DERMALOG cryptographic token, validi
 |                             |  CO2/O2    |                  |
 |-------------------------------------------------------------|
 | DERMALOG: <32-char hex token>                               |
-| DIGIFLASH · SALMON INNOVATIONS              CEC No. CERT-…  |
+| DIGIFLASH                                   CEC No. CERT-…  |
 +-------------------------------------------------------------+
 ```
 
@@ -84,7 +84,7 @@ Both copies carry the same CEC No., OR No., DERMALOG cryptographic token, validi
 ```
 +-------------------------------------------------------------+
 | CENTER COPY   | DERMALOG: <token>                           |
-|               | DIGIFLASH · SALMON INNOVATIONS              |
+|               | DIGIFLASH                                   |
 |-------------------------------------------------------------|
 | [small photo]   ALUDO, COLEEN ANN S                         |
 |                 MANILA CITY NCR                             |
@@ -126,7 +126,7 @@ The Digiflash sample in this folder reproduces that layout one-for-one with the 
 | `PASSED` / `FAILED` text in colour | `payload.verdict.pass` | Same. Plain coloured text — no diagonal watermark. |
 | `FOR REGISTRATION ONLY` disclaimer | hard-coded label | Same. |
 | DERMALOG cryptographic token (e.g. `533D2153B7D085DDE0630C14640AF02B`) | `dermalog_token` returned by LTMS | Same field name (`dermalogToken`) on the cloud `/api/submissions/{id}` response. Stored on the local `ltms_submissions.dermalog_token` column. |
-| IT provider attribution (e.g. `THE NEW CYBERLINKTECH, INC.`) | hard-coded constant in `cec/pdf.py` | Replaced with `DIGIFLASH · SALMON INNOVATIONS`. |
+| IT provider attribution (e.g. `THE NEW CYBERLINKTECH, INC.`) | hard-coded constant in `cec/pdf.py` | Replaced with `DIGIFLASH`. |
 | CEC No. (footer, both copies) | `certificate_no` returned by LTMS | Same. Stored on `ltms_submissions.certificate_no`. |
 
 ### 3.1 Field provenance summary
@@ -168,7 +168,7 @@ The PDF in this folder was rendered from a mock submission. The OR No., DERMALOG
 - `dermalog_token`: 32-char uppercase hex from a UUID.
 - `valid_from` / `valid_until`: today and today + 60 days.
 
-These are placeholders only. The plumbing is in place so that as soon as Salmon Innovations completes the LTMS / IRDS onboarding handshake and the live `StradcomGovRegistryClient` is enabled (set `petc.gov.mock=false` in the cloud `application.yml`), every accepted submission will receive the **real** LTMS-issued values and the printed CEC will carry them verbatim. No further code changes are required.
+These are placeholders only. The plumbing is in place so that as soon as Digiflash completes the LTMS / IRDS onboarding handshake and the live `StradcomGovRegistryClient` is enabled (set `petc.gov.mock=false` in the cloud `application.yml`), every accepted submission will receive the **real** LTMS-issued values and the printed CEC will carry them verbatim. No further code changes are required.
 
 A second sample, produced from a real LTMS sandbox submission with the live values redacted only where LTO requests, will be added to this folder as `sample-cec-live-sandbox.pdf` and noted in the revision history.
 
@@ -226,8 +226,8 @@ Documented honestly so DOTr / LTO can assess them during review.
 
 | Difference | Reason | Disposition |
 |---|---|---|
-| IT-provider attribution text is `DIGIFLASH · SALMON INNOVATIONS` rather than `THE NEW CYBERLINKTECH, INC.` | Each IT provider attributes its own software on the CEC. | Intentional; the same convention. |
-| Camera burn-in shows `issued_at` (i.e. the LTMS-accept timestamp) rather than a per-frame camera capture timestamp. | The desktop currently does not stamp the timestamp into the JPEG itself; the renderer overlays it on the PDF. | Acceptable for accreditation. Salmon Innovations will move the burn-in into the JPEG in a follow-up release so the timestamp is preserved if the photo is reproduced outside the CEC. |
+| IT-provider attribution text is `DIGIFLASH` rather than `THE NEW CYBERLINKTECH, INC.` | Each IT provider attributes its own software on the CEC. | Intentional; the same convention. |
+| Camera burn-in shows `issued_at` (i.e. the LTMS-accept timestamp) rather than a per-frame camera capture timestamp. | The desktop currently does not stamp the timestamp into the JPEG itself; the renderer overlays it on the PDF. | Acceptable for accreditation. Digiflash will move the burn-in into the JPEG in a follow-up release so the timestamp is preserved if the photo is reproduced outside the CEC. |
 | The vehicle photo + plate-close-up may both fall back to the same image when only the mandatory `FRONT` photo is captured. | The wizard currently requires only one photo (`FRONT`). | The wizard can be configured to require a second photo per LTO MC ACL-2009-1170; pending LTO confirmation. |
 | Cleaner sans-serif typography and tighter row spacing than the existing-provider sample. | Aesthetic choice within the substance of the same format. | Intentional. |
 

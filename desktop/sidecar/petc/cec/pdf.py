@@ -26,7 +26,7 @@ MUTED = HexColor("#5a667a")
 PASS_GREEN = HexColor("#1ea64a")
 FAIL_RED = HexColor("#c0392b")
 
-IT_PROVIDER = "DIGIFLASH  ·  SALMON INNOVATIONS"
+IT_PROVIDER = "DIGIFLASH"
 
 
 def cec_pdf_dir() -> Path:

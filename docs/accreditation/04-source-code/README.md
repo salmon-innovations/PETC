@@ -14,11 +14,11 @@ DOTr IT Provider Accreditation – Deliverable #4
 | Document version | 0.1 (Draft) |
 | Document date | 2026-06-03 |
 | Product name | Digiflash |
-| IT Provider | Salmon Innovations |
-| Repository | `https://github.com/salmon-innovations/PETC` (private) |
+| IT Provider | Digiflash |
+| Repository | `https://github.com/digiflash/PETC` (private) |
 | Submission tag | `accreditation-2026-06-03` (annotated tag) |
 | Submission commit | resolved by `git rev-list -n 1 accreditation-2026-06-03` |
-| Prepared by | Christian Deiniel Y. Silerio |
+| Prepared by | Christian Deiniel Y. Silerio (Lead Developer, Digiflash) |
 | Prepared for | Department of Transportation (DOTr) / Land Transportation Office (LTO) |
 
 ### Revision History
@@ -31,10 +31,10 @@ DOTr IT Provider Accreditation – Deliverable #4
 
 ## 1. Scope
 
-DOTr accreditation Deliverable #4 is the "Client Application Program Source Code". For the Digiflash submission this is satisfied by **read-only access to the live Salmon Innovations GitHub repository** rather than a zipped source archive, for three reasons:
+DOTr accreditation Deliverable #4 is the "Client Application Program Source Code". For the Digiflash submission this is satisfied by **read-only access to the live Digiflash GitHub repository** rather than a zipped source archive, for three reasons:
 
 1. The repository is the authoritative source of truth — every commit, hash, and history line is preserved, which gives DOTr a reproducible audit trail rather than a snapshot extracted from an unverifiable build machine.
-2. Read-only access preserves Salmon Innovations' source-code control posture while still letting reviewers clone, browse, search, build, and quote.
+2. Read-only access preserves Digiflash's source-code control posture while still letting reviewers clone, browse, search, build, and quote.
 3. The submitted commit is identified by an **annotated git tag** (`accreditation-2026-06-03`) so DOTr can always return to the exact state of the codebase that was submitted, independent of any subsequent development on `develop` or `main`.
 
 This document explains how DOTr obtains that access and how to read the tree once cloned.
@@ -55,19 +55,19 @@ The Read role does **not** permit pushing, merging, opening or commenting on pul
 
 ### 2.2 How to request access
 
-The Salmon Innovations representative listed in §6 will request a list of named GitHub accounts from DOTr / LTO. Each reviewer is added by GitHub handle. Reviewers are notified by GitHub and accept the invitation through their GitHub inbox.
+The Digiflash representative listed in §6 will request a list of named GitHub accounts from DOTr / LTO. Each reviewer is added by GitHub handle. Reviewers are notified by GitHub and accept the invitation through their GitHub inbox.
 
 ### 2.3 Cloning the repository
 
 ```bash
 # HTTPS
-git clone https://github.com/salmon-innovations/PETC.git
+git clone https://github.com/digiflash/PETC.git
 cd PETC
 git fetch --tags
 git checkout accreditation-2026-06-03
 
 # Or SSH (if the reviewer has an SSH key registered on GitHub)
-git clone git@github.com:salmon-innovations/PETC.git
+git clone git@github.com:digiflash/PETC.git
 ```
 
 The annotated tag identifies the exact commit submitted to DOTr. Even if `develop` advances during the review window, the tag remains pinned to the submission commit.
@@ -84,7 +84,7 @@ The annotated tag's message contains:
 
 - The deliverable bundle this commit corresponds to.
 - The list of accreditation document files (`docs/accreditation/0?-*.md`).
-- The Salmon Innovations representative.
+- The Digiflash representative.
 
 ---
 
@@ -237,7 +237,7 @@ npm run dev
 
 ## 5. Third-Party Components
 
-The Software depends on the following major third-party libraries. All carry permissive licences (MIT, Apache-2.0, BSD-2/3-Clause, MPL-2.0, PSF, ISC, LGPL-2.1) that are compatible with the proprietary licence covering the Salmon Innovations original code (see `LICENSE.md`). None of the dependencies place any reciprocal copyleft obligation on the Salmon Innovations code.
+The Software depends on the following major third-party libraries. All carry permissive licences (MIT, Apache-2.0, BSD-2/3-Clause, MPL-2.0, PSF, ISC, LGPL-2.1) that are compatible with the proprietary licence covering the Digiflash original code (see `LICENSE.md`). None of the dependencies place any reciprocal copyleft obligation on the Digiflash code.
 
 ### 5.1 Desktop sidecar (Python)
 
@@ -296,13 +296,13 @@ Gradle, the Gradle wrapper, npm, the npm wrapper, and the Electron Builder packa
 
 ---
 
-## 6. Salmon Innovations Contact
+## 6. Digiflash Contact
 
 For accreditation questions, additional access requests, or follow-up clarification:
 
-**Salmon Innovations**
+**Digiflash**
 Christian Deiniel Y. Silerio
-Email: densilerio15@gmail.com
+Email: christian.silerio.digiflash@gmail.com
 
 ---
 

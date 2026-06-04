@@ -14,8 +14,8 @@ DOTr IT Provider Accreditation – Deliverable #6
 | Document version | 0.1 (Draft) |
 | Document date | 2026-06-02 |
 | Product name | Digiflash |
-| IT Provider | Salmon Innovations |
-| Prepared by | Christian Deiniel Y. Silerio |
+| IT Provider | Digiflash |
+| Prepared by | Christian Deiniel Y. Silerio (Lead Developer, Digiflash) |
 | Prepared for | Department of Transportation (DOTr) / Land Transportation Office (LTO) |
 | Companion documents | `02-setup-and-network-layout.md` (center perspective) |
 
@@ -59,7 +59,7 @@ flowchart TB
         D3[…N Desktop]
     end
 
-    subgraph OPS[Salmon Innovations Ops + Supervisors]
+    subgraph OPS[Digiflash Ops + Supervisors]
         BROWSER[Operator Portal Browser]
     end
 
@@ -176,7 +176,7 @@ Two distinct ingress paths terminate on the Application Load Balancer:
 
 ### 4.2 Operator portal traffic
 
-- **Source**: Salmon Innovations operations staff and authorised PETC supervisors.
+- **Source**: Digiflash operations staff and authorised PETC supervisors.
 - **Protocol**: HTTPS, TLS 1.2 or newer.
 - **Authentication**: JSON Web Token (JWT) bearer issued after operator-portal login. JWT carries the operator identity, role, and tenant scope. Refresh tokens are server-tracked and revocable.
 - **Endpoints used**: `/portal/...` namespace covering test history browsing, center licence administration, and CEC reprint workflows. Tenant scope is enforced at both the application layer (controller-level checks) and the database layer (Postgres RLS).
@@ -249,7 +249,7 @@ Egress is the most sensitive boundary in the architecture because it is the only
 
 ### 6.1 Single source IP
 
-The NAT gateway has one stable Elastic IP. Salmon Innovations communicates that IP to:
+The NAT gateway has one stable Elastic IP. Digiflash communicates that IP to:
 
 - LTO Law Enforcement Service (for LTMS whitelisting).
 - Stradcom Corporation (for IRDS whitelisting).
@@ -264,7 +264,7 @@ LTMS and IRDS accept connections from this one address only. No individual PETC 
 | LTMS registry endpoint (hostname TBC by LTO) | Vehicle and driver lookup. | HTTPS | Required, certificate validation enforced. |
 | IRDS submission endpoint (hostname TBC by Stradcom) | Stradcom record update. | HTTPS | Required, certificate validation enforced. |
 
-The specific hostnames and any port deviations are TBC until LTO Law Enforcement Service and Stradcom complete the IT-Provider onboarding handshake with Salmon Innovations. The current code carries a stub for the Stradcom client (`StradcomGovRegistryClient`) that is wired by configuration and is the only place the live integration goes when credentials and an API specification are handed over.
+The specific hostnames and any port deviations are TBC until LTO Law Enforcement Service and Stradcom complete the IT-Provider onboarding handshake with Digiflash. The current code carries a stub for the Stradcom client (`StradcomGovRegistryClient`) that is wired by configuration and is the only place the live integration goes when credentials and an API specification are handed over.
 
 ### 6.3 Credential handling
 
@@ -350,7 +350,7 @@ DR exercises: a quarterly tabletop and an annual recovery exercise restoring fro
 
 ## 10. Pilot Footprint vs Target Footprint
 
-The architecture above describes the **target production footprint**. The pilot footprint at the time of this submission diverges from the target in the following respects, all of which are tracked as scale-out work items in the Salmon Innovations roadmap.
+The architecture above describes the **target production footprint**. The pilot footprint at the time of this submission diverges from the target in the following respects, all of which are tracked as scale-out work items in the Digiflash roadmap.
 
 | Concern | Pilot today | Target production |
 |---|---|---|

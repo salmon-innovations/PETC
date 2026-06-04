@@ -14,8 +14,8 @@ DOTr IT Provider Accreditation – Deliverable #1
 | Document version | 0.2 (Draft) |
 | Document date | 2026-06-03 |
 | Product name | Digiflash |
-| IT Provider | Salmon Innovations |
-| Prepared by | Christian Deiniel Y. Silerio |
+| IT Provider | Digiflash |
+| Prepared by | Christian Deiniel Y. Silerio (Lead Developer, Digiflash) |
 | Prepared for | Department of Transportation (DOTr) / Land Transportation Office (LTO) |
 | Audience | Trained PETC operators (encoders and supervisors) |
 | Language | English |
@@ -123,7 +123,9 @@ These settings are saved and do not need to be re-entered.
 
 If your credentials are correct, you are taken to the home screen. If they are incorrect, an inline error message is shown; after five consecutive failures the account is temporarily locked for 15 minutes.
 
-> **Screenshot placeholder 4.1** – Login screen with empty fields.
+![Login screen with empty fields](../../photos/manual/login.png)
+
+*Figure 4.1 — Login screen with empty fields.*
 
 ### 4.2 Forgotten Password
 
@@ -145,7 +147,9 @@ After login, the home screen shows:
 - A secondary navigation strip with: **Run Test**, **LTMS Upload**, **History**, **Analytics**, **Settings**.
 - A status bar at the bottom showing analyzer connection status, printer status, and cloud sync status.
 
-> **Screenshot placeholder 5** – Home screen with status bar at the bottom.
+![Home screen with status bar at the bottom](../../photos/manual/run-test.png)
+
+*Figure 5 — Home screen with status bar at the bottom.*
 
 ### 5.1 Status Bar Indicators
 
@@ -173,7 +177,9 @@ This is the core daily workflow.
    - **Diesel** routes the test to the Fofen diesel opacimeter.
 5. Click **Start Test**.
 
-> **Screenshot placeholder 6.1** – Run Test screen, plate lookup completed.
+![Run Test screen, plate lookup completed](../../photos/manual/plate_lookup.png)
+
+*Figure 6.1 — Run Test screen, plate lookup completed.*
 
 ### 6.2 Capturing Analyzer Readings
 
@@ -187,7 +193,9 @@ The screen updates live until the analyzer signals end-of-test. The final accept
 
 If the analyzer disconnects or returns no data within 60 seconds, an error banner appears with the suggested fix.
 
-> **Screenshot placeholder 6.2** – Live analyzer readings during a diesel test.
+![Live analyzer readings during a diesel test](../../photos/manual/run_test_with_results.png)
+
+*Figure 6.2 — Live analyzer readings during a diesel test.*
 
 ### 6.3 Capturing Photos
 
@@ -222,7 +230,9 @@ The LTMS Upload wizard takes a saved test through a six-step review before submi
 2. A list of pending tests is shown, newest first.
 3. Click the row of the test you want to submit.
 
-> **Screenshot placeholder 7.1** – Pending uploads list.
+![Pending uploads list](../../photos/manual/LTMS_Upload.png)
+
+*Figure 7.1 — Pending uploads list.*
 
 ### 7.2 Step 1 – Vehicle Details
 
@@ -237,7 +247,9 @@ Review and correct (if needed) the following fields, most of which are pre-fille
 
 Plate No, Make, Series, Engine No, and Chassis No are required before the wizard will let you proceed. Click **Next**.
 
-> **Screenshot placeholder 7.2** – Wizard Step 1, vehicle details.
+![Wizard Step 1, vehicle details](../../photos/manual/Vehicle%20tab.png)
+
+*Figure 7.2 — Wizard Step 1, vehicle details.*
 
 ### 7.3 Step 2 – Owner Details
 
@@ -250,7 +262,9 @@ For individual owners, Last Name, First Name, Address, and City are required. Fo
 
 Click **Next**.
 
-> **Screenshot placeholder 7.3** – Wizard Step 2, owner details.
+![Wizard Step 2, owner details](../../photos/manual/owner_tab.png)
+
+*Figure 7.3 — Wizard Step 2, owner details.*
 
 ### 7.4 Step 3 – Engine Flags and Readings
 
@@ -266,7 +280,9 @@ These flags appear on the LTMS submission and influence how LTMS interprets the 
 
 Click **Next**.
 
-> **Screenshot placeholder 7.4** – Wizard Step 3, engine flags and readings.
+![Wizard Step 3, engine flags and readings](../../photos/manual/results.png)
+
+*Figure 7.4 — Wizard Step 3, engine flags and readings.*
 
 ### 7.5 Step 4 – Technician and Certification
 
@@ -278,7 +294,9 @@ Three fields are shown, pre-filled from your operator profile:
 
 All three are required. Correct any errors before continuing. Click **Next**.
 
-> **Screenshot placeholder 7.5** – Wizard Step 4, technician and certification.
+![Wizard Step 4, technician and certification](../../photos/manual/technician.png)
+
+*Figure 7.5 — Wizard Step 4, technician and certification.*
 
 ### 7.6 Step 5 – Photos
 
@@ -286,7 +304,9 @@ A single **Vehicle photo** (type `FRONT`) is required. If the photo has not yet 
 
 Click **Next** once at least one Vehicle photo is attached. (A second supplementary photo can be captured if the operator wishes — the LTMS submission and the printed CEC support a second photo slot.)
 
-> **Screenshot placeholder 7.6** – Wizard Step 5, photos.
+![Wizard Step 5, photos](../../photos/manual/Photos_Tab.png)
+
+*Figure 7.6 — Wizard Step 5, photos.*
 
 ### 7.7 Step 6 – Review and Submit
 
@@ -294,7 +314,9 @@ The final screen shows a read-only summary of all data going to LTMS and IRDS. V
 
 The wizard shows a progress indicator while the Digiflash cloud submits the record to LTMS and IRDS on behalf of the center.
 
-> **Screenshot placeholder 7.7** – Wizard Step 6, review and submit.
+![Wizard Step 6, review and submit](../../photos/manual/review_tab.png)
+
+*Figure 7.7 — Wizard Step 6, review and submit.*
 
 ### 7.8 Outcomes
 
@@ -307,7 +329,9 @@ The wizard waits up to 60 seconds for LTMS to return a verdict. Possible outcome
 | **Awaiting LTMS** (`WAITING_FOR_LTMS`) | A blue banner: "Queued — awaiting LTMS response." The test has been received by the Digiflash cloud but LTMS has not yet returned a verdict within the 60-second window. | Click **Go to History**. The Digiflash desktop will check LTMS every 30 seconds in the background; when LTMS responds, the History row updates automatically — the **Print CEC** button appears for an Accepted result, or the rejection reason appears for a Rejected one. |
 | **Queued (offline)** | A yellow banner: "Saved. Will upload when connection is restored." | Continue working; the upload will retry automatically when connectivity returns. |
 
-> **Screenshot placeholder 7.8** – Accepted result with print button and A4 CEC preview.
+![Accepted result with print button and A4 CEC preview](../../photos/manual/CEC_Preview.png)
+
+*Figure 7.8 — Accepted result with print button and A4 CEC preview.*
 
 ---
 
@@ -340,7 +364,9 @@ The thermal receipt is printed via the **Print Receipt** action available on the
 
 Re-prints are logged in the audit trail with the operator ID and timestamp.
 
-> **Screenshot placeholder 8.3** – History row with Print CEC button next to an ACCEPTED state badge.
+![History row with Print CEC button next to an ACCEPTED state badge](../../photos/manual/test%20history.png)
+
+*Figure 8.3 — History row with Print CEC button next to an ACCEPTED state badge.*
 
 ---
 
@@ -361,7 +387,9 @@ Open **Analytics → Daily Summary**. The page shows:
 
 These numbers reset at midnight (PHT).
 
-> **Screenshot placeholder 9.2** – Daily summary screen.
+![Daily summary screen](../../photos/manual/analytics.png)
+
+*Figure 9.2 — Daily summary screen.*
 
 ---
 
@@ -389,7 +417,9 @@ Pick the receipt printer and click **Print Test Page**.
 
 Read-only view of the Center ID, the masked center API key, and the most recent sync timestamp. To change the API key, contact Digiflash support.
 
-> **Screenshot placeholder 10** – Settings landing page.
+![Settings landing page](../../photos/manual/settings.png)
+
+*Figure 10 — Settings landing page.*
 
 ---
 
@@ -457,7 +487,7 @@ Yellow means the desktop is saving tests locally but the Digiflash cloud is not 
 
 | Channel | Detail |
 |---|---|
-| Provider | Salmon Innovations (DOTr-accredited IT Provider) |
+| Provider | Digiflash (DOTr-accredited IT Provider) |
 | Product | Digiflash |
 | Email | _to be provided_ |
 | Phone / Hotline | _to be provided_ |

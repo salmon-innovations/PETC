@@ -28,7 +28,7 @@ Use the `--reference-doc` flag if a formal template is provided by DOTr or LTO.
 
 ## Document Control
 
-- **Prepared by**: Christian Deiniel Y. Silerio (Developer, Salmon Innovations)
+- **Prepared by**: Christian Deiniel Y. Silerio (Lead Developer, Digiflash)
 - **Prepared for**: Emmanuel Jayson Florendo Jr. (Client)
 - **Submitting to**: Department of Transportation (DOTr), Land Transportation Office (LTO)
 - **Project**: PETC Data Submission SaaS
