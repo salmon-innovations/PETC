@@ -209,7 +209,7 @@ After analyzer readings are captured:
 
 Each photo is stored locally and tagged with a SHA-256 hash, the test ID, the operator ID, and a timestamp.
 
-> **Screenshot placeholder 6.3** – Photo capture screen with two captures visible.
+> **Note — photo-capture screenshot.** The photo-capture screen requires a connected webcam and a vehicle at the testing bay, which are only available at an operating PETC. This screen is captured on-site during inspection rather than in the reference / development environment, and the corresponding screenshot will be inserted here at that time.
 
 ### 6.4 Saving the Test
 
