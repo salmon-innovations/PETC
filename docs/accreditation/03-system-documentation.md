@@ -399,20 +399,16 @@ and paste the formatted output.
 The items below are split into two groups:
 
 - **Group A — Installed-machine screenshots (captured here, §7.3).** These show the *deployed* footprint of the Client Application — installed binaries and the runtime data the program creates on disk, with file sizes. They can only be produced on an installed Windows machine and so are captured in this document.
-- **Group B — Source and configuration files.** These are the on-disk *sources* of the same sub-programs. To avoid duplicating evidence, they are not re-screenshotted here: the complete source tree (with per-file paths and sizes) is submitted in full as **Deliverable #4 — Source Code** (see [04-source-code/manifest.md](04-source-code/manifest.md), which lists every file with its size). A single consolidated pointer is given in §7.3.9.
+- **Group B — Source and configuration files.** These are the on-disk *sources* of the same sub-programs. To avoid duplicating evidence, they are not re-screenshotted here: the complete source tree (with per-file paths and sizes) is submitted in full as **Deliverable #4 — Source Code** (see [04-source-code/manifest.md](04-source-code/manifest.md), which lists every file with its size). A single consolidated pointer is given in §7.3.3.
 
 **Group A — Installed-machine screenshots**
 
-| # | Path | Captured |
-|---|---|---|
-| 1 | `C:\Program Files\Digiflash\` (root install directory) | ☐ |
-| 2 | `C:\Program Files\Digiflash\resources\app.asar.unpacked\sidecar\` (sidecar exe folder) | ☐ |
-| 3 | `C:\Program Files\Digiflash\resources\app.asar\renderer\dist\` (renderer assets) | ☐ |
-| 4 | `%APPDATA%\Digiflash\` (runtime data root) | ☐ |
-| 5 | `%APPDATA%\Digiflash\petc.db` (SQLite database, showing file size) | ☐ |
-| 6 | `%APPDATA%\Digiflash\photos\` (photo storage) | ☐ |
-| 7 | `%APPDATA%\Digiflash\cec\` (CEC PDFs) | ☐ |
-| 8 | `%APPDATA%\Digiflash\logs\` (application logs) | ☐ |
+Two screenshots capture the entire deployed footprint, because every system file lives under one of two roots. Each is taken with File Explorer in **Details** view (Name · Date modified · Type · Size); the install root is shown with its subfolders expanded so the nested sidecar and renderer assets are visible in the one capture.
+
+| # | Path | What it must show | Captured |
+|---|---|---|---|
+| 1 | `C:\Program Files\Digiflash\` (install root, subfolders expanded) | The installed binaries — `Digiflash.exe`, plus `resources\app.asar.unpacked\sidecar\` (sidecar exe) and `resources\app.asar\renderer\dist\` (renderer assets) — each with size. | ☐ |
+| 2 | `%APPDATA%\Digiflash\` (runtime data root) | `petc.db` **with its file size**, plus the `photos\`, `cec\`, and `logs\` subfolders the program creates at runtime. | ☐ |
 
 **Group B — Source and configuration files (provided as Deliverable #4)**
 
@@ -436,31 +432,13 @@ The items below are split into two groups:
 
 > _The numbered headings below correspond to each row in the checklist. Insert the captured screenshot under the matching heading._
 
-#### 7.3.1 Install root – `C:\Program Files\Digiflash\`
-*(screenshot to be inserted)*
+#### 7.3.1 Install root – `C:\Program Files\Digiflash\` (subfolders expanded)
+*(screenshot to be inserted — Details view showing `Digiflash.exe` plus the expanded `resources\app.asar.unpacked\sidecar\` and `resources\app.asar\renderer\dist\` folders, with sizes)*
 
-#### 7.3.2 Sidecar executable folder
-*(screenshot to be inserted)*
+#### 7.3.2 Runtime data root – `%APPDATA%\Digiflash\`
+*(screenshot to be inserted — Details view showing `petc.db` with its size, plus the `photos\`, `cec\`, and `logs\` subfolders)*
 
-#### 7.3.3 Renderer asset folder
-*(screenshot to be inserted)*
-
-#### 7.3.4 Runtime data root – `%APPDATA%\Digiflash\`
-*(screenshot to be inserted)*
-
-#### 7.3.5 Local SQLite database – `petc.db`
-*(screenshot to be inserted)*
-
-#### 7.3.6 Photo storage directory
-*(screenshot to be inserted)*
-
-#### 7.3.7 CEC PDF storage directory
-*(screenshot to be inserted)*
-
-#### 7.3.8 Application log directory
-*(screenshot to be inserted)*
-
-#### 7.3.9 Source and configuration files — see Deliverable #4
+#### 7.3.3 Source and configuration files — see Deliverable #4
 
 The source files for every sub-program listed in Group B of §7.2 (Electron main process, React renderer pages, Python sidecar and its analyzer / submissions / cec / db packages, the cloud submitter and gov adapters, and all build / configuration files) are submitted **in full** as **Deliverable #4 — Source Code**. The accompanying [source-code manifest](04-source-code/manifest.md) enumerates every file with its repository path and size, which is the same folder/location/size evidence DOTr requires — provided once, at higher fidelity, rather than duplicated as Explorer screenshots here.
 
