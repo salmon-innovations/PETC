@@ -108,7 +108,7 @@ On first launch, the application performs a self-check and may prompt for:
 
 These settings are saved and do not need to be re-entered.
 
-> **Screenshot placeholder 3.2** – Installer welcome screen and first-launch self-check.
+> **Note — installer screenshots.** The installer welcome screen and the first-launch hardware self-check are produced by a signed, packaged Windows build (`Digiflash-PETC-Setup-<version>.exe`). These screens do not exist in the reference / development environment, which runs the application directly from source. The corresponding screenshots will be inserted here once a signed packaged build is produced.
 
 ---
 
