@@ -398,7 +398,7 @@ and paste the formatted output.
 
 The items below are split into two groups:
 
-- **Group A — Installed-machine screenshots (captured here, §7.3).** These show the *deployed* footprint of the Client Application — installed binaries and the runtime data the program creates on disk, with file sizes. They can only be produced on an installed Windows machine and so are captured in this document.
+- **Group A — Installed program and runtime data (captured here, §7.3).** These show the *deployed* footprint of the Client Application — installed binaries and the runtime data the program creates on disk, with file sizes. The captures in §7.3 are taken in the **reference / development environment**; the production target is Windows 10/11 (§8), where the same files live under the Windows paths noted in §3. The folder layout and file set are identical across environments — only the platform's per-user data root differs (`%APPDATA%\Digiflash\` on Windows, `~/Library/Application Support/petc-desktop/` in the reference environment).
 - **Group B — Source and configuration files.** These are the on-disk *sources* of the same sub-programs. To avoid duplicating evidence, they are not re-screenshotted here: the complete source tree (with per-file paths and sizes) is submitted in full as **Deliverable #4 — Source Code** (see [04-source-code/manifest.md](04-source-code/manifest.md), which lists every file with its size). A single consolidated pointer is given in §7.3.3.
 
 **Group A — Installed-machine screenshots**
@@ -428,15 +428,31 @@ Two screenshots capture the entire deployed footprint, because every system file
 | `cloud\src\main\resources\application.yml` | Cloud configuration | Deliverable #4 |
 | `cloud\src\main\resources\db\migration\` | Cloud Flyway migrations | Deliverable #4 |
 
-### 7.3 Screenshot Placeholders
+### 7.3 File Inventory (location + size)
 
-> _The numbered headings below correspond to each row in the checklist. Insert the captured screenshot under the matching heading._
+> _Captures and listings below are taken in the **reference / development environment**. The production install paths (Windows) are given in §3 and §8; the file set and folder layout are identical, differing only in the per-user data root (`%APPDATA%\Digiflash\` on Windows, `~/Library/Application Support/petc-desktop/` here)._
 
-#### 7.3.1 Install root – `C:\Program Files\Digiflash\` (subfolders expanded)
-*(screenshot to be inserted — Details view showing `Digiflash.exe` plus the expanded `resources\app.asar.unpacked\sidecar\` and `resources\app.asar\renderer\dist\` folders, with sizes)*
+#### 7.3.1 Installed program files
 
-#### 7.3.2 Runtime data root – `%APPDATA%\Digiflash\`
-*(screenshot to be inserted — Details view showing `petc.db` with its size, plus the `photos\`, `cec\`, and `logs\` subfolders)*
+The packaged program binaries (`Digiflash.exe`, the PyInstaller-frozen `petc-sidecar.exe`, and the bundled renderer assets) are produced by `electron-builder` at packaging time and install under `C:\Program Files\Digiflash\` on the production target (§3.1–§3.3). In the reference / development environment the application runs directly from the source tree rather than from a packaged installer, so there is no `Program Files` footprint to capture here. The complete source and build configuration for every one of these binaries — with per-file paths and sizes — is submitted as **Deliverable #4 — Source Code** (see [04-source-code/manifest.md](04-source-code/manifest.md)).
+
+*(Windows install-root screenshot to be inserted once a signed packaged build is produced.)*
+
+#### 7.3.2 Runtime data root — `~/Library/Application Support/petc-desktop/` (reference env; `%APPDATA%\Digiflash\` on Windows)
+
+The runtime data the program creates on disk, with sizes, captured in the reference / development environment:
+
+| File / folder | Purpose | Size |
+|---|---|---|
+| `petc.db` | Local SQLite database — source of truth for test records | 4 KB |
+| `petc.db-wal` | SQLite write-ahead log (pending committed pages) | 1.4 MB |
+| `petc.db-shm` | SQLite shared-memory index for the WAL | 32 KB |
+| `photos/` | Per-test vehicle / bay photos (`<photoId>.jpg`) | 3.7 MB (37 files) |
+| `cec/` | Issued Certificate of Emission Compliance PDFs | 680 KB (11 files) |
+
+![Runtime data root in the reference / development environment](../../photos/install/runtime-data-dev.png)
+
+*Figure 7.3.2 — Runtime data root (`petc-desktop/`) in the reference / development environment, showing `petc.db` with its size and the `photos/` and `cec/` directories the program creates at runtime.*
 
 #### 7.3.3 Source and configuration files — see Deliverable #4
 
