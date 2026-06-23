@@ -1,0 +1,147 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "primaryColor": "#eef4fb",
+    "primaryBorderColor": "#2c5282",
+    "primaryTextColor": "#1a202c",
+    "lineColor": "#4a5568",
+    "fontFamily": "Helvetica,Arial,sans-serif",
+    "fontSize": "13px",
+    "clusterBkg": "#f7fafc",
+    "clusterBorder": "#cbd5e0"
+  },
+  "flowchart": { "curve": "basis", "htmlLabels": true, "nodeSpacing": 28, "rankSpacing": 42, "padding": 10 }
+}}%%
+flowchart TB
+
+  %% ════════════════════════════════════════════════════════════════════
+  %% BAND 1 — CLIENTS (top)
+  %% ════════════════════════════════════════════════════════════════════
+  subgraph CLIENTS["1.  CLIENTS"]
+    direction LR
+    PETC1["PETC 1<br/>Desktop"]
+    PETC2["PETC 2<br/>Desktop"]
+    PETCN["… PETC N<br/>Desktop"]
+    OPS["Digiflash Ops"]
+    SUPER["Center<br/>Supervisors"]
+  end
+
+  %% ════════════════════════════════════════════════════════════════════
+  %% BAND 2 — AWS (middle, the biggest band)
+  %% ════════════════════════════════════════════════════════════════════
+  subgraph AWS["2.  AWS — Digiflash Cloud · ap-southeast-1"]
+    direction TB
+
+    subgraph EDGE["Edge"]
+      direction LR
+      R53["Route 53<br/><span style='font-size:11px'>api.digiflash.ph</span>"]
+      CF["CloudFront<br/><span style='font-size:11px'>portal.digiflash.ph</span>"]
+      WAF["AWS WAF"]
+    end
+
+    subgraph VPC["VPC 10.0.0.0/16 · two Availability Zones"]
+      direction TB
+
+      subgraph PUB["Public subnets (2 AZs)"]
+        direction LR
+        ALB["Application Load Balancer<br/><span style='font-size:11px'>TLS 1.2+</span>"]
+        NAT["NAT Gateway<br/><span style='font-size:11px'><b>Single whitelisted<br/>Elastic IP</b></span>"]
+      end
+
+      subgraph APP["App private subnets (2 AZs)"]
+        direction LR
+        ECS["Spring Boot · ECS Fargate<br/><span style='font-size:11px'>/api/photos/presign · /api/submissions<br/>/api/registry/* · /api/auth/* (portal)</span>"]
+        JOB["Submission Job Runner<br/><span style='font-size:11px'>@Scheduled · backoff 5/15/60/300/900 s</span>"]
+      end
+
+      subgraph DATA["Data private subnets (2 AZs) · no Internet route"]
+        direction LR
+        RDS[("RDS Postgres · Multi-AZ<br/><span style='font-size:11px'>tenants · submissions · RLS</span>")]
+        REDIS[("ElastiCache Redis<br/>Multi-AZ")]
+        VPCE_S3["S3 Gateway<br/>Endpoint"]
+        VPCE_SM["Secrets Manager<br/>Interface Endpoint"]
+      end
+    end
+
+    subgraph AUX["Managed services"]
+      direction LR
+      S3[("S3 · petc-photos<br/><span style='font-size:11px'>tenants/{id}/tests/...<br/>presigned PUT (TTL 300 s)</span>")]
+      SECRETS["Secrets Manager<br/><span style='font-size:11px'>LTMS / IRDS creds<br/>JWT signing key</span>"]
+      CW["CloudWatch<br/><span style='font-size:11px'>logs · metrics · alarms</span>"]
+    end
+  end
+
+  %% ════════════════════════════════════════════════════════════════════
+  %% BAND 3 — GOVERNMENT (bottom)
+  %% ════════════════════════════════════════════════════════════════════
+  subgraph GOV["3.  GOVERNMENT REGISTRIES"]
+    direction LR
+    LTMS["LTMS (LTO)<br/><span style='font-size:11px'>submission · registry</span>"]
+    IRDS["IRDS<br/><span style='font-size:11px'>registry · record update</span>"]
+  end
+
+  %% ════════════════════════════════════════════════════════════════════
+  %% EDGES
+  %% ════════════════════════════════════════════════════════════════════
+
+  %% Clients → AWS edge
+  PETC1 -- "HTTPS · X-Center-Key" --> R53
+  PETC2 --> R53
+  PETCN --> R53
+  OPS -- "HTTPS · JWT" --> CF
+  SUPER --> CF
+
+  %% Direct presigned PUT — desktop bypasses the API for photo bytes
+  PETC1 -. "PUT presigned" .-> S3
+  PETC2 -. "PUT presigned" .-> S3
+  PETCN -. "PUT presigned" .-> S3
+
+  %% Edge → ALB
+  R53 --> WAF
+  CF --> WAF
+  WAF --> ALB
+
+  %% ALB → app
+  ALB --> ECS
+
+  %% App tier → data tier
+  ECS --> RDS
+  ECS --> REDIS
+  ECS --> VPCE_S3
+  VPCE_S3 --> S3
+  ECS --> VPCE_SM
+  VPCE_SM --> SECRETS
+  ECS --> CW
+
+  %% Job runner
+  JOB --> RDS
+  JOB -- "LTMS submit" --> NAT
+
+  %% NAT → gov (the single whitelisted egress)
+  NAT == "single whitelisted IP" ==> LTMS
+  NAT == "single whitelisted IP" ==> IRDS
+
+  %% ════════════════════════════════════════════════════════════════════
+  %% STYLING
+  %% ════════════════════════════════════════════════════════════════════
+  classDef petc fill:#eef4fb,stroke:#2c5282,stroke-width:1.2px,color:#1a202c
+  classDef users fill:#fdf6ec,stroke:#b7791f,stroke-width:1.2px,color:#1a202c
+  classDef edge fill:#f0fff4,stroke:#276749,stroke-width:1.2px,color:#1a202c
+  classDef pub fill:#ebf8ff,stroke:#2b6cb0,stroke-width:1.4px,color:#1a202c
+  classDef app fill:#faf5ff,stroke:#6b46c1,stroke-width:1.2px,color:#1a202c
+  classDef data fill:#fff5f5,stroke:#c53030,stroke-width:1.2px,color:#1a202c
+  classDef aux fill:#fffaf0,stroke:#b7791f,stroke-width:1.2px,color:#1a202c
+  classDef gov fill:#f7fafc,stroke:#2d3748,stroke-width:1.6px,color:#1a202c
+
+  class PETC1,PETC2,PETCN petc
+  class OPS,SUPER users
+  class R53,CF,WAF edge
+  class ALB,NAT pub
+  class ECS,JOB app
+  class RDS,REDIS,VPCE_S3,VPCE_SM data
+  class S3,SECRETS,CW aux
+  class LTMS,IRDS gov
+
+  %% Highlight the single-whitelisted-IP egress in red
+  linkStyle 18 stroke:#c53030,stroke-width:3px
+  linkStyle 19 stroke:#c53030,stroke-width:3px

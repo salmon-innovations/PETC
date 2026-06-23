@@ -1,5 +1,4 @@
 import { app, BrowserWindow, ipcMain, shell } from "electron";
-import { autoUpdater } from "electron-updater";
 import * as path from "path";
 import * as fs from "fs";
 import { spawn, ChildProcess } from "child_process";
@@ -7,11 +6,19 @@ import log from "electron-log";
 
 // ── logging ───────────────────────────────────────────────────────────────
 log.transports.file.level = "info";
-autoUpdater.logger = log;
 
 // ── constants ─────────────────────────────────────────────────────────────
 const SIDECAR_PORT = 8765;
 const isDev = !app.isPackaged;
+
+// electron-updater is only loaded in packaged builds. Loading it during
+// `electron .` dev runs trips an internal `app.getVersion()` call before
+// the `app` module is fully initialised, which crashes the main process.
+let autoUpdater: typeof import("electron-updater").autoUpdater | null = null;
+if (!isDev) {
+  autoUpdater = require("electron-updater").autoUpdater;
+  if (autoUpdater) autoUpdater.logger = log;
+}
 
 // ── sidecar lifecycle ─────────────────────────────────────────────────────
 let sidecarProcess: ChildProcess | null = null;
@@ -125,6 +132,7 @@ ipcMain.on("renderer:fatal", (_e, msg: string) => {
 
 // ── auto-updater ───────────────────────────────────────────────────────────
 function setupAutoUpdater(): void {
+  if (!autoUpdater) return; // disabled in dev
   autoUpdater.checkForUpdatesAndNotify();
 
   autoUpdater.on("update-available", () => {
@@ -135,7 +143,7 @@ function setupAutoUpdater(): void {
   });
 
   // Renderer can trigger install-and-relaunch
-  ipcMain.on("update:install", () => autoUpdater.quitAndInstall());
+  ipcMain.on("update:install", () => autoUpdater!.quitAndInstall());
 }
 
 // ── app lifecycle ──────────────────────────────────────────────────────────

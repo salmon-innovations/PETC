@@ -17,10 +17,11 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
     @Query("UPDATE RefreshToken r SET r.revoked = true WHERE r.id = :id")
     void revoke(@Param("id") UUID id);
 
+    @Modifying
     @Query(value = """
             INSERT INTO refresh_tokens(user_id, tenant_id, token_hash, expires_at)
             VALUES (:userId, :tenantId,
-                    encode(sha256(:token::bytea), 'hex'),
+                    encode(sha256(CAST(:token AS bytea)), 'hex'),
                     now() + interval '30 days')
             """, nativeQuery = true)
     void saveRefreshToken(
