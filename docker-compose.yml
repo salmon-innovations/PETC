@@ -56,8 +56,13 @@ services:
       context: ./cloud/frontend
       dockerfile: Dockerfile
     restart: unless-stopped
-    depends_on:
-      - backend
+    # Points at the production cloud app in cloud/ (run via ./gradlew bootRun on
+    # the host). The `backend` compose service builds cloud/backend, which is the
+    # deprecated spike — see README "Project Layout".
+    environment:
+      API_UPSTREAM: ${API_UPSTREAM:-host.docker.internal:8080}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3000:80"
 

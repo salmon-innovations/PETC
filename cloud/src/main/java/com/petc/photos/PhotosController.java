@@ -4,8 +4,10 @@ import com.petc.ingest.CenterKeyValidator;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
@@ -49,7 +51,11 @@ public class PhotosController {
             @RequestHeader("X-Center-Key") String centerKey,
             @Valid @RequestBody PresignRequest req
     ) {
-        String tenantId = keyValidator.validate(centerKey);
+        String tenantId = keyValidator.validateContext(centerKey).tenantId();
+        String contentType = req.contentType() != null ? req.contentType() : "image/jpeg";
+        if (!contentType.equals("image/jpeg") && !contentType.equals("image/jpg")) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Only JPEG photo uploads are accepted");
+        }
         String s3Key = "tenants/%s/tests/%s/%s.jpg".formatted(tenantId, req.testId(), req.photoId());
 
         PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
@@ -57,7 +63,7 @@ public class PhotosController {
                 .putObjectRequest(PutObjectRequest.builder()
                         .bucket(bucket)
                         .key(s3Key)
-                        .contentType(req.contentType() != null ? req.contentType() : "image/jpeg")
+                        .contentType(contentType)
                         .build())
                 .build();
 
@@ -72,8 +78,8 @@ public class PhotosController {
             @NotBlank String testId,
             @NotBlank String photoId,
             String photoType,
-            String contentType,
-            String sha256
+            @NotBlank String contentType,
+            @NotBlank String sha256
     ) {}
 
     record PresignResponse(String s3Key, String uploadUrl) {}

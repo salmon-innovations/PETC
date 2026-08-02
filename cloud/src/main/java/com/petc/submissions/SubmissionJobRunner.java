@@ -5,13 +5,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.petc.gov.EmissionPayload;
 import com.petc.gov.GovRegistryClient;
 import com.petc.gov.SubmissionResult;
+import com.petc.settings.PlatformSettingsService;
+import com.petc.wallet.WalletService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -24,29 +26,56 @@ public class SubmissionJobRunner {
 
     private static final Logger log = LoggerFactory.getLogger(SubmissionJobRunner.class);
     private static final int BATCH_SIZE = 10;
-    private static final int[] BACKOFF_SECONDS = {5, 15, 60, 300, 900};
 
     private final SubmissionService service;
     private final GovRegistryClient govClient;
     private final ObjectMapper mapper;
-    private final int maxAttempts;
+    private final PlatformSettingsService settings;
+    private final WalletService wallet;
 
     public SubmissionJobRunner(
             SubmissionService service,
             GovRegistryClient govClient,
             ObjectMapper mapper,
-            @Value("${petc.submission.max-attempts:5}") int maxAttempts
+            PlatformSettingsService settings,
+            WalletService wallet
     ) {
         this.service = service;
         this.govClient = govClient;
         this.mapper = mapper;
-        this.maxAttempts = maxAttempts;
+        this.settings = settings;
+        this.wallet = wallet;
     }
 
+    /**
+     * Dispatch loop. Each submission must be affordable before it is filed:
+     * the cloud is the only route to LTMS, so this is where prepaid billing is
+     * enforced.
+     *
+     * The affordability check runs per batch with a running per-tenant total,
+     * not per row against the stored balance. Ten queued rows for a center with
+     * funds for three must file three and hold seven; re-reading the same
+     * balance ten times would file all ten.
+     */
     @Scheduled(fixedDelay = 2000)
     public void processPending() {
         List<SubmissionService.PendingSubmission> batch = service.claimPending(BATCH_SIZE);
+        long charge = settings.chargePerUploadCentavos();
+        Map<String, Long> projected = new HashMap<>();
+
         for (var sub : batch) {
+            // Rows the grace sweep already released bypass the wallet entirely.
+            // This is deliberately the only path that lets a balance go
+            // negative: a billing shortfall must not become a DO 2023-008
+            // compliance breach.
+            if (!sub.graceReleased() && charge > 0) {
+                long remaining = projected.computeIfAbsent(sub.tenantId(), wallet::getBalance);
+                if (remaining < charge) {
+                    service.markBlocked(sub.id(), sub.tenantId(), remaining);
+                    continue;
+                }
+                projected.put(sub.tenantId(), remaining - charge);
+            }
             process(sub);
         }
     }
@@ -57,8 +86,11 @@ public class SubmissionJobRunner {
             EmissionPayload payload = toEmissionPayload(sub);
             SubmissionResult result = govClient.submitEmissionResult(payload);
             if (result.isAccepted()) {
-                service.markAccepted(
+                // Acceptance and the wallet debit commit together — see
+                // SubmissionService.markAcceptedAndCharge.
+                service.markAcceptedAndCharge(
                         sub.id(),
+                        sub.tenantId(),
                         result.certificateNo(),
                         null,
                         result.orNo(),
@@ -72,7 +104,8 @@ public class SubmissionJobRunner {
             }
         } catch (Exception e) {
             log.warn("Submission {} attempt {} failed: {}", sub.id(), sub.attempts(), e.getMessage());
-            service.markRetry(sub.id(), sub.attempts(), maxAttempts, BACKOFF_SECONDS);
+            service.markRetry(sub.id(), sub.attempts(),
+                    settings.maxAttempts(), settings.backoffSeconds());
         }
     }
 

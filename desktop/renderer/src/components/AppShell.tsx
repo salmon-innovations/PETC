@@ -2,6 +2,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 import { useQuery } from "@tanstack/react-query";
 import { sidecarClient } from "../api/sidecarClient";
+import type { SidecarStatus } from "../types";
 import clsx from "clsx";
 
 const NAV = [
@@ -65,6 +66,7 @@ export default function AppShell() {
               {status!.cloudOutboxPending} pending sync
             </p>
           )}
+          <WalletIndicator status={status} />
         </div>
 
         <button
@@ -88,6 +90,69 @@ function StatusDot({ ok, label }: { ok: boolean; label: string }) {
     <div className="flex items-center gap-2">
       <span className={clsx("h-2 w-2 rounded-full flex-shrink-0", ok ? "bg-green-400" : "bg-red-500")} />
       <span className={ok ? "text-gray-300" : "text-red-400"}>{label}</span>
+    </div>
+  );
+}
+
+/** Treat a balance older than this as stale rather than current. */
+const WALLET_STALE_MS = 2 * 60 * 1000;
+
+/**
+ * Prepaid balance, as last reported by the cloud.
+ *
+ * The value is cached by the sidecar's reconciler, so it survives the cloud
+ * being unreachable. When it goes stale it is shown greyed with the time it was
+ * read: an operator deciding whether to run another test is better served by a
+ * clearly-dated old number than by a blank, and much better than by a stale one
+ * presented as current.
+ */
+function WalletIndicator({ status }: { status?: SidecarStatus }) {
+  // No cloud configured (local-mock mode) — there is no balance to speak of.
+  if (!status || status.walletBalanceCentavos === null) return null;
+
+  const pesos = (status.walletBalanceCentavos / 100).toLocaleString("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    minimumFractionDigits: 2,
+  });
+
+  const fetchedAt = status.walletFetchedAt ? new Date(status.walletFetchedAt) : null;
+  const stale = !fetchedAt || Date.now() - fetchedAt.getTime() > WALLET_STALE_MS;
+
+  return (
+    <div className="pt-1.5 border-t border-gray-700/60 space-y-0.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-gray-400">Wallet</span>
+        <span
+          className={clsx(
+            "font-medium",
+            stale
+              ? "text-gray-500"
+              : status.walletNegative
+                ? "text-red-400"
+                : status.walletLow
+                  ? "text-yellow-400"
+                  : "text-gray-200"
+          )}
+        >
+          {pesos}
+        </span>
+      </div>
+      {stale && fetchedAt && (
+        <p className="text-gray-500">
+          as of {fetchedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        </p>
+      )}
+      {/* Blocked submissions are invisible to the operator otherwise: the cloud
+          holds them, and the desktop's own row just sits in "waiting". */}
+      {status.walletBlockedCount > 0 && (
+        <p className="text-yellow-400">
+          {status.walletBlockedCount} upload{status.walletBlockedCount > 1 ? "s" : ""} held — top up
+        </p>
+      )}
+      {status.walletNegative && !stale && (
+        <p className="text-red-400">Balance overdrawn</p>
+      )}
     </div>
   );
 }

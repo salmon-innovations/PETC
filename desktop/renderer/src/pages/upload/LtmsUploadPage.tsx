@@ -3,14 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { sidecarClient, type LtmsSubmitResponse, type VehicleLookupResponse } from "../../api/sidecarClient";
 import { useAuthStore } from "../../store/authStore";
-import type { EmissionTest, EmissionTestDetail, FuelType, OwnerInfo, TestPhoto, VehicleInfo } from "../../types";
+import type { Classification, EmissionTest, EmissionTestDetail, FuelType, OwnerInfo, TestPhoto, VehicleInfo } from "../../types";
 import { evaluateEmission, type EngineFlags } from "../../utils/emissionLimits";
 import { CameraStream, type CameraStreamHandle } from "../../components/CameraStream";
 
 type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
 type PhotoType = TestPhoto["photoType"];
-
-type Classification = "PRIVATE" | "PUBLIC" | "GOVERNMENT" | "DIPLOMATIC";
 
 type VehicleForm = {
   plateNo: string;
@@ -67,10 +65,6 @@ const EMPTY_OWNER: OwnerForm = {
   address: "",
   city: "",
 };
-
-const PHOTO_TYPES: { type: PhotoType; label: string; required: boolean }[] = [
-  { type: "FRONT", label: "Vehicle photo", required: true },
-];
 
 const STEP_LABELS = ["Vehicle", "Owner", "Results", "Technician", "Photos", "Review"] as const;
 
@@ -753,7 +747,7 @@ function mapVehicle(vehicle: VehicleInfo): VehicleForm {
     color: vehicle.color ?? "",
     transmission: vehicle.transmission ?? "A/T",
     fuelType: vehicle.fuelType ?? "GAS",
-    classification: (vehicle.classification as Classification | undefined) ?? "PRIVATE",
+    classification: vehicle.classification ?? "PRIVATE",
   };
 }
 

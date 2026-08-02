@@ -3,8 +3,11 @@ import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from "re
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import LoginPage from "./pages/auth/LoginPage";
 import CentersPage from "./pages/admin/CentersPage";
+import CenterDetailPage from "./pages/centers/CenterDetailPage";
 import LicensesPage from "./pages/licensing/LicensesPage";
-import CrossCenterDashboard from "./pages/analytics/CrossCenterDashboard";
+import OperationsDashboard from "./pages/dashboard/OperationsDashboard";
+import SubmissionsPage from "./pages/submissions/SubmissionsPage";
+import SettingsPage from "./pages/settings/SettingsPage";
 import { useAuthStore } from "./store/authStore";
 import clsx from "clsx";
 const queryClient = new QueryClient({
@@ -15,9 +18,11 @@ function RequireAuth({ children }) {
     return isAuthenticated ? _jsx(_Fragment, { children: children }) : _jsx(Navigate, { to: "/login", replace: true });
 }
 const NAV = [
-    { to: "/analytics", label: "Analytics" },
+    { to: "/dashboard", label: "Dashboard" },
+    { to: "/submissions", label: "Submissions" },
     { to: "/centers", label: "Centers" },
-    { to: "/licenses", label: "Licenses" },
+    { to: "/licenses", label: "API Keys" },
+    { to: "/settings", label: "Settings" },
 ];
 function AppShell({ children }) {
     const logout = useAuthStore((s) => s.logout);
@@ -30,6 +35,9 @@ function AppShell({ children }) {
                                 ? "bg-blue-50 text-blue-700"
                                 : "text-gray-600 hover:bg-gray-100"), children: label }, to))) }), _jsx("button", { onClick: handleLogout, className: "text-xs text-gray-500 hover:text-gray-800 underline", children: "Sign out" })] }), _jsx("main", { className: "flex-1", children: children })] }));
 }
+function Protected({ children }) {
+    return (_jsx(RequireAuth, { children: _jsx(AppShell, { children: children }) }));
+}
 export default function App() {
-    return (_jsx(QueryClientProvider, { client: queryClient, children: _jsx(BrowserRouter, { children: _jsxs(Routes, { children: [_jsx(Route, { path: "/login", element: _jsx(LoginPage, {}) }), _jsx(Route, { path: "/analytics", element: _jsx(RequireAuth, { children: _jsx(AppShell, { children: _jsx(CrossCenterDashboard, {}) }) }) }), _jsx(Route, { path: "/centers", element: _jsx(RequireAuth, { children: _jsx(AppShell, { children: _jsx(CentersPage, {}) }) }) }), _jsx(Route, { path: "/licenses", element: _jsx(RequireAuth, { children: _jsx(AppShell, { children: _jsx(LicensesPage, {}) }) }) }), _jsx(Route, { path: "*", element: _jsx(Navigate, { to: "/analytics", replace: true }) })] }) }) }));
+    return (_jsx(QueryClientProvider, { client: queryClient, children: _jsx(BrowserRouter, { children: _jsxs(Routes, { children: [_jsx(Route, { path: "/login", element: _jsx(LoginPage, {}) }), _jsx(Route, { path: "/dashboard", element: _jsx(Protected, { children: _jsx(OperationsDashboard, {}) }) }), _jsx(Route, { path: "/submissions", element: _jsx(Protected, { children: _jsx(SubmissionsPage, {}) }) }), _jsx(Route, { path: "/centers", element: _jsx(Protected, { children: _jsx(CentersPage, {}) }) }), _jsx(Route, { path: "/centers/:tenantId", element: _jsx(Protected, { children: _jsx(CenterDetailPage, {}) }) }), _jsx(Route, { path: "/licenses", element: _jsx(Protected, { children: _jsx(LicensesPage, {}) }) }), _jsx(Route, { path: "/settings", element: _jsx(Protected, { children: _jsx(SettingsPage, {}) }) }), _jsx(Route, { path: "/analytics", element: _jsx(Navigate, { to: "/dashboard", replace: true }) }), _jsx(Route, { path: "*", element: _jsx(Navigate, { to: "/dashboard", replace: true }) })] }) }) }));
 }

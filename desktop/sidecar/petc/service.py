@@ -50,9 +50,16 @@ def run() -> None:
     from .db.session import init_db
     from .cloud_sync.pusher import CloudSyncPusher
     from .api.server import init as init_api, run as run_api
+    from .runtime import ProductionConfigError, is_production, validate_desktop_startup_config
+
+    try:
+        runtime_config = validate_desktop_startup_config(_CONFIG)
+    except ProductionConfigError:
+        logger.exception("Refusing to start sidecar with non-compliant production settings")
+        raise
 
     init_db()
-    logger.info("SQLite initialised")
+    logger.info("SQLite initialised (profile=%s)", runtime_config.profile)
 
     analyzer = _build_analyzer()
     camera = build_camera_from_settings()
@@ -70,6 +77,9 @@ def run() -> None:
     try:
         analyzer.connect()
     except Exception as exc:
+        if is_production():
+            logger.exception("Analyzer connect failed in production")
+            raise
         logger.warning(
             "Analyzer connect failed at boot (%s) — sidecar starting anyway; "
             "operator can switch type or port from Settings.",
@@ -78,6 +88,9 @@ def run() -> None:
     try:
         camera.open()
     except Exception as exc:
+        if is_production():
+            logger.exception("Camera open failed in production")
+            raise
         logger.warning(
             "Camera open failed at boot (%s) — sidecar starting anyway; "
             "operator can switch device from Settings.",

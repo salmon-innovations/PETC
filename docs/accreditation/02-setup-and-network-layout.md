@@ -137,12 +137,12 @@ The operator workstation sits at the side of the testing bay so the operator can
 
 ### 4.1 Regulatory Basis
 
-The governing instruments for PETC IT-Provider accreditation are:
+The primary governing instrument for this accreditation package is:
 
-- **DOTC Department Order 2005-37** – *Rules Governing DOTC / LTO IT Providers and Monitoring of PETCs and PETC IT Providers.*
+- **DOTr Department Order No. 2023-008, dated 06 March 2023** – *New Rules and Regulations on Authorization and Monitoring of PETC, PETC IT Service Providers, MVECT, MVIT, PMVIC, and related facilities.*
 - **LTO Memorandum Circular ACL-2009-1170** – *Direct Facility Implementation*, which requires "one (1) still camera to capture an image of the vehicle undergoing testing" with the rear plate visible.
 
-Neither issuance publishes a numeric webcam specification (resolution, frame rate, lens, low-light sensitivity). They define the **function** the camera must perform — capture vehicle + plate, upload with the CEC — and leave the hardware sizing to the accredited IT Provider.
+DOTr DO 2023-008 requires realtime image upload, client-program auditability, automatic machine interfacing, and no CEC printing before upload/acceptance. The camera specification below is sized to meet those functional requirements. DOTC DO 2005-37 is retained as historical context only.
 
 LTO MC 2020-2195 and MC 2020-2241 are reported to contain additional PETC equipment rules but are not publicly retrievable for citation. The detailed interface specification, if any, is part of the LTO-IT System Interface Specification released only to accredited IT Providers under NDA.
 
@@ -156,9 +156,9 @@ In the absence of a public numeric spec, Digiflash adopts the following function
 | Frame rate | 30 fps minimum | Allows motion-free still capture. |
 | Lens | Fixed focus, 60–90° FOV | Covers a standard bay without panning. |
 | Low light | ≤ 1 lux | Workable under typical indoor bay lighting. |
-| Burned-in metadata | Timestamp (NTP-synced PHT), plate number, CEC reference | Supports the DO 2005-37 audit-trail intent. |
+| Burned-in metadata | Timestamp (NTP-synced PHT), plate number, CEC reference | Supports DO 2023-008 audit-trail and realtime upload evidence. |
 | File format | JPEG, ≤ 500 KB per image | Bandwidth-friendly for the cloud-mediated upload model. |
-| Retention | ≥ 1 year locally; cloud mirror | Consistent with LTO-IT upload retention expectations. |
+| Retention | ≥ 1 year locally; cloud object storage for uploaded evidence | Consistent with LTO-IT upload retention expectations. |
 
 ### 4.3 Action Item
 
@@ -378,14 +378,15 @@ The Digiflash field engineer completes the following checklist at every new cent
 
 ## 11. References
 
-- DOTC Department Order 2005-37 – *Rules Governing DOTC / LTO IT Providers and Monitoring of PETCs and PETC IT Providers.*
+- DOTr Department Order No. 2023-008, dated 06 March 2023 – primary accreditation baseline for PETC IT Service Provider controls.
+- DOTC Department Order 2005-37 – historical/reference baseline only.
 - LTO Memorandum Circular ACL-2009-1170 – *Direct Facility Implementation.*
 - DOTr Department Order 2018-019 – privatising MVIS / PMVIC.
-- DOTr Department Order 2023-008 – new PETC / PMVIC rules.
 - Companion documents in this submission package:
   - `01-client-application-manual.md`
   - `03-system-documentation.md`
-  - `06-network-architecture.md` (forthcoming)
+  - `00-do-2023-008-compliance-matrix.md`
+  - `06-network-architecture.md`
 
 ---
 

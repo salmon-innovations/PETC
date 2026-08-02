@@ -73,6 +73,14 @@ def _additive_sqlite_migrations() -> None:
             "payload_json": "TEXT",
             "ltms_reference_no": "VARCHAR",
             "pdf_path": "VARCHAR",
+            "incident_due_at": "DATETIME",
+            "incident_reported_at": "DATETIME",
+        },
+        "receipts": {
+            "submission_id": "VARCHAR",
+            "print_kind": "VARCHAR DEFAULT 'ORIGINAL' NOT NULL",
+            "certificate_no": "VARCHAR",
+            "valid_until": "VARCHAR",
         },
     }
 

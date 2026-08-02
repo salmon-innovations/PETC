@@ -145,9 +145,9 @@ The Digiflash sample in this folder reproduces that layout one-for-one with the 
 
 ## 4. Regulatory Basis
 
-The Digiflash CEC format honours the requirements of:
+The Digiflash CEC format is governed primarily by **DOTr Department Order No. 2023-008, dated 06 March 2023**, including upload-before-print, realtime image upload, mandatory field validation, and controlled reprint behavior. The layout also honours historical CEC field expectations from:
 
-- **DOTC Department Order 2005-37** — *Rules Governing DOTC / LTO IT Providers and Monitoring of PETCs and PETC IT Providers.* Section III enumerates the data elements that must appear on the printed CEC: identification of the vehicle, owner, fuel type, test datetime, technician, results, and a unique LTO-issued certificate identifier.
+- **DOTC Department Order 2005-37** — historical/reference baseline for common CEC data elements: identification of the vehicle, owner, fuel type, test datetime, technician, results, and a unique LTO-issued certificate identifier.
 - **LTO Memorandum Circular ACL-2009-1170** — *Direct Facility Implementation.* Requires at least one still image of the tested vehicle captured at the testing bay and printed on the CEC alongside the readings.
 - **LTO Memoranda 2020-2195 and 2020-2241** — additional PETC equipment and reporting rules. Not publicly retrievable for verbatim citation; their effective contents (as best understood from the existing-provider sample format) are reflected in the layout above.
 

@@ -1,8 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Link } from "react-router-dom";
 import { z } from "zod";
+import clsx from "clsx";
 import { api } from "../../api/webClient";
+import { formatCentavos } from "../../utils/money";
+
+interface CenterWallet {
+  tenantId: string;
+  balanceCentavos: number;
+  low: boolean;
+  negative: boolean;
+  blockedCount: number;
+}
 
 interface Center {
   id: string;
@@ -25,6 +36,12 @@ export default function CentersPage() {
     queryKey: ["centers"],
     queryFn: () => api.get<Center[]>("/tenants").then((r) => r.data),
   });
+
+  const { data: wallets = [] } = useQuery<CenterWallet[]>({
+    queryKey: ["wallet-centers"],
+    queryFn: () => api.get<CenterWallet[]>("/wallet/centers").then((r) => r.data),
+  });
+  const walletByTenant = Object.fromEntries(wallets.map((w) => [w.tenantId, w]));
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } =
     useForm<AddForm>({ resolver: zodResolver(addSchema) });
@@ -67,28 +84,43 @@ export default function CentersPage() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
             <tr>
-              {["Name", "Slug", "Licenses", "Last Sync", ""].map((h) => (
+              {["Name", "Slug", "Balance", "Licenses", "Last Sync", ""].map((h) => (
                 <th key={h} className="px-5 py-3 text-left font-semibold">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y">
-            {centers.map((c) => (
-              <tr key={c.id} className="hover:bg-gray-50">
-                <td className="px-5 py-3 font-medium">{c.name}</td>
-                <td className="px-5 py-3 font-mono text-gray-500">{c.slug}</td>
-                <td className="px-5 py-3">{c.activeLicenses}</td>
-                <td className="px-5 py-3 text-gray-500">
-                  {c.lastSync ? new Date(c.lastSync).toLocaleString() : "Never"}
-                </td>
-                <td className="px-5 py-3">
-                  <a href={`/admin/centers/${c.id}/licenses`}
-                     className="text-blue-600 hover:underline text-xs">Manage keys</a>
-                </td>
-              </tr>
-            ))}
+            {centers.map((c) => {
+              const w = walletByTenant[c.id];
+              return (
+                <tr key={c.id} className="hover:bg-gray-50">
+                  <td className="px-5 py-3 font-medium">
+                    <Link to={`/centers/${c.id}`} className="hover:underline">{c.name}</Link>
+                  </td>
+                  <td className="px-5 py-3 font-mono text-gray-500">{c.slug}</td>
+                  <td className={clsx(
+                    "px-5 py-3 font-medium",
+                    w?.negative ? "text-red-600" : w?.low ? "text-amber-600" : "text-gray-700"
+                  )}>
+                    {w ? formatCentavos(w.balanceCentavos) : "—"}
+                    {w && w.blockedCount > 0 && (
+                      <span className="ml-2 text-xs text-amber-700">{w.blockedCount} held</span>
+                    )}
+                  </td>
+                  <td className="px-5 py-3">{c.activeLicenses}</td>
+                  <td className="px-5 py-3 text-gray-500">
+                    {c.lastSync ? new Date(c.lastSync).toLocaleString() : "Never"}
+                  </td>
+                  <td className="px-5 py-3">
+                    <Link to={`/centers/${c.id}`} className="text-blue-600 hover:underline text-xs">
+                      Wallet
+                    </Link>
+                  </td>
+                </tr>
+              );
+            })}
             {centers.length === 0 && (
-              <tr><td colSpan={5} className="px-5 py-10 text-center text-gray-400">No centers yet.</td></tr>
+              <tr><td colSpan={6} className="px-5 py-10 text-center text-gray-400">No centers yet.</td></tr>
             )}
           </tbody>
         </table>

@@ -39,16 +39,20 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 Claims claims = jwtService.parseToken(token);
                 if (jwtService.isAccessToken(claims)) {
                     String userId = claims.getSubject();
+                    // Null for super admins — TenantContextFilter leaves
+                    // app.tenant_id unset, which RLS reads as cross-tenant.
                     String tenantId = claims.get("tenantId", String.class);
                     String role = claims.get("role", String.class);
                     String email = claims.get("email", String.class);
 
-                    var principal = new PetcUserPrincipal(userId, tenantId, email, role);
-                    var auth = new UsernamePasswordAuthenticationToken(
-                            principal, null,
-                            List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()))
-                    );
-                    SecurityContextHolder.getContext().setAuthentication(auth);
+                    if (role != null) {
+                        var principal = new PetcUserPrincipal(userId, tenantId, email, role);
+                        var auth = new UsernamePasswordAuthenticationToken(
+                                principal, null,
+                                List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()))
+                        );
+                        SecurityContextHolder.getContext().setAuthentication(auth);
+                    }
                 }
             } catch (JwtException ignored) {
                 // Invalid token — let Spring Security reject as 401
@@ -66,6 +70,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     }
 
     // ---------------------------------------------------------------- inner
-    record PetcUserPrincipal(String userId, String tenantId, String email, String role)
+
+    /**
+     * @param tenantId null for super admins, who are not tenant-scoped. For
+     *                 them userId is the super_admin_users id, which is what
+     *                 audit rows record as the acting party.
+     */
+    public record PetcUserPrincipal(String userId, String tenantId, String email, String role)
             implements TenantAwarePrincipal {}
 }

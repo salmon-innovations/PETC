@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.time.Instant;
 
 /**
  * Validates X-Center-Key against the center_licenses table and returns the tenant ID.
@@ -42,24 +43,70 @@ public class CenterKeyValidator {
         this.devTenantName = devTenantName;
     }
 
+    public record CenterContext(
+            String tenantId,
+            String centerId,
+            String authorizationStatus,
+            Instant authorizationExpiresAt
+    ) {}
+
     /** Returns the tenant UUID (as String) for the given raw center API key. */
     public String validate(String rawKey) {
+        return validateContext(rawKey).tenantId();
+    }
+
+    /** Returns the authorized center context for the given raw center API key. */
+    public CenterContext validateContext(String rawKey) {
         if (rawKey == null || rawKey.isBlank()) {
             throw new AuthException("Missing X-Center-Key");
         }
         if (devKeyEnabled && !devKey.isBlank() && rawKey.equals(devKey)) {
-            return ensureDevTenant();
+            return new CenterContext(ensureDevTenant(), devTenantSlug, "ACTIVE", null);
         }
         List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT tenant_id::text, key_hash FROM center_licenses WHERE active = true"
+                """
+                SELECT tenant_id::text, center_id, key_hash, authorization_status, authorization_expires_at
+                FROM center_licenses
+                WHERE active = true
+                """
         );
         for (var row : rows) {
             String hash = (String) row.get("key_hash");
             if (encoder.matches(rawKey, hash)) {
-                return (String) row.get("tenant_id");
+                Object rawStatus = row.get("authorization_status");
+                String status = rawStatus == null ? "ACTIVE" : rawStatus.toString();
+                Instant expiresAt = toInstant(row.get("authorization_expires_at"));
+                if (!"ACTIVE".equals(status)) {
+                    throw new AuthException("PETC authorization is " + status.toLowerCase());
+                }
+                if (expiresAt != null && expiresAt.isBefore(Instant.now())) {
+                    throw new AuthException("PETC authorization is expired");
+                }
+                return new CenterContext(
+                        (String) row.get("tenant_id"),
+                        (String) row.get("center_id"),
+                        status,
+                        expiresAt
+                );
             }
         }
         throw new AuthException("Invalid X-Center-Key");
+    }
+
+    private Instant toInstant(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof java.sql.Timestamp timestamp) {
+            return timestamp.toInstant();
+        }
+        if (value instanceof java.time.OffsetDateTime offsetDateTime) {
+            return offsetDateTime.toInstant();
+        }
+        if (value instanceof java.time.LocalDateTime localDateTime) {
+            return localDateTime.atZone(java.time.ZoneOffset.UTC).toInstant();
+        }
+        return Instant.parse(value.toString());
     }
 
     private String ensureDevTenant() {

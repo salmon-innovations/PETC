@@ -2,8 +2,11 @@ import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from "re
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import LoginPage from "./pages/auth/LoginPage";
 import CentersPage from "./pages/admin/CentersPage";
+import CenterDetailPage from "./pages/centers/CenterDetailPage";
 import LicensesPage from "./pages/licensing/LicensesPage";
-import CrossCenterDashboard from "./pages/analytics/CrossCenterDashboard";
+import OperationsDashboard from "./pages/dashboard/OperationsDashboard";
+import SubmissionsPage from "./pages/submissions/SubmissionsPage";
+import SettingsPage from "./pages/settings/SettingsPage";
 import { useAuthStore } from "./store/authStore";
 import clsx from "clsx";
 
@@ -17,9 +20,11 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 const NAV = [
-  { to: "/analytics", label: "Analytics" },
-  { to: "/centers",   label: "Centers" },
-  { to: "/licenses",  label: "Licenses" },
+  { to: "/dashboard",   label: "Dashboard" },
+  { to: "/submissions", label: "Submissions" },
+  { to: "/centers",     label: "Centers" },
+  { to: "/licenses",    label: "API Keys" },
+  { to: "/settings",    label: "Settings" },
 ];
 
 function AppShell({ children }: { children: React.ReactNode }) {
@@ -65,37 +70,31 @@ function AppShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+function Protected({ children }: { children: React.ReactNode }) {
+  return (
+    <RequireAuth>
+      <AppShell>{children}</AppShell>
+    </RequireAuth>
+  );
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route
-            path="/analytics"
-            element={
-              <RequireAuth>
-                <AppShell><CrossCenterDashboard /></AppShell>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/centers"
-            element={
-              <RequireAuth>
-                <AppShell><CentersPage /></AppShell>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/licenses"
-            element={
-              <RequireAuth>
-                <AppShell><LicensesPage /></AppShell>
-              </RequireAuth>
-            }
-          />
-          <Route path="*" element={<Navigate to="/analytics" replace />} />
+          <Route path="/dashboard" element={<Protected><OperationsDashboard /></Protected>} />
+          <Route path="/submissions" element={<Protected><SubmissionsPage /></Protected>} />
+          <Route path="/centers" element={<Protected><CentersPage /></Protected>} />
+          <Route path="/centers/:tenantId" element={<Protected><CenterDetailPage /></Protected>} />
+          <Route path="/licenses" element={<Protected><LicensesPage /></Protected>} />
+          <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />
+          {/* /analytics was the old landing page. Its endpoints were never
+              implemented in cloud/src and it 500'd on every load; the dashboard
+              replaces it. Redirect so existing links and bookmarks still work. */}
+          <Route path="/analytics" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

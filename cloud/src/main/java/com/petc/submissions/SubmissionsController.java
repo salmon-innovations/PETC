@@ -39,7 +39,7 @@ public class SubmissionsController {
             @RequestHeader("X-Center-Key") String centerKey,
             @Valid @RequestBody SubmitRequest req
     ) {
-        String tenantId = keyValidator.validate(centerKey);
+        String tenantId = keyValidator.validateContext(centerKey).tenantId();
         String submissionId = service.enqueue(tenantId, req.centerId(), req.testId(), req.payload());
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(new SubmitResponse(submissionId, "PENDING"));
@@ -54,8 +54,13 @@ public class SubmissionsController {
             @RequestHeader("X-Center-Key") String centerKey,
             @PathVariable String submissionId
     ) {
-        keyValidator.validate(centerKey); // auth check; tenant scoping handled by RLS
-        return service.getStatus(submissionId)
+        // Explicit tenant predicate — NOT RLS. Center-key requests carry no JWT,
+        // so TenantContextFilter never sets app.tenant_id, current_tenant_id()
+        // is NULL, and every tenant_isolation policy falls through to its
+        // "OR current_tenant_id() IS NULL" branch. Without the tenantId below,
+        // any valid center key could read any other center's submission.
+        var ctx = keyValidator.validateContext(centerKey);
+        return service.getStatus(submissionId, ctx.tenantId())
                 .map(s -> ResponseEntity.ok(new StatusResponse(
                         submissionId,
                         s.state(),

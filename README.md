@@ -2,7 +2,7 @@
 
 Desktop-first emission testing system for Private Emission Testing Centers (PETCs) in the Philippines.
 
-The accredited center-side app is a Windows desktop application. It captures analyzer readings, stores photos and test records locally, and uploads completed tests to LTMS/Stradcom through a sidecar service. The cloud backend is operator-only: cross-center analytics, licensing, update manifests, and mirror ingestion.
+The accredited center-side app is a Windows desktop application. It captures analyzer readings, stores photos and test records locally, uploads required photos to object storage, and submits completed tests to LTMS/IRDS through the Digiflash cloud. The cloud backend is the official government-submission path: it validates center authorization, owns the whitelisted outbound IP, proxies registry lookups, queues LTMS/IRDS submissions, and returns accepted CEC metadata to the desktop.
 
 ## Architecture
 
@@ -17,12 +17,13 @@ Desktop App at the center
   SQLite local database
         |
         v
-Cloud backend, optional mirror
+Cloud backend, official submission path
   Spring Boot + Postgres
+  S3-compatible photo storage
   Cloud React operator portal
 ```
 
-The desktop SQLite database is the source of truth at the center. Cloud sync is opportunistic and should not block testing or LTMS submission.
+The desktop SQLite database is the source of truth at the center, but production CEC generation and printing are blocked until the cloud submission is accepted and required photos are uploaded. Local/mock submission is available only under the `dev` and `accreditation-demo` profiles and is labeled non-official.
 
 ## Project Layout
 
@@ -34,8 +35,9 @@ desktop/
   tests/                 Sidecar tests
   installer/             PyInstaller and electron-builder config
 
-cloud/backend/           Spring Boot operator backend
+cloud/src/               Spring Boot cloud API and LTMS/IRDS submission queue
 cloud/frontend/          Cloud operator portal
+cloud/backend/           Deprecated older Spring Boot spike, not production
 shared/contracts/        Shared sync contract schemas
 ```
 
@@ -329,10 +331,17 @@ npm run build
 
 ## Cloud Development
 
-Start cloud services:
+The production cloud app is `cloud/`. It runs on the host, not in Docker:
 
 ```bash
-docker compose up --build
+cd cloud
+./gradlew bootRun
+```
+
+Start the supporting services (MinIO, operator portal) separately:
+
+```bash
+docker compose up --build minio cloud-frontend
 ```
 
 Cloud ports:
@@ -343,6 +352,19 @@ Cloud ports:
 - MinIO console: `http://localhost:9001`
 
 The desktop app does not run in Docker.
+
+> **Do not run the `backend` compose service.** It builds `cloud/backend`, the
+> deprecated spike (see [Project Layout](#project-layout)), which owns a rival set
+> of V1–V3 migrations against the same `petc` database. Running both apps in turn
+> is what produces the Flyway checksum errors below.
+
+The operator portal proxies `/api` to `API_UPSTREAM`, which defaults to
+`host.docker.internal:8080` so the containerised frontend reaches the backend
+running on your host. Override it if the backend lives elsewhere:
+
+```bash
+API_UPSTREAM=backend:8080 docker compose up cloud-frontend
+```
 
 ### Fix Flyway Checksum Errors in Local Dev
 
@@ -364,10 +386,11 @@ psql postgresql://postgres:postgres@localhost:5432/petc \
 
 If your local Postgres container uses a different admin password or container name, run the same SQL through that admin connection.
 
-Then restart:
+Then restart the backend so Flyway replays all migrations:
 
 ```bash
-docker compose up --build
+cd cloud
+./gradlew bootRun
 ```
 
 If you need to preserve data, do not drop the schema. Use Flyway repair only after confirming the migration file change is intentional:
@@ -380,30 +403,71 @@ docker run --rm flyway/flyway:latest \
   repair
 ```
 
-For production, never edit an applied migration file. Add a new `V4__...sql` migration instead.
+For production, never edit an applied migration file. Add a new migration with the
+next version number instead (`V6__...sql` at the time of writing).
 
-## Cloud Mirror Testing
+## Connecting a Center to the Cloud
 
-In local development, the cloud backend accepts the desktop's default mock key:
+A center authenticates to the cloud with a **center API key**, sent as the
+`X-Center-Key` header on every ingest request. Keys are issued from the operator
+portal, stored only as bcrypt hashes, and shown exactly once at issue time.
+
+### 1. Sign in to the operator portal
+
+Open `http://localhost:3000`. The portal is cross-tenant: it is a super-admin
+login, not a center login, so it takes no center/tenant name.
 
 ```text
-X-Center-Key: dev-insecure-key
+Email:    connect@lisensyago.ph
+Password: test12345!
 ```
 
-When that key is used, the backend automatically creates or reuses a `dev-center` tenant. This is controlled by:
+That account is seeded by migration `V5__super_admin_auth.sql` for dev and
+accreditation-demo use. The password hash is committed to source control —
+rotate or remove it before any production deployment.
+
+### 2. Create the center
+
+On **Centers**, add a center with a display name and a slug:
+
+| Field | Example | Notes |
+|---|---|---|
+| Center Name | `Makati ETC` | Shown in the portal |
+| Slug | `makati-etc` | Lowercase, numbers, hyphens; unique; becomes the center's `centerId` |
+
+Or via the API:
+
+```bash
+curl -s -X POST http://localhost:3000/api/tenants \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Makati ETC","slug":"makati-etc"}'
+```
+
+### 3. Issue an API key
+
+On **Licenses**, select the center and click **Issue**. The key appears once, in
+a yellow box:
 
 ```text
-DEV_CENTER_KEY_ENABLED=true
-DEV_CENTER_KEY=dev-insecure-key
-DEV_CENTER_SLUG=dev-center
-DEV_CENTER_NAME=Mock PETC Center
+petc_EXAMPLEKEYdoNOTuseTHISvalue0000000000000
 ```
 
-For a real center key issued from the operator portal, copy the yellow one-time API key into the center desktop app's sidecar environment. The key is not entered back into the portal.
+Copy it immediately. Only its bcrypt hash is stored, so a lost key cannot be
+recovered — only re-issued.
+
+A center holds **at most one active key**. Issuing a new key automatically
+revokes the previous one, so re-issuing is how you rotate a key; the old key
+starts returning `401` right away.
+
+### 4. Point the center's sidecar at the cloud
+
+Copy the key into the center desktop app's sidecar environment. The key is never
+entered back into the portal.
 
 ```bash
 PETC_CLOUD_URL=http://localhost:8080 \
-PETC_CENTER_ID=makati-petc \
+PETC_CENTER_ID=makati-etc \
 PETC_CLOUD_KEY='petc_replace_with_the_issued_key' \
 PETC_DATA_DIR=/tmp/petc-mock-data \
 PETC_PORT=8765 \
@@ -411,10 +475,50 @@ PETC_GOV_MOCK=true \
 desktop/.venv/bin/python -m petc.service
 ```
 
-To test mirror sync end to end:
+`PETC_CENTER_ID` must match the center's slug from step 2.
 
-1. Start the cloud backend on `http://localhost:8080`.
-2. Start the desktop sidecar with:
+Electron spawns its own sidecar and overrides only `PETC_PORT` and
+`PETC_DATA_DIR`, inheriting everything else from its environment. To run the
+desktop app against the cloud, export these vars in the shell you launch
+Electron from — otherwise the sidecar starts in local-mock mode and submits
+nothing to the cloud.
+
+### 5. Verify the connection
+
+Confirm the key authenticates:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' \
+  http://localhost:8080/api/registry/vehicle/ABC1234 \
+  -H "X-Center-Key: petc_replace_with_the_issued_key"
+# 200 = connected; 401 = key invalid, revoked, or superseded by a re-issue
+```
+
+Then run a mock test and LTMS upload in the desktop app, and reopen the portal's
+**Centers** page. The center's row should now show `1` active license and a
+recent **Last Sync**.
+
+You can also confirm the submission landed under the right tenant:
+
+```bash
+psql postgresql://petc:petc@localhost:5432/petc \
+  -c "SELECT t.slug, s.test_id, s.state FROM submissions s JOIN tenants t ON t.id = s.tenant_id;"
+```
+
+### Revoking a key
+
+**Revoke** on the Licenses page disables the key immediately; the center's next
+request fails with `401`. Revoked rows are retained for audit — revoking is not a
+delete.
+
+### Dev shortcut: the built-in mock key
+
+For local work you can skip issuing a key entirely. The backend accepts a
+hardcoded key and auto-creates a `dev-center` tenant for it:
+
+```text
+X-Center-Key: dev-insecure-key
+```
 
 ```bash
 PETC_CLOUD_URL=http://localhost:8080 \
@@ -426,19 +530,21 @@ PETC_GOV_MOCK=true \
 desktop/.venv/bin/python -m petc.service
 ```
 
-3. Run a mock desktop test and LTMS upload.
-4. Open the cloud operator portal analytics page.
+Controlled by, and **must be disabled outside dev**:
 
-The backend stores mirror events in:
+```text
+DEV_CENTER_KEY_ENABLED=true
+DEV_CENTER_KEY=dev-insecure-key
+DEV_CENTER_SLUG=dev-center
+DEV_CENTER_NAME=Mock PETC Center
+```
 
-- `mirror_events`
-- `mirror_emission_tests`
-- `mirror_test_photos`
-- `mirror_ltms_submissions`
+`ProductionGuard` fails startup closed if the `production` profile is active
+while this dev key is still enabled.
 
 ## Current Development Notes
 
-- The analyzer, camera, printer, and gov registry integrations are mocked by default.
-- The LTMS upload wizard currently targets the mock registry contract and stores full submission payloads in SQLite.
+- The analyzer, camera, printer, and gov registry integrations are mocked by default only in the `dev` profile.
+- The LTMS upload wizard stores full submission payloads in SQLite and, outside dev/demo, submits through the cloud `/api/submissions` path.
 - Existing dev SQLite databases are upgraded with additive startup migrations while the schema is still moving quickly.
-- The desktop app remains usable offline; cloud mirroring is non-critical.
+- Production uses fail-closed startup checks and blocks CEC print until LTMS/cloud acceptance and required photo upload complete.

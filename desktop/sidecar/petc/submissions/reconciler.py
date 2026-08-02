@@ -21,6 +21,35 @@ logger = logging.getLogger(__name__)
 _POLL_INTERVAL_S = 30.0
 _WAITING_STATES = ("PENDING", "WAITING_FOR_LTMS")
 
+# Last-known wallet balance, refreshed on each reconcile cycle.
+#
+# GET /status is polled by the desktop UI every 10 s and must stay instant and
+# offline-tolerant, so it reads this cache rather than calling the cloud itself.
+# The value is deliberately kept when a refresh fails: showing the last known
+# balance with its timestamp is more useful to an operator than showing nothing,
+# provided the UI marks it stale.
+_wallet_lock = threading.Lock()
+_wallet_cache: Optional[dict] = None
+
+
+def get_cached_wallet() -> Optional[dict]:
+    """Last-known wallet state, or None if the cloud has never answered."""
+    with _wallet_lock:
+        return dict(_wallet_cache) if _wallet_cache else None
+
+
+def _store_wallet(wallet) -> None:
+    global _wallet_cache
+    with _wallet_lock:
+        _wallet_cache = {
+            "balance_centavos": wallet.balance_centavos,
+            "low": wallet.low,
+            "negative": wallet.negative,
+            "blocked_count": wallet.blocked_count,
+            "charge_per_upload_centavos": wallet.charge_per_upload_centavos,
+            "fetched_at": datetime.now(timezone.utc),
+        }
+
 
 class SubmissionReconciler:
     """Daemon thread that reconciles local LTMS submission rows with the cloud."""
@@ -50,10 +79,22 @@ class SubmissionReconciler:
         while not self._stop.wait(self._interval):
             if not cc.is_available():
                 continue
+            client = cc.get_client()
+            # Refresh the wallet first and independently of submission
+            # reconciliation: the balance must keep updating even when there is
+            # nothing pending, and a wallet failure must not stop reconciling.
+            self._refresh_wallet(client)
             try:
-                self._reconcile_once(cc.get_client())
+                self._reconcile_once(client)
             except Exception:
                 logger.exception("SubmissionReconciler error")
+
+    def _refresh_wallet(self, cloud) -> None:
+        try:
+            _store_wallet(cloud.get_wallet())
+        except Exception as exc:
+            # Keep the previous cached value; the UI shows it as stale.
+            logger.debug("Wallet refresh failed, keeping cached balance: %s", exc)
 
     def _reconcile_once(self, cloud) -> None:
         from ..db.session import SessionLocal

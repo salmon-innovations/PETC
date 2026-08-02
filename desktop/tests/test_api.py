@@ -19,7 +19,10 @@ class DummyCloudSync:
 
 
 @pytest.fixture(autouse=True)
-def wire_dependencies(tmp_path):
+def wire_dependencies(tmp_path, monkeypatch):
+    monkeypatch.setenv("PETC_PROFILE", "dev")
+    monkeypatch.setenv("PETC_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("PETC_CLOUD_URL", raising=False)
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     analyzer = MockAnalyzer(result_delay_s=0)

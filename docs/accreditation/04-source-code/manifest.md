@@ -148,7 +148,7 @@ Paths excluded from this manifest: build outputs (`build/`, `dist/`, `target/`, 
 | `gov/MockGovRegistryClient.java` | Active when `petc.gov.mock=true` (the default). |
 | `gov/StradcomGovRegistryClient.java` | Stub for the real Stradcom integration; active when `petc.gov.mock=false`. |
 | `gov/VehicleInfo.java`, `DriverInfo.java`, `EmissionPayload.java`, `SubmissionResult.java` | Gov-side DTOs (records). |
-| `ingest/CenterKeyValidator.java` | `X-Center-Key` validation + tenant resolution. |
+| `ingest/CenterKeyValidator.java` | `X-Center-Key` validation, tenant resolution, and DO 2023-008 authorization status/expiry rejection. |
 | `registry/RegistryController.java` | `/api/registry/vehicle/{plate}` and `/api/registry/driver/{lic}`. |
 | `photos/PhotosController.java` | `/api/photos/presign` — short-lived S3 PUT URL. |
 | `submissions/SubmissionsController.java` | `POST /api/submissions`, `GET /api/submissions/{id}`. |
@@ -163,6 +163,7 @@ Paths excluded from this manifest: build outputs (`build/`, `dist/`, `target/`, 
 | `db/migration/V1__init.sql` | Initial schema (`tenants`, `users`, mirror tables, audit log). |
 | `db/migration/V2__submissions.sql` | `center_licenses`, `submissions` table + RLS policy. |
 | `db/migration/V3__submission_cec_fields.sql` | Adds `or_no`, `dermalog_token`, `valid_from`, `valid_until`. |
+| `db/migration/V4__center_authorization_status.sql` | Adds center authorization status, expiry, suspension/revocation metadata. |
 
 ### `cloud/src/test/java/com/petc/`
 

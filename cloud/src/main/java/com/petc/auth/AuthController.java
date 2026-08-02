@@ -16,8 +16,21 @@ public class AuthController {
         this.authService = authService;
     }
 
+    /**
+     * Two login shapes share this endpoint:
+     * <ul>
+     *   <li>with tenantSlug — a center user, scoped to that tenant;</li>
+     *   <li>without — the cross-tenant operator portal, authenticated
+     *       against super_admin_users.</li>
+     * </ul>
+     * The slug is what disambiguates them: {@code users} is unique on
+     * (tenant_id, email), so an email alone cannot identify a center user.
+     */
     @PostMapping("/login")
     public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest req) {
+        if (req.tenantSlug() == null || req.tenantSlug().isBlank()) {
+            return ResponseEntity.ok(authService.loginSuperAdmin(req.email(), req.password()));
+        }
         return ResponseEntity.ok(authService.login(req.email(), req.password(), req.tenantSlug()));
     }
 
@@ -36,10 +49,14 @@ public class AuthController {
     record LoginRequest(
             @NotBlank @Email String email,
             @NotBlank String password,
-            @NotBlank String tenantSlug
+            // Optional: absent means a super-admin (operator portal) login.
+            String tenantSlug
     ) {}
 
     record RefreshRequest(@NotBlank String refreshToken) {}
 
-    record TokenResponse(String accessToken, String refreshToken) {}
+    /** tenantId is null for super admins, who are not tenant-scoped. */
+    record TokenResponse(String accessToken, String refreshToken, UserSummary user) {}
+
+    record UserSummary(String id, String email, String fullName, String role, String tenantId) {}
 }

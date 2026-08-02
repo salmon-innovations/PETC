@@ -135,15 +135,15 @@ def test_presign_photo_returns_presign_result():
     assert "s3.example.com" in result.upload_url
 
 
-def test_presign_photo_without_sha256():
+def test_presign_photo_requires_sha256():
     c = _patched({
         ("POST", "/api/photos/presign"): (200, {
             "s3Key": "tenants/t1/tests/T002/rear.jpg",
             "uploadUrl": "https://s3.example.com/presigned2",
         }),
     })
-    result = c.presign_photo("T002", "rear", "REAR")
-    assert result.s3_key == "tenants/t1/tests/T002/rear.jpg"
+    with pytest.raises(ValueError):
+        c.presign_photo("T002", "rear", "REAR")
 
 
 # ── upload_photo ──────────────────────────────────────────────────────────────

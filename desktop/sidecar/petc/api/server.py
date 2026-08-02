@@ -8,6 +8,8 @@ import logging
 import os
 import uuid
 import json
+import hashlib
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -22,6 +24,14 @@ from ..camera.capture import CameraCapture, CaptureError
 from ..printer.base import Printer, ReceiptData
 from ..gov.base import GovRegistryClient
 from ..cloud_sync.pusher import CloudSyncPusher
+from ..runtime import (
+    FAILED_RETEST_LOCK_SECONDS,
+    IMAGE_UPLOAD_GRACE_SECONDS,
+    READING_CAPTURE_TIMEOUT_SECONDS,
+    REPRINT_WINDOW_DAYS,
+    allow_mock_paths,
+    is_production,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +148,14 @@ class StatusResponse(BaseModel):
     printer_status: dict
     cloud_outbox_pending: int
     agent_version: str
+    # Wallet fields are None until the cloud has answered at least once — in
+    # local-mock mode (no PETC_CLOUD_URL) they stay None forever, and the UI
+    # simply omits the balance rather than showing a misleading zero.
+    wallet_balance_centavos: Optional[int] = None
+    wallet_low: bool = False
+    wallet_negative: bool = False
+    wallet_blocked_count: int = 0
+    wallet_fetched_at: Optional[datetime] = None
 
 
 class VehicleLookupRequest(BaseModel):
@@ -214,13 +232,26 @@ def get_status(
 ) -> StatusResponse:
     from ..db.session import SessionLocal
     from ..db.models import CloudOutbox
+    from ..submissions.reconciler import get_cached_wallet
+
     with SessionLocal() as session:
         pending = session.query(CloudOutbox).filter(CloudOutbox.status == "PENDING").count()
+
+    # Read-through of the reconciler's cache — never a live cloud call. This
+    # endpoint backs a 10 s UI poll and has to keep answering when the cloud is
+    # unreachable.
+    wallet = get_cached_wallet()
+
     return StatusResponse(
         analyzer_connected=analyzer.is_connected,
         printer_status=printer.check_status(),
         cloud_outbox_pending=pending,
         agent_version="0.1.0",
+        wallet_balance_centavos=wallet["balance_centavos"] if wallet else None,
+        wallet_low=wallet["low"] if wallet else False,
+        wallet_negative=wallet["negative"] if wallet else False,
+        wallet_blocked_count=wallet["blocked_count"] if wallet else 0,
+        wallet_fetched_at=wallet["fetched_at"] if wallet else None,
     )
 
 
@@ -234,6 +265,12 @@ def start_test(
     from ..db.models import EmissionTest, User
 
     started_at = datetime.now(timezone.utc)
+    if is_production() and not analyzer.is_connected:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "DO 2023-008 requires an interfaced analyzer before test start",
+        )
+
     try:
         token = analyzer.start_test(FuelType(req.fuel_type.upper()))
     except AnalyzerConnectionError as exc:
@@ -242,7 +279,23 @@ def start_test(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "fuel_type must be GAS or DIESEL") from exc
 
     test_id = str(uuid.uuid4())
+    plate_number = _normalize_plate(req.plate_number)
     with SessionLocal() as session:
+        lock_after = started_at.replace(tzinfo=None) - timedelta(seconds=FAILED_RETEST_LOCK_SECONDS)
+        recent_failed = (
+            session.query(EmissionTest)
+            .filter(
+                EmissionTest.plate_number == plate_number,
+                EmissionTest.pass_fail == False,
+                EmissionTest.completed_at >= lock_after,
+            )
+            .first()
+        )
+        if recent_failed is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Vehicle failed within the last hour; DO 2023-008 retest lock is active",
+            )
         if session.get(User, req.operator_id) is None:
             session.add(
                 User(
@@ -257,13 +310,18 @@ def start_test(
         test = EmissionTest(
             id=test_id,
             operator_id=req.operator_id,
-            plate_number=req.plate_number.upper().replace(" ", ""),
+            plate_number=plate_number,
             fuel_type=req.fuel_type.upper(),
             session_token=token,
             started_at=started_at,
             tested_at=started_at,
         )
         session.add(test)
+        _audit(session, "TEST_START", "emission_test", test_id, {
+            "plateNumber": plate_number,
+            "fuelType": req.fuel_type.upper(),
+            "operatorId": req.operator_id,
+        }, req.operator_id)
         session.commit()
 
     cloud_sync.enqueue(
@@ -273,7 +331,7 @@ def start_test(
             "id": test_id,
             "session_token": token,
             "operator_id": req.operator_id,
-            "plate_number": req.plate_number.upper().replace(" ", ""),
+            "plate_number": plate_number,
             "fuel_type": req.fuel_type.upper(),
             "started_at": started_at.isoformat(),
         },
@@ -295,23 +353,46 @@ def get_result(
     from ..db.session import SessionLocal
     from ..db.models import DieselTestResult, EmissionTest, GasTestResult
 
+    started_capture = time.monotonic()
     try:
         result = analyzer.read_result(session_token)
     except AnalyzerTimeoutError as exc:
         raise HTTPException(status.HTTP_408_REQUEST_TIMEOUT, str(exc)) from exc
+    elapsed = time.monotonic() - started_capture
+    if elapsed > READING_CAPTURE_TIMEOUT_SECONDS:
+        raise HTTPException(
+            status.HTTP_408_REQUEST_TIMEOUT,
+            "Analyzer reading exceeded the DO 2023-008 five-second automatic capture requirement",
+        )
 
     readings = _reading_to_dict(result)
+    _validate_readings_for_do(result.fuel_type.value, readings)
     captured_at = result.captured_at
+    raw_bytes_hex = result.raw_bytes.hex()
 
     with SessionLocal() as session:
         test = session.query(EmissionTest).filter(EmissionTest.session_token == session_token).first()
         if test is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"Session {session_token} not found")
+        if is_production() or not raw_bytes_hex.startswith("4d4f434b3a"):
+            duplicate = (
+                session.query(EmissionTest)
+                .filter(
+                    EmissionTest.raw_bytes_hex == raw_bytes_hex,
+                    EmissionTest.id != test.id,
+                )
+                .first()
+            )
+            if duplicate is not None:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    "Duplicate analyzer result rejected; previous machine result cannot be reused",
+                )
 
         test.fuel_type = result.fuel_type.value
         test.pass_fail = result.pass_fail
         test.analyzer_serial = result.serial_no
-        test.raw_bytes_hex = result.raw_bytes.hex()
+        test.raw_bytes_hex = raw_bytes_hex
         test.tested_at = captured_at
         test.completed_at = captured_at
 
@@ -322,6 +403,12 @@ def get_result(
         test_id = test.id
         plate_number = test.plate_number
         photo_count = len(test.photos)
+        _audit(session, "RESULT_CAPTURE", "emission_test", test.id, {
+            "fuelType": result.fuel_type.value,
+            "serialNo": result.serial_no,
+            "captureElapsedSeconds": round(elapsed, 4),
+            "passFail": result.pass_fail,
+        }, test.operator_id)
         session.commit()
 
     cloud_sync.enqueue(
@@ -419,6 +506,12 @@ async def upload_test_photo(
             captured_at=captured_at,
         )
         session.add(row)
+        _audit(session, "PHOTO_CAPTURE", "test_photo", photo_id, {
+            "testId": test_id,
+            "photoType": photo_type.upper(),
+            "cameraId": "browser",
+            "sizeBytes": len(data),
+        })
         session.commit()
 
     cloud_sync.enqueue(
@@ -482,6 +575,12 @@ def capture_photo(
                 captured_at=photo.captured_at,
             )
             session.add(row)
+            _audit(session, "PHOTO_CAPTURE", "test_photo", photo_id, {
+                "testId": req.test_id,
+                "photoType": req.photo_type.upper(),
+                "cameraId": photo.camera_id,
+                "sizeBytes": len(photo.data),
+            })
             session.commit()
 
         cloud_sync.enqueue(
@@ -610,12 +709,15 @@ def lookup_vehicle_v1(
             cached.fetched_at = fetched_at
             cached.expires_at = expires_at
             session.commit()
+            # commit() expires the instance; read it back before the session
+            # closes, otherwise attribute access raises DetachedInstanceError.
+            response = _vehicle_cache_to_response(cached)
 
         return {
             "found": True,
             "source": "LTMS",
             "fetchedAt": fetched_at.isoformat(),
-            **_vehicle_cache_to_response(cached),
+            **response,
         }
 
     # Local mock fallback
@@ -701,6 +803,12 @@ def submit_ltms(
     from ..db.session import SessionLocal
     from ..db.models import EmissionTest, LtmsSubmission
     import uuid
+
+    if not allow_mock_paths():
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Production LTMS/IRDS submission must use /api/v1/upload/submit through the cloud",
+        )
 
     with SessionLocal() as session:
         test = session.get(EmissionTest, test_id)
@@ -790,6 +898,7 @@ def submit_upload_v1(
 
         vehicle = payload.get("vehicle", {})
         readings = payload.get("readings") or _readings_for_test(test)
+        _validate_submission_payload(payload, test, readings, len(test.photos))
 
         # Collect photo rows now (before session closes)
         photo_rows: list[tuple[str, str, str, str]] = [
@@ -808,18 +917,21 @@ def submit_upload_v1(
         with SessionLocal() as session:
             for photo_id, file_path, photo_type, mime_type in photo_rows:
                 try:
+                    data = Path(file_path).read_bytes()
+                    digest = hashlib.sha256(data).hexdigest()
                     presign = cloud.presign_photo(
                         test_id=test_id,
                         photo_id=photo_id,
                         photo_type=photo_type,
                         content_type=mime_type,
+                        sha256=digest,
                     )
-                    data = Path(file_path).read_bytes()
                     cloud.upload_photo(presign.upload_url, data, mime_type)
                     photo_refs.append({
                         "photoId": photo_id,
                         "s3Key": presign.s3_key,
                         "photoType": photo_type,
+                        "sha256": digest,
                     })
                     # Persist s3_key + uploaded_at on the local photo row
                     photo_row = session.get(TestPhoto, photo_id)
@@ -828,8 +940,17 @@ def submit_upload_v1(
                         photo_row.uploaded_at = now
                 except Exception:
                     logger.exception("Failed to presign/upload photo %s for test %s", photo_id, test_id)
-                    # Non-fatal: continue without this photo
+                    raise HTTPException(
+                        status.HTTP_409_CONFLICT,
+                        "Required realtime photo upload failed; CEC generation is blocked",
+                    )
             session.commit()
+
+        if len(photo_refs) != len(photo_rows):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "All captured photos must be uploaded before LTMS submission",
+            )
 
         # 2. Build cloud submission payload and enqueue
         cloud_payload = {
@@ -862,6 +983,7 @@ def submit_upload_v1(
                 state="PENDING",
                 cloud_submission_id=cloud_submission_id,
                 submitted_at=now,
+                incident_due_at=now + timedelta(hours=24),
             )
             session.add(sub)
             session.commit()
@@ -886,6 +1008,11 @@ def submit_upload_v1(
                 sub = session.get(LtmsSubmission, sub_id)
                 if sub:
                     sub.state = "WAITING_FOR_LTMS"
+                    sub.last_error = "LTMS did not return a terminal status during realtime polling window"
+                    _audit(session, "SUBMISSION_WAITING_FOR_LTMS", "ltms_submission", sub_id, {
+                        "testId": test_id,
+                        "incidentDueAt": (now + timedelta(hours=24)).isoformat(),
+                    })
                 session.commit()
             return {
                 "state": "WAITING_FOR_LTMS",
@@ -893,6 +1020,7 @@ def submit_upload_v1(
                 "rejectionReason": None,
                 "queued": True,
                 "submissionId": sub_id,
+                "incidentDueAt": (now + timedelta(hours=24)).isoformat(),
             }
 
         # 5. Terminal result received — persist and optionally render CEC
@@ -931,6 +1059,14 @@ def submit_upload_v1(
                 sub.accepted_at = now if result_state == "ACCEPTED" else None
                 sub.last_error = rejection_reason
                 sub.pdf_path = pdf_path
+                _audit(session, "SUBMISSION_ACCEPTED" if result_state == "ACCEPTED" else "SUBMISSION_REJECTED",
+                       "ltms_submission", sub_id, {
+                           "testId": test_id,
+                           "state": result_state,
+                           "certificateNo": cert_no,
+                           "ltmsRefNo": ltms_ref_no,
+                           "rejectionReason": rejection_reason,
+                       })
             test_row = session.get(EmissionTest, test_id)
             if test_row and result_state == "ACCEPTED":
                 test_row.uploaded_at = now
@@ -951,6 +1087,12 @@ def submit_upload_v1(
             "queued": False,
             "submissionId": sub_id,
         }
+
+    if not allow_mock_paths():
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Production requires cloud-mediated LTMS/IRDS submission",
+        )
 
     # ── Local-mock path (dev / offline) ───────────────────────────────────
     from ..gov.base import EmissionPayload
@@ -1037,6 +1179,12 @@ def submit_upload_v1(
             pdf_path=pdf_path,
         )
         session.add(sub)
+        _audit(session, "SUBMISSION_MOCK_ACCEPTED" if result.state == "ACCEPTED" else "SUBMISSION_MOCK_REJECTED",
+               "ltms_submission", sub_id, {
+                   "testId": test_id,
+                   "state": result.state,
+                   "nonOfficial": True,
+               })
 
         if result.state == "ACCEPTED":
             test.uploaded_at = now
@@ -1057,6 +1205,7 @@ def submit_upload_v1(
         "rejectionReason": result.rejection_reason,
         "queued": False,
         "submissionId": sub_id,
+        "official": False,
     }
 
 
@@ -1111,13 +1260,40 @@ def print_cec(
         if test is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "test not found")
 
+        if is_production():
+            if not test.photos:
+                raise HTTPException(status.HTTP_409_CONFLICT, "CEC print blocked until required photos are uploaded")
+            missing_uploads = [p.id for p in test.photos if not p.uploaded_at or not p.s3_key]
+            if missing_uploads:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    "CEC print blocked until all required photos are uploaded",
+                )
+
+        existing_prints = (
+            session.query(Receipt)
+            .filter(Receipt.submission_id == submission_id)
+            .order_by(Receipt.printed_at.asc())
+            .all()
+        )
+        print_kind = "ORIGINAL" if not existing_prints else "REPRINT"
+        now = datetime.now(timezone.utc)
+        if print_kind == "REPRINT":
+            test_dt = test.tested_at
+            if test_dt.tzinfo is not None:
+                test_dt = test_dt.replace(tzinfo=None)
+            if datetime.utcnow() > test_dt + timedelta(days=REPRINT_WINDOW_DAYS):
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    "CEC reprint rejected because the original test is more than two months old",
+                )
+
         payload = json.loads(sub.payload_json) if sub.payload_json else {}
         vehicle = payload.get("vehicle") or {}
         technician = payload.get("technician") or {}
         verdict = payload.get("verdict") or {}
         readings = payload.get("readings") or _readings_for_test(test)
 
-        now = datetime.now(timezone.utc)
         printer.print_receipt(
             ReceiptData(
                 test_id=test.id,
@@ -1140,13 +1316,24 @@ def print_cec(
             Receipt(
                 id=str(uuid.uuid4()),
                 test_id=test.id,
+                submission_id=submission_id,
+                print_kind=print_kind,
+                certificate_no=sub.certificate_no,
+                valid_until=sub.valid_until,
                 copy_count=req.copies,
                 printed_at=now,
             )
         )
+        _audit(session, "CEC_PRINT" if print_kind == "ORIGINAL" else "CEC_REPRINT",
+               "ltms_submission", submission_id, {
+                   "testId": test.id,
+                   "certificateNo": sub.certificate_no,
+                   "copies": req.copies,
+                   "validUntil": sub.valid_until,
+               }, test.operator_id)
         session.commit()
 
-    return {"printed": True, "copies": req.copies}
+    return {"printed": True, "copies": req.copies, "printKind": print_kind}
 
 
 @app.get("/api/v1/upload/status/{test_id}")
@@ -1595,6 +1782,69 @@ def analytics_fuel_split() -> list:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+def _audit(session, action: str, entity_type: str | None, entity_id: str | None, detail: dict | None = None,
+           user_id: str | None = None) -> None:
+    from ..db.models import AuditLog
+
+    session.add(
+        AuditLog(
+            user_id=user_id,
+            action=action,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            detail_json=json.dumps(detail or {}, default=str),
+            occurred_at=datetime.utcnow(),
+        )
+    )
+
+
+def _require_nonblank(value, label: str) -> None:
+    if value is None or str(value).strip() == "":
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{label} is required")
+
+
+def _validate_readings_for_do(fuel_type: str, readings: dict) -> None:
+    if not readings:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "machine readings are required")
+    gas_fields = ("co_pct", "hc_ppm", "co2_pct", "o2_pct", "lambda_value", "rpm")
+    diesel_fields = ("opacity_pct", "k_value", "rpm")
+    fields = gas_fields if fuel_type.upper() == "GAS" else diesel_fields
+    for field in fields:
+        value = readings.get(field)
+        if value is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"reading {field} is required")
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"reading {field} must be numeric") from exc
+        if numeric <= 0:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                f"reading {field} must be greater than zero under DO 2023-008",
+            )
+
+
+def _validate_submission_payload(payload: dict, test, readings: dict, photo_count: int) -> None:
+    _require_nonblank(payload.get("centerId"), "centerId")
+    _require_nonblank(payload.get("centerName"), "centerName")
+    _require_nonblank(payload.get("testId"), "testId")
+    vehicle = payload.get("vehicle") or {}
+    owner = payload.get("owner") or {}
+    technician = payload.get("technician") or {}
+    _require_nonblank(vehicle.get("plateNo"), "vehicle.plateNo")
+    _require_nonblank(vehicle.get("fuelType"), "vehicle.fuelType")
+    _require_nonblank(test.analyzer_serial, "analyzer serial")
+    if owner.get("ownerType") == "ORGANIZATION":
+        _require_nonblank(owner.get("organization"), "owner.organization")
+    else:
+        _require_nonblank(owner.get("lastName") or owner.get("organization"), "owner name")
+    _require_nonblank(technician.get("technicianName"), "technician.technicianName")
+    _require_nonblank(technician.get("tesdaCertNo") or technician.get("certificationNo"), "technician certification")
+    _validate_readings_for_do(vehicle.get("fuelType") or test.fuel_type, readings)
+    if photo_count <= 0:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "at least one captured test photo is required")
+
+
 def _reading_to_dict(result) -> dict:
     from ..analyzer.base import GasReading, DieselReading
     r = result.reading

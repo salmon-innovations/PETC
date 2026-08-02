@@ -2,6 +2,8 @@
 
 This folder contains the documentation package submitted to the Department of Transportation (DOTr) for IT Provider accreditation of the PETC (Private Emission Testing Center) Data Submission SaaS.
 
+The primary compliance baseline is **DOTr Department Order No. 2023-008, dated 06 March 2023**. DOTC DO 2005-37 is treated as historical/reference material only unless a reviewer specifically asks for a legacy mapping.
+
 ## Required Deliverables
 
 | # | Deliverable | File | Status |
@@ -12,6 +14,8 @@ This folder contains the documentation package submitted to the Department of Tr
 | 4 | Client Application Program Source Code | `04-source-code/` (live repo, read-only access) | **Draft v0.1** |
 | 5 | Sample of CEC Documents | `05-cec-samples/` | **Draft v0.1** |
 | 6 | Network Architecture / Diagram | `06-network-architecture.md` | **Draft v0.1** |
+| 7 | DO 2023-008 Compliance Matrix | `00-do-2023-008-compliance-matrix.md` | **Draft v0.1** |
+| 8 | Annex 6 / PETC Form 02 Templates | `templates/` | **Draft v0.1** |
 
 ## Export to Word/PDF
 

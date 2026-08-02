@@ -12,11 +12,16 @@ public class RefreshToken {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "user_id", nullable = false)
+    // Null for super-admin tokens, which carry superAdminId instead.
+    // A DB CHECK constraint enforces that exactly one subject kind is set.
+    @Column(name = "user_id")
     private UUID userId;
 
-    @Column(name = "tenant_id", nullable = false)
+    @Column(name = "tenant_id")
     private UUID tenantId;
+
+    @Column(name = "super_admin_id")
+    private UUID superAdminId;
 
     @Column(name = "token_hash", nullable = false, unique = true)
     private String tokenHash;
@@ -30,6 +35,8 @@ public class RefreshToken {
     public UUID getId() { return id; }
     public UUID getUserId() { return userId; }
     public UUID getTenantId() { return tenantId; }
+    public UUID getSuperAdminId() { return superAdminId; }
+    public boolean isSuperAdmin() { return superAdminId != null; }
     public String getTokenHash() { return tokenHash; }
     public boolean isRevoked() { return revoked; }
     public boolean isExpired() { return expiresAt.isBefore(OffsetDateTime.now()); }

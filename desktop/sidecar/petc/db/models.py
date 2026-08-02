@@ -153,6 +153,8 @@ class LtmsSubmission(Base):
     valid_until: Mapped[Optional[str]] = mapped_column(String)        # ISO date — CEC validity end (test date + 60d)
     submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    incident_due_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    incident_reported_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     last_error: Mapped[Optional[str]] = mapped_column(Text)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     pdf_path: Mapped[Optional[str]] = mapped_column(String)
@@ -165,6 +167,10 @@ class Receipt(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     test_id: Mapped[str] = mapped_column(String(36), ForeignKey("emission_tests.id"), nullable=False)
+    submission_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("ltms_submissions.id"))
+    print_kind: Mapped[str] = mapped_column(String, nullable=False, default="ORIGINAL")
+    certificate_no: Mapped[Optional[str]] = mapped_column(String)
+    valid_until: Mapped[Optional[str]] = mapped_column(String)
     copy_count: Mapped[int] = mapped_column(Integer, default=2)
     printed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

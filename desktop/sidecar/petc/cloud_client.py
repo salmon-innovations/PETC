@@ -39,7 +39,8 @@ class SubmissionCreated:
 
 @dataclass
 class SubmissionStatus:
-    state: str                          # PENDING | IN_FLIGHT | ACCEPTED | REJECTED | DEAD
+    # PENDING | IN_FLIGHT | BLOCKED | ACCEPTED | REJECTED | DEAD
+    state: str
     certificate_no: Optional[str]
     ltms_ref_no: Optional[str]
     rejection_reason: Optional[str]
@@ -50,7 +51,20 @@ class SubmissionStatus:
 
     @property
     def is_terminal(self) -> bool:
+        # BLOCKED is deliberately NOT terminal: the cloud is holding the filing
+        # for want of wallet funds and will dispatch it on top-up or on grace
+        # expiry, so the reconciler must keep polling it.
         return self.state in ("ACCEPTED", "REJECTED", "DEAD")
+
+
+@dataclass
+class WalletStatus:
+    """This center's prepaid balance, as last seen from the cloud."""
+    balance_centavos: int
+    low: bool
+    negative: bool
+    blocked_count: int
+    charge_per_upload_centavos: int
 
 
 class CloudClient:
@@ -77,6 +91,8 @@ class CloudClient:
         sha256: Optional[str] = None,
     ) -> PresignResult:
         """Request a presigned S3 PUT URL for one photo."""
+        if not sha256:
+            raise ValueError("sha256 is required for DO 2023-008 photo upload evidence")
         resp = self._post("/api/photos/presign", {
             "testId": test_id,
             "photoId": photo_id,
@@ -124,6 +140,22 @@ class CloudClient:
             dermalog_token=body.get("dermalogToken"),
             valid_from=body.get("validFrom"),
             valid_until=body.get("validUntil"),
+        )
+
+    # ── wallet ───────────────────────────────────────────────────────────
+
+    def get_wallet(self) -> "WalletStatus":
+        """This center's prepaid balance. The cloud scopes it by our API key."""
+        with httpx.Client(timeout=self._timeout) as client:
+            r = client.get(f"{self._base}/api/wallet/me", headers=self._headers)
+            r.raise_for_status()
+            body = r.json()
+        return WalletStatus(
+            balance_centavos=body["balanceCentavos"],
+            low=body["low"],
+            negative=body["negative"],
+            blocked_count=body["blockedCount"],
+            charge_per_upload_centavos=body["chargePerUploadCentavos"],
         )
 
     # ── registry ─────────────────────────────────────────────────────────

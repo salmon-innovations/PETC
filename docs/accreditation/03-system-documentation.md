@@ -26,6 +26,7 @@ DOTr IT Provider Accreditation – Deliverable #3
 |---|---|---|---|
 | 0.1 | 2026-06-01 | C. Silerio | Initial draft for DOTr accreditation submission. |
 | 0.2 | 2026-06-03 | C. Silerio | Re-aligned with the implemented cloud-mediated LTMS path: cloud is the single LTMS / IRDS submitter; desktop talks only to the cloud and S3 (presigned PUT). Updated brand to **Digiflash**, install paths to `Digiflash`. Corrected `cloud/backend/` references to the active `cloud/src/`. Updated migration list (`V1__init`, `V2__submissions`, `V3__submission_cec_fields`). Added `submissions/reconciler.py` and `cloud_client.py` to the sidecar sub-program list. Tightened the update-distribution and code-signing sections to match the present, deferred posture. Source commit replaced with the submission tag name. |
+| 0.3 | 2026-06-24 | C. Silerio | Added DOTr DO 2023-008 hardening controls: production profile fail-closed checks, cloud-mediated-only production submission, required photo checksum/presign upload, center authorization status/expiry enforcement, CEC print/reprint audit records, and V4 center authorization migration. |
 
 ### 1.2 Scope of this Document
 
@@ -156,7 +157,7 @@ This section is the formal Security Policy of the Client Application required by
 - Operators log in to the Client Application via the local sidecar endpoint `POST /auth/login`.
 - User passwords are stored as bcrypt hashes via `passlib` and are never persisted in plaintext.
 - A successful login issues a short-lived JWT session token, held in the renderer's Zustand state for the duration of the session.
-- Cloud mirror requests carry an `X-Center-Key` header whose hash is verified server-side against the `licenses.key_hash` column on the operator cloud.
+- Cloud requests carry an `X-Center-Key` header whose hash is verified server-side against the `center_licenses.key_hash` column on the operator cloud.
 - Enforced in: [desktop/sidecar/petc/api/](../../desktop/sidecar/petc/api/), [desktop/sidecar/petc/service.py](../../desktop/sidecar/petc/service.py).
 
 ### 4.2 Authorization (Role-Based Access Control)
@@ -167,6 +168,7 @@ This section is the formal Security Policy of the Client Application required by
   - **Platform Super Admin** – operates only on the cloud portal; no rights inside the Client Application.
 - Authorization decisions are enforced at every protected sidecar route.
 - Cloud-side enforcement is performed by the stateless JWT filter in the Spring Security configuration: [cloud/src/main/java/com/petc/auth/SecurityConfig.java](../../cloud/src/main/java/com/petc/auth/SecurityConfig.java) and the per-request `X-Center-Key` filter in [cloud/src/main/java/com/petc/ingest/CenterKeyValidator.java](../../cloud/src/main/java/com/petc/ingest/CenterKeyValidator.java).
+- DOTr DO 2023-008 center authorization enforcement is performed in the same validator. A valid key is rejected when the PETC authorization status is `SUSPENDED`, `REVOKED`, `EXPIRED`, or past `authorization_expires_at`.
 
 ### 4.3 Tenant Isolation
 
@@ -183,9 +185,13 @@ This section is the formal Security Policy of the Client Application required by
 
 ### 4.5 Audit Logging
 
-- Every state-changing action in the Client Application — operator login, test creation, photo capture, LTMS submission attempt, CEC issuance — is written to a local audit trail (the `app_settings` and outbox tables and a rolling log file).
+- State-changing actions in the Client Application — test creation, analyzer result capture, photo capture, LTMS submission outcome, CEC print, and CEC reprint — are written to the local `audit_log` table and rolling log file.
 - LTMS submission attempts log: timestamp, operator user ID, plate number, attempt outcome, and any error returned by the registry.
-- When the cloud mirror is enabled, audit events are forwarded to the cloud `audit_logs` table.
+- Cloud submission and center authorization events are also available from the cloud database for reviewer/MIT audit access.
+
+### 4.5.1 Production Profile Fail-Closed Rules
+
+The desktop sidecar reads `PETC_PROFILE` as `dev`, `accreditation-demo`, or `production`. Under `production`, startup fails when mock government mode is enabled, mock analyzer/camera/printer adapters are selected, localhost cloud endpoints are configured, or center identifiers/API keys are missing or placeholder values. The Spring cloud app applies equivalent production-profile checks for mock government mode, dev center keys, placeholder JWT/S3 secrets, and local object-storage endpoints.
 
 ### 4.6 Network Posture
 
@@ -328,7 +334,7 @@ Frame formats and unit-test fixtures for the ASCII gas and binary diesel adapter
 | `PETC_ANALYZER_PORT` | `COM1` | COM port name (e.g. `COM3`, `/dev/ttyUSB0`). |
 | `PETC_ANALYZER_BAUD` | `9600` | Baud rate (use 19200 for diesel). |
 | `PETC_GOV_MOCK` | `true` (dev) | Use the **local** mock gov client (offline / dev path). In production this is false and gov calls go via the cloud. |
-| `PETC_CLOUD_URL` | unset (prod: set) | Digiflash cloud base URL. When set, the desktop submits to LTMS / IRDS via the cloud and proxies registry lookups through the cloud. When unset, the desktop falls back to the local mock-gov path. |
+| `PETC_CLOUD_URL` | unset (prod: set) | Digiflash cloud base URL. When set, the desktop submits to LTMS / IRDS via the cloud and proxies registry lookups through the cloud. When unset, only dev/accreditation-demo can use the local mock-gov path. |
 | `PETC_CENTER_ID` | unset | Center identifier issued at commissioning. |
 | `PETC_CLOUD_KEY` | unset | Per-center API key carried on every cloud request in the `X-Center-Key` header. |
 
@@ -349,6 +355,7 @@ Schema migrations under [cloud/src/main/resources/db/migration/](../../cloud/src
 | `V1__init.sql` | Core tables: `tenants`, `users`, `refresh_tokens`, `audit_log`, mirror tables (`mirror_emission_tests`, `mirror_test_photos`, `mirror_ltms_submissions`). Row-Level Security policies. |
 | `V2__submissions.sql` | `center_licenses` (bcrypt-hashed X-Center-Key per tenant) + `submissions` (LTMS submission queue with state machine, attempts, backoff). |
 | `V3__submission_cec_fields.sql` | Adds the CEC presentation fields LTMS returns: `or_no`, `dermalog_token`, `valid_from`, `valid_until`. |
+| `V4__center_authorization_status.sql` | Adds `authorization_status`, `authorization_expires_at`, suspension/revocation metadata, and supporting index for DO 2023-008 authorization rejection. |
 
 ### 6.3 Runtime Data
 

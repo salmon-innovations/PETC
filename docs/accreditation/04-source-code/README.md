@@ -115,7 +115,7 @@ PETC/
 │   │   ├── main/java/com/petc/
 │   │   │   ├── auth/        #     JWT + operator portal auth
 │   │   │   ├── gov/         #     LTMS / IRDS adapter interface + mock
-│   │   │   ├── ingest/      #     desktop mirror ingest + center-key auth
+│   │   │   ├── ingest/      #     center-key auth + authorization status checks
 │   │   │   ├── photos/      #     S3 presigned-URL endpoint
 │   │   │   ├── registry/    #     vehicle / driver lookup proxy
 │   │   │   ├── submissions/ #     LTMS submission service + job runner
@@ -123,7 +123,8 @@ PETC/
 │   │   └── main/resources/
 │   │       ├── application.yml
 │   │       └── db/migration/  # Flyway V1__init, V2__submissions,
-│   │                          #        V3__submission_cec_fields
+│   │                          #        V3__submission_cec_fields,
+│   │                          #        V4__center_authorization_status
 │   ├── frontend/            #   operator portal (cloud React app)
 │   └── backend/             #   ⚠ DEPRECATED older spike — see
 │                            #     cloud/backend/DEPRECATED.md

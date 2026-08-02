@@ -26,6 +26,7 @@ DOTr IT Provider Accreditation – Deliverable #1
 |---|---|---|---|
 | 0.1 | 2026-06-02 | C. Silerio | Initial draft for DOTr accreditation submission. |
 | 0.2 | 2026-06-03 | C. Silerio | Aligned wizard chapter and printing chapter with the implemented code: corrected Step-1 vehicle fields incl. classification, Step-2 owner fields, Step-3 engine flags (turbo / aspiration / condition), Step-4 technician fields, Step-5 single mandatory FRONT photo. Added `WAITING_FOR_LTMS` outcome + matching History/troubleshooting entry. Split the CEC printing chapter into the A4 PDF (formal) and thermal-receipt (hand-off) outputs. Clarified that LTMS / IRDS lookups are cloud-proxied. |
+| 0.3 | 2026-06-24 | C. Silerio | Rebased operating rules on DOTr Department Order No. 2023-008: connected analyzer required in production, automatic reading capture within 5 seconds, mandatory field/readings validation, upload-before-print, realtime photo upload, 24-hour incident escalation, and controlled CEC reprints within 2 months. |
 
 ---
 
@@ -46,7 +47,7 @@ Digiflash is a Windows desktop application installed at each accredited PETC. It
 5. Submits the completed record to LTMS and IRDS through the Digiflash cloud service.
 6. Produces a Certificate of Emission Compliance (CEC) in two forms once LTMS returns the certificate key: an **A4 PDF** (two halves per sheet — Customer copy + Center copy, the formal record kept on file at the center) and an **80 mm thermal receipt** (a printed summary the operator hands to the vehicle owner on the spot).
 
-The desktop application is the source of truth at the center. A center can continue capturing tests during a temporary internet outage; queued tests will be uploaded automatically when connectivity is restored.
+The desktop application is the source of truth at the center. Under the production profile, official CEC generation requires successful Digiflash cloud submission and required photo upload before printing. Local mock submission is available only in development/accreditation-demo mode and is not an official LTMS/IRDS transaction.
 
 ### 1.3 Roles
 
@@ -191,7 +192,7 @@ For **diesel** tests, the following fields are captured: opacity (%), k-value (m
 
 The screen updates live until the analyzer signals end-of-test. The final accepted reading is then displayed.
 
-If the analyzer disconnects or returns no data within 60 seconds, an error banner appears with the suggested fix.
+Under DOTr DO 2023-008, the final machine reading must be captured automatically within 5 seconds once requested by the client program. If the analyzer disconnects, returns invalid readings, returns zero/negative regulated values, or exceeds the 5-second capture requirement, the test is rejected and the operator must fix the equipment issue before restarting.
 
 ![Live analyzer readings during a diesel test](../../photos/manual/run_test_with_results.png)
 
@@ -312,6 +313,8 @@ Click **Next** once at least one Vehicle photo is attached. (A second supplement
 
 The final screen shows a read-only summary of all data going to LTMS and IRDS. Verify carefully. Click **Submit to LTMS**.
 
+Before the LTMS/IRDS submission is sent, Digiflash uploads the required photo evidence using a cloud-issued presigned upload URL and a SHA-256 checksum. If required photo upload fails, the CEC cannot be generated or printed. Connectivity-related photo upload failures are escalated through the incident workflow if not resolved within the DO 2023-008 grace period.
+
 The wizard shows a progress indicator while the Digiflash cloud submits the record to LTMS and IRDS on behalf of the center.
 
 ![Wizard Step 6, review and submit](../../photos/manual/review_tab.png)
@@ -324,10 +327,10 @@ The wizard waits up to 60 seconds for LTMS to return a verdict. Possible outcome
 
 | Outcome | What you will see | What to do |
 |---|---|---|
-| **Accepted** | A green confirmation with the CEC number (`CERT-…`), the LTMS OR No., and the option **Print CEC**. The A4 CEC PDF is rendered in a preview pane. | Click **Print CEC ×2** to send the A4 PDF to the printer for the customer + center copies, and use **/print/receipt** at the bay (or the History row's print action) to hand the owner a thermal-receipt summary. |
+| **Accepted** | A green confirmation with the CEC number (`CERT-…`), the LTMS OR No., and the option **Print CEC**. The A4 CEC PDF is rendered in a preview pane only after required photos are uploaded. | Click **Print CEC ×2** to send the A4 PDF to the printer for the customer + center copies, and use **/print/receipt** at the bay (or the History row's print action) to hand the owner a thermal-receipt summary. |
 | **Rejected** | A red banner showing the rejection reason returned by LTMS / IRDS. No CEC is issued. | Correct the noted issue, then re-submit from the **LTMS Upload** queue. |
 | **Awaiting LTMS** (`WAITING_FOR_LTMS`) | A blue banner: "Queued — awaiting LTMS response." The test has been received by the Digiflash cloud but LTMS has not yet returned a verdict within the 60-second window. | Click **Go to History**. The Digiflash desktop will check LTMS every 30 seconds in the background; when LTMS responds, the History row updates automatically — the **Print CEC** button appears for an Accepted result, or the rejection reason appears for a Rejected one. |
-| **Queued (offline)** | A yellow banner: "Saved. Will upload when connection is restored." | Continue working; the upload will retry automatically when connectivity returns. |
+| **Queued (connectivity malfunction)** | A yellow banner explaining that realtime upload could not complete. | Do not print a CEC. Restore connectivity and retry. If realtime upload is not resolved within the required grace/incident window, file the Digiflash incident report. |
 
 ![Accepted result with print button and A4 CEC preview](../../photos/manual/CEC_Preview.png)
 
@@ -337,7 +340,7 @@ The wizard waits up to 60 seconds for LTMS to return a verdict. Possible outcome
 
 ## 8. Printing the CEC
 
-Digiflash produces two outputs for every Accepted submission. Both are issued only after LTMS returns the certificate number (`CERT-…`), OR number, and DERMALOG token; nothing is printed before LTMS accepts the submission.
+Digiflash produces two outputs for every Accepted submission. Both are issued only after LTMS returns the certificate number (`CERT-…`), OR number, and DERMALOG token, and after required photos have uploaded successfully; nothing is printed before LTMS accepts the submission.
 
 ### 8.1 A4 CEC PDF (formal record)
 
@@ -362,7 +365,7 @@ The thermal receipt is printed via the **Print Receipt** action available on the
 2. Find the test by plate number, date, or CEC number. Rows whose state is `ACCEPTED` show a **Print CEC** button on the right.
 3. Click **Print CEC** to re-print the A4 PDF, or use the receipt action to re-print the thermal slip.
 
-Re-prints are logged in the audit trail with the operator ID and timestamp.
+Re-prints are logged separately from the original print with the operator ID and timestamp. Re-printing does not allow edits to vehicle data, owner data, readings, dates, technician fields, validity, or the original CEC content. The original expiration date is preserved. Re-prints are rejected when the original test datetime is more than 2 months old.
 
 ![History row with Print CEC button next to an ACCEPTED state badge](../../photos/manual/test%20history.png)
 

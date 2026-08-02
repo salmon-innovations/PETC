@@ -1,5 +1,6 @@
 export type FuelType = "GAS" | "DIESEL" | "MOTORCYCLE";
 export type Role = "operator" | "cashier" | "manager" | "tenant_admin";
+export type Classification = "PRIVATE" | "PUBLIC" | "GOVERNMENT" | "DIPLOMATIC";
 
 export interface User {
   id: string;
@@ -30,6 +31,9 @@ export interface VehicleInfo {
   crNo: string;
   districtOffice: string;
   ownerName: string;
+  // Optional: the registry does not always return it, so the wizard defaults
+  // to PRIVATE. It is printed on the CEC (see sidecar cec/pdf.py).
+  classification?: Classification;
 }
 
 export interface OwnerInfo {
@@ -100,4 +104,12 @@ export interface SidecarStatus {
   printerStatus: { online: boolean; paper_ok: boolean };
   cloudOutboxPending: number;
   agentVersion: string;
+  /** null until the cloud answers; stays null in local-mock mode. */
+  walletBalanceCentavos: number | null;
+  walletLow: boolean;
+  walletNegative: boolean;
+  /** Submissions the cloud is holding because the wallet cannot cover them. */
+  walletBlockedCount: number;
+  /** ISO timestamp of the last successful wallet read, for staleness display. */
+  walletFetchedAt: string | null;
 }

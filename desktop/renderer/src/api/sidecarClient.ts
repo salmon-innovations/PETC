@@ -115,6 +115,13 @@ export const sidecarClient = {
       printerStatus: data.printer_status,
       cloudOutboxPending: data.cloud_outbox_pending,
       agentVersion: data.agent_version,
+      // null when the cloud has never answered — e.g. local-mock mode with no
+      // PETC_CLOUD_URL. The UI hides the balance rather than showing a zero.
+      walletBalanceCentavos: data.wallet_balance_centavos ?? null,
+      walletLow: data.wallet_low ?? false,
+      walletNegative: data.wallet_negative ?? false,
+      walletBlockedCount: data.wallet_blocked_count ?? 0,
+      walletFetchedAt: data.wallet_fetched_at ?? null,
     };
   },
 
