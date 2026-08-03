@@ -63,11 +63,15 @@ public class ProductionGuard implements ApplicationRunner {
         if (isPlaceholder(jwtSecret)) {
             errors.add("petc.jwt.secret must be a non-placeholder secret");
         }
-        if (isLocalEndpoint(s3Endpoint)) {
+        if (s3Endpoint != null && !s3Endpoint.isBlank() && isLocalEndpoint(s3Endpoint)) {
             errors.add("petc.s3.endpoint must point to the authorized object storage endpoint");
         }
-        if (isPlaceholder(s3AccessKey) || isPlaceholder(s3SecretKey)) {
-            errors.add("S3 credentials must be non-placeholder production credentials");
+        boolean hasS3AccessKey = s3AccessKey != null && !s3AccessKey.isBlank();
+        boolean hasS3SecretKey = s3SecretKey != null && !s3SecretKey.isBlank();
+        if (hasS3AccessKey != hasS3SecretKey) {
+            errors.add("S3 access key and secret key must either both be set or both be empty");
+        } else if (hasS3AccessKey && (isPlaceholder(s3AccessKey) || isPlaceholder(s3SecretKey))) {
+            errors.add("Static S3 credentials must be non-placeholder production credentials");
         }
         // Billing settings live in platform_settings and are mutable at runtime,
         // so this can only confirm they are present and sane AT STARTUP. A bad

@@ -331,25 +331,25 @@ npm run build
 
 ## Cloud Development
 
-The production cloud app is `cloud/`. It runs on the host, not in Docker:
+The production cloud app is `cloud/`. It runs on the host, not in Docker. Use
+the `salmon-innovations` AWS profile so photo uploads go to the dedicated
+private S3 bucket:
 
 ```bash
 cd cloud
+AWS_PROFILE=salmon-innovations \
+S3_BUCKET=salmon-innovations-petc-dev-photos-016257615426 \
 ./gradlew bootRun
 ```
 
-Start the supporting services (MinIO, operator portal) separately:
-
-```bash
-docker compose up --build minio cloud-frontend
-```
+Start the operator portal separately with `cd cloud/frontend && npm run dev`.
 
 Cloud ports:
 
 - Backend: `http://localhost:8080`
 - Cloud frontend: `http://localhost:3000`
-- MinIO API: `http://localhost:9000`
-- MinIO console: `http://localhost:9001`
+- S3 bucket: `salmon-innovations-petc-dev-photos-016257615426`
+- S3 region: `ap-southeast-1`
 
 The desktop app does not run in Docker.
 

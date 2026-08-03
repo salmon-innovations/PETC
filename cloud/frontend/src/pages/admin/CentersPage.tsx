@@ -34,17 +34,15 @@ type AddForm = z.infer<typeof addSchema>;
 export default function CentersPage() {
   const qc = useQueryClient();
 
-  const { data: centers = [] } = useQuery<Center[]>({
+  const centersQuery = useQuery<Center[]>({
     queryKey: ["centers"],
     queryFn: () => api.get<Center[]>("/tenants").then((r) => r.data),
   });
 
-  const { data: wallets = [] } = useQuery<CenterWallet[]>({
+  const walletsQuery = useQuery<CenterWallet[]>({
     queryKey: ["wallet-centers"],
     queryFn: () => api.get<CenterWallet[]>("/wallet/centers").then((r) => r.data),
   });
-  const walletByTenant = Object.fromEntries(wallets.map((w) => [w.tenantId, w]));
-
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } =
     useForm<AddForm>({ resolver: zodResolver(addSchema) });
 
@@ -52,6 +50,19 @@ export default function CentersPage() {
     mutationFn: (data: AddForm) => api.post("/tenants", data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["centers"] }); reset(); },
   });
+
+  if (centersQuery.isPending || walletsQuery.isPending) {
+    return <PageStatus message="Loading emission testing centers…" />;
+  }
+
+  if (centersQuery.isError || walletsQuery.isError) {
+    return <PageStatus error message="Unable to load centers from the cloud backend." />;
+  }
+
+  const centers = centersQuery.data;
+  const walletByTenant = Object.fromEntries(
+    walletsQuery.data.map((wallet) => [wallet.tenantId, wallet])
+  );
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
@@ -129,6 +140,22 @@ export default function CentersPage() {
             )}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+function PageStatus({ message, error = false }: { message: string; error?: boolean }) {
+  return (
+    <div className="max-w-4xl mx-auto p-6 space-y-6">
+      <h1 className="text-xl font-bold text-gray-800">Emission Testing Centers</h1>
+      <div
+        role={error ? "alert" : "status"}
+        className={error
+          ? "rounded-xl border border-red-300 bg-red-50 p-5 text-sm text-red-800"
+          : "rounded-xl border border-gray-200 bg-white p-5 text-sm text-gray-600"}
+      >
+        {message}
       </div>
     </div>
   );

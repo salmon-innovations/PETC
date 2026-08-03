@@ -26,11 +26,15 @@ petc:
     access-token-expiry-minutes: 15
     refresh-token-expiry-days: 30
   s3:
-    endpoint: ${S3_ENDPOINT:http://localhost:9000}
-    bucket: ${S3_BUCKET:petc-photos}
+    # Empty endpoint uses native AWS S3. Set S3_ENDPOINT only for an
+    # S3-compatible development service; custom endpoints use path-style URLs.
+    endpoint: ${S3_ENDPOINT:}
+    bucket: ${S3_BUCKET:salmon-innovations-petc-dev-photos-016257615426}
     region: ${S3_REGION:ap-southeast-1}
-    access-key: ${S3_ACCESS_KEY:minioadmin}
-    secret-key: ${S3_SECRET_KEY:minioadmin}
+    # Empty static keys use the AWS SDK default credential chain. For local
+    # development set AWS_PROFILE=salmon-innovations.
+    access-key: ${S3_ACCESS_KEY:}
+    secret-key: ${S3_SECRET_KEY:}
     presigned-put-ttl-seconds: ${S3_PRESIGN_TTL:300}
   gov:
     mock: ${GOV_MOCK:true}   # flip to false once real sandbox creds arrive

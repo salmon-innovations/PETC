@@ -10,10 +10,10 @@ help:
 
 # ── Infrastructure ────────────────────────────────────────────────────────────
 
-dev-infra: ## Start MinIO (Postgres + Redis from shared containers)
-	docker compose up -d minio
+dev-infra: ## Show external infrastructure required for local development
+	@echo "Postgres and Redis must be available on localhost; photos use AWS S3."
 
-dev: ## Start cloud backend + cloud frontend + MinIO
+dev: ## Start legacy compose backend + cloud frontend (no object-store container)
 	docker compose up --build
 
 stop: ## Tear down cloud docker services

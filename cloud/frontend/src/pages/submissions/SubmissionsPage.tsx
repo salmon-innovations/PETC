@@ -69,7 +69,7 @@ function StateBadge({ state }: { state: string }) {
 }
 
 function DetailPanel({ id, onClose }: { id: string; onClose: () => void }) {
-  const { data } = useQuery<SubmissionDetail>({
+  const { data, isError } = useQuery<SubmissionDetail>({
     queryKey: ["submission", id],
     queryFn: () => api.get<SubmissionDetail>(`/admin/submissions/${id}`).then((r) => r.data),
   });
@@ -87,6 +87,12 @@ function DetailPanel({ id, onClose }: { id: string; onClose: () => void }) {
           </div>
           <button onClick={onClose} className="text-xs text-gray-500 underline">Close</button>
         </div>
+
+        {isError && (
+          <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+            Unable to load submission details from the cloud backend.
+          </div>
+        )}
 
         {data && (
           <>
@@ -176,7 +182,7 @@ export default function SubmissionsPage() {
   const state = params.get("state") ?? "";
   const centerId = params.get("centerId") ?? "";
 
-  const { data: submissions = [] } = useQuery<Submission[]>({
+  const submissionsQuery = useQuery<Submission[]>({
     queryKey: ["submissions", state, centerId],
     queryFn: () => {
       const q = new URLSearchParams();
@@ -187,6 +193,16 @@ export default function SubmissionsPage() {
     },
     refetchInterval: 15_000,
   });
+
+  if (submissionsQuery.isPending) {
+    return <PageStatus message="Loading submissions…" />;
+  }
+
+  if (submissionsQuery.isError) {
+    return <PageStatus error message="Unable to load submissions from the cloud backend." />;
+  }
+
+  const submissions = submissionsQuery.data;
 
   const setFilter = (key: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -264,6 +280,22 @@ export default function SubmissionsPage() {
       </div>
 
       {selected && <DetailPanel id={selected} onClose={() => setSelected(null)} />}
+    </div>
+  );
+}
+
+function PageStatus({ message, error = false }: { message: string; error?: boolean }) {
+  return (
+    <div className="max-w-6xl mx-auto p-6 space-y-6">
+      <h1 className="text-xl font-bold text-gray-800">Submissions</h1>
+      <div
+        role={error ? "alert" : "status"}
+        className={error
+          ? "rounded-xl border border-red-300 bg-red-50 p-5 text-sm text-red-800"
+          : "rounded-xl border border-gray-200 bg-white p-5 text-sm text-gray-600"}
+      >
+        {message}
+      </div>
     </div>
   );
 }
