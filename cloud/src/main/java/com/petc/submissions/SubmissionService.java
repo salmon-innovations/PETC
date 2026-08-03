@@ -2,6 +2,7 @@ package com.petc.submissions;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.petc.audit.AuditService;
+import com.petc.wallet.CenterPricingService;
 import com.petc.wallet.WalletService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,17 +24,20 @@ public class SubmissionService {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
+    private final CenterPricingService pricing;
     private final WalletService wallet;
     private final AuditService audit;
 
     public SubmissionService(
             JdbcTemplate jdbc,
             ObjectMapper mapper,
+            CenterPricingService pricing,
             WalletService wallet,
             AuditService audit
     ) {
         this.jdbc = jdbc;
         this.mapper = mapper;
+        this.pricing = pricing;
         this.wallet = wallet;
         this.audit = audit;
     }
@@ -50,12 +54,16 @@ public class SubmissionService {
      * attempts is reset so the corrected filing gets a full retry budget rather
      * than inheriting the exhausted one from the rejected attempt.
      */
+    @Transactional
     public String enqueue(String tenantId, String centerId, String testId, Map<String, Object> payload) {
         try {
             String payloadJson = mapper.writeValueAsString(payload);
+            long quotedCharge = pricing.getFor(tenantId).chargePerUploadCentavos();
             return jdbc.queryForObject("""
-                    INSERT INTO submissions (tenant_id, center_id, test_id, payload)
-                    VALUES (?::uuid, ?, ?, ?::jsonb)
+                    INSERT INTO submissions
+                        (tenant_id, center_id, test_id, payload,
+                         charge_snapshot_centavos, price_snapshotted_at)
+                    VALUES (?::uuid, ?, ?, ?::jsonb, ?, now())
                     ON CONFLICT (tenant_id, test_id) DO UPDATE
                         SET state = CASE
                                 WHEN submissions.state IN ('REJECTED','DEAD') THEN 'PENDING'
@@ -76,9 +84,27 @@ public class SubmissionService {
                             next_attempt_at = CASE
                                 WHEN submissions.state IN ('REJECTED','DEAD') THEN now()
                                 ELSE submissions.next_attempt_at
+                            END,
+                            charge_snapshot_centavos = CASE
+                                WHEN submissions.state IN ('REJECTED','DEAD')
+                                    THEN EXCLUDED.charge_snapshot_centavos
+                                ELSE submissions.charge_snapshot_centavos
+                            END,
+                            price_snapshotted_at = CASE
+                                WHEN submissions.state IN ('REJECTED','DEAD')
+                                    THEN EXCLUDED.price_snapshotted_at
+                                ELSE submissions.price_snapshotted_at
+                            END,
+                            blocked_at = CASE
+                                WHEN submissions.state IN ('REJECTED','DEAD') THEN NULL
+                                ELSE submissions.blocked_at
+                            END,
+                            grace_released_at = CASE
+                                WHEN submissions.state IN ('REJECTED','DEAD') THEN NULL
+                                ELSE submissions.grace_released_at
                             END
                     RETURNING id::text
-                    """, String.class, tenantId, centerId, testId, payloadJson);
+                    """, String.class, tenantId, centerId, testId, payloadJson, quotedCharge);
         } catch (Exception e) {
             throw new RuntimeException("Failed to enqueue submission for test " + testId, e);
         }
@@ -273,7 +299,7 @@ public class SubmissionService {
     java.util.List<PendingSubmission> claimPending(int batchSize) {
         return jdbc.query("""
                 SELECT id::text, tenant_id::text, center_id, test_id, payload::text, attempts,
-                       grace_released_at
+                       grace_released_at, charge_snapshot_centavos
                 FROM submissions
                 WHERE state = 'PENDING' AND next_attempt_at <= now()
                 ORDER BY next_attempt_at
@@ -286,7 +312,8 @@ public class SubmissionService {
                         rs.getString("test_id"),
                         rs.getString("payload"),
                         rs.getInt("attempts"),
-                        rs.getTimestamp("grace_released_at") != null
+                        rs.getTimestamp("grace_released_at") != null,
+                        rs.getLong("charge_snapshot_centavos")
                 ),
                 batchSize);
     }
@@ -307,5 +334,6 @@ public class SubmissionService {
      *                      which is how a balance is allowed to go negative.
      */
     record PendingSubmission(String id, String tenantId, String centerId, String testId,
-                             String payloadJson, int attempts, boolean graceReleased) {}
+                             String payloadJson, int attempts, boolean graceReleased,
+                             long chargeSnapshotCentavos) {}
 }

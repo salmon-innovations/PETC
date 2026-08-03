@@ -12,6 +12,7 @@ Silently no-ops when PETC_CLOUD_URL is not configured.
 from __future__ import annotations
 
 import logging
+import json
 import threading
 from datetime import datetime, timezone
 from typing import Optional
@@ -30,25 +31,73 @@ _WAITING_STATES = ("PENDING", "WAITING_FOR_LTMS")
 # provided the UI marks it stale.
 _wallet_lock = threading.Lock()
 _wallet_cache: Optional[dict] = None
+_WALLET_SETTING_KEY = "wallet.last_registered"
 
 
 def get_cached_wallet() -> Optional[dict]:
-    """Last-known wallet state, or None if the cloud has never answered."""
+    """Last-known wallet state, including the value restored from SQLite."""
+    global _wallet_cache
     with _wallet_lock:
+        if _wallet_cache is None:
+            _wallet_cache = _load_persisted_wallet()
         return dict(_wallet_cache) if _wallet_cache else None
 
 
 def _store_wallet(wallet) -> None:
     global _wallet_cache
+    fetched_at = datetime.now(timezone.utc)
+    value = {
+        "tenant_id": wallet.tenant_id,
+        "balance_centavos": wallet.balance_centavos,
+        "low": wallet.low,
+        "negative": wallet.negative,
+        "blocked_count": wallet.blocked_count,
+        "charge_per_upload_centavos": wallet.charge_per_upload_centavos,
+        "low_balance_threshold_centavos": wallet.low_balance_threshold_centavos,
+        "pricing_updated_at": wallet.pricing_updated_at,
+        "fetched_at": fetched_at,
+    }
+
+    # Persist the cloud-authoritative price together with the center identity.
+    # This is display-only state: it must never gate a local test or upload.
+    try:
+        from ..db.models import AppSetting
+        from ..db.session import SessionLocal
+
+        serializable = dict(value)
+        serializable["fetched_at"] = fetched_at.isoformat()
+        with SessionLocal() as session:
+            row = session.get(AppSetting, _WALLET_SETTING_KEY)
+            if row is None:
+                row = AppSetting(key=_WALLET_SETTING_KEY)
+                session.add(row)
+            row.value = json.dumps(serializable, separators=(",", ":"))
+            session.commit()
+    except Exception:
+        logger.exception("Could not persist last registered wallet price")
+
     with _wallet_lock:
-        _wallet_cache = {
-            "balance_centavos": wallet.balance_centavos,
-            "low": wallet.low,
-            "negative": wallet.negative,
-            "blocked_count": wallet.blocked_count,
-            "charge_per_upload_centavos": wallet.charge_per_upload_centavos,
-            "fetched_at": datetime.now(timezone.utc),
-        }
+        _wallet_cache = value
+
+
+def _load_persisted_wallet() -> Optional[dict]:
+    try:
+        from ..db.models import AppSetting
+        from ..db.session import SessionLocal
+
+        with SessionLocal() as session:
+            row = session.get(AppSetting, _WALLET_SETTING_KEY)
+            if row is None or not row.value:
+                return None
+            value = json.loads(row.value)
+        fetched_at = datetime.fromisoformat(value["fetched_at"])
+        if fetched_at.tzinfo is None:
+            fetched_at = fetched_at.replace(tzinfo=timezone.utc)
+        value["fetched_at"] = fetched_at
+        return value
+    except Exception as exc:
+        logger.warning("Could not load persisted wallet price: %s", exc)
+        return None
 
 
 class SubmissionReconciler:

@@ -34,7 +34,6 @@ public class DashboardController {
 
     @GetMapping("/summary")
     public Map<String, Object> summary() {
-        long lowThreshold = settings.lowBalanceThresholdCentavos();
         long debtFloor = settings.debtFloorCentavos();
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -60,22 +59,24 @@ public class DashboardController {
         // ── wallet exposure ─────────────────────────────────────────────
         out.put("totalFloatCentavos", jdbc.queryForObject(
                 "SELECT COALESCE(SUM(balance_centavos), 0) FROM wallet_accounts", Long.class));
-        out.put("chargePerUploadCentavos", settings.chargePerUploadCentavos());
-        out.put("lowBalanceThresholdCentavos", lowThreshold);
         out.put("debtFloorCentavos", debtFloor);
 
         List<Map<String, Object>> attention = jdbc.queryForList("""
                 SELECT t.id::text AS tenant_id, t.slug, t.name,
                        COALESCE(w.balance_centavos, 0) AS balance_centavos,
+                       COALESCE(c.low_balance_threshold_centavos, 40000)
+                           AS low_balance_threshold_centavos,
                        (SELECT count(*) FROM submissions s
                          WHERE s.tenant_id = t.id AND s.state = 'BLOCKED') AS blocked_count
                   FROM tenants t
                   LEFT JOIN wallet_accounts w ON w.tenant_id = t.id
-                 WHERE COALESCE(w.balance_centavos, 0) < ?
+                  LEFT JOIN tenant_billing_configs c ON c.tenant_id = t.id
+                 WHERE COALESCE(w.balance_centavos, 0)
+                           < COALESCE(c.low_balance_threshold_centavos, 40000)
                     OR EXISTS (SELECT 1 FROM submissions s
                                 WHERE s.tenant_id = t.id AND s.state = 'BLOCKED')
                  ORDER BY COALESCE(w.balance_centavos, 0) ASC
-                """, lowThreshold);
+                """);
         // Centers at or past the debt floor have submissions that will NOT be
         // grace-released — those filings are stranded until someone intervenes.
         attention.forEach(row -> {

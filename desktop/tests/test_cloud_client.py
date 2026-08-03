@@ -11,6 +11,7 @@ from petc.cloud_client import (
     PresignResult,
     SubmissionCreated,
     SubmissionStatus,
+    WalletStatus,
     get_client,
     is_available,
 )
@@ -101,6 +102,22 @@ class PatchedCloudClient(CloudClient):
                 return None
             r.raise_for_status()
             return r.json()
+
+    def get_wallet(self):
+        with self._make_sync_client(timeout=self._timeout) as client:
+            r = client.get(f"{self._base}/api/wallet/me", headers=self._headers)
+            r.raise_for_status()
+            body = r.json()
+        return WalletStatus(
+            tenant_id=body["tenantId"],
+            balance_centavos=body["balanceCentavos"],
+            low=body["low"],
+            negative=body["negative"],
+            blocked_count=body["blockedCount"],
+            charge_per_upload_centavos=body["chargePerUploadCentavos"],
+            low_balance_threshold_centavos=body["lowBalanceThresholdCentavos"],
+            pricing_updated_at=body.get("pricingUpdatedAt"),
+        )
 
     def upload_photo(self, upload_url: str, data: bytes, content_type: str = "image/jpeg") -> None:
         with self._make_sync_client(timeout=60.0) as client:
@@ -265,6 +282,30 @@ def test_get_submission_dead_is_terminal():
     })
     status = c.get_submission("sub-dead")
     assert status.is_terminal is True
+
+
+# ── wallet ───────────────────────────────────────────────────────────────────
+
+def test_get_wallet_includes_center_pricing():
+    c = _patched({
+        ("GET", "/api/wallet/me"): (200, {
+            "tenantId": "tenant-001",
+            "balanceCentavos": 125_000,
+            "low": False,
+            "negative": False,
+            "blockedCount": 0,
+            "chargePerUploadCentavos": 9_500,
+            "lowBalanceThresholdCentavos": 50_000,
+            "pricingUpdatedAt": "2026-08-03T10:15:30+08:00",
+        }),
+    })
+
+    wallet = c.get_wallet()
+
+    assert wallet.tenant_id == "tenant-001"
+    assert wallet.charge_per_upload_centavos == 9_500
+    assert wallet.low_balance_threshold_centavos == 50_000
+    assert wallet.pricing_updated_at == "2026-08-03T10:15:30+08:00"
 
 
 # ── lookup_vehicle ────────────────────────────────────────────────────────────

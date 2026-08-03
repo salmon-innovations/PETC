@@ -30,8 +30,6 @@ interface Summary {
   acceptedToday: number;
   graceReleasedCount: number;
   totalFloatCentavos: number;
-  chargePerUploadCentavos: number;
-  lowBalanceThresholdCentavos: number;
   debtFloorCentavos: number;
   centersNeedingAttention: CenterAttention[];
   recentTopUps: TopUp[];

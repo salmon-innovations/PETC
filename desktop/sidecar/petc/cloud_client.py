@@ -60,11 +60,14 @@ class SubmissionStatus:
 @dataclass
 class WalletStatus:
     """This center's prepaid balance, as last seen from the cloud."""
+    tenant_id: str
     balance_centavos: int
     low: bool
     negative: bool
     blocked_count: int
     charge_per_upload_centavos: int
+    low_balance_threshold_centavos: int
+    pricing_updated_at: Optional[str]
 
 
 class CloudClient:
@@ -151,11 +154,14 @@ class CloudClient:
             r.raise_for_status()
             body = r.json()
         return WalletStatus(
+            tenant_id=body["tenantId"],
             balance_centavos=body["balanceCentavos"],
             low=body["low"],
             negative=body["negative"],
             blocked_count=body["blockedCount"],
             charge_per_upload_centavos=body["chargePerUploadCentavos"],
+            low_balance_threshold_centavos=body["lowBalanceThresholdCentavos"],
+            pricing_updated_at=body.get("pricingUpdatedAt"),
         )
 
     # ── registry ─────────────────────────────────────────────────────────

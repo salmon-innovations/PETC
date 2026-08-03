@@ -5,6 +5,7 @@ import com.petc.settings.PlatformSettingsService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -34,11 +35,18 @@ public class WalletController {
     private static final int MAX_LEDGER_PAGE = 200;
 
     private final WalletService wallet;
+    private final CenterPricingService pricing;
     private final PlatformSettingsService settings;
     private final JdbcTemplate jdbc;
 
-    public WalletController(WalletService wallet, PlatformSettingsService settings, JdbcTemplate jdbc) {
+    public WalletController(
+            WalletService wallet,
+            CenterPricingService pricing,
+            PlatformSettingsService settings,
+            JdbcTemplate jdbc
+    ) {
         this.wallet = wallet;
+        this.pricing = pricing;
         this.settings = settings;
         this.jdbc = jdbc;
     }
@@ -46,21 +54,24 @@ public class WalletController {
     /** Balance and exposure for every center, for the dashboard and centers list. */
     @GetMapping("/centers")
     public List<CenterWalletResponse> listCenters() {
-        long lowThreshold = settings.lowBalanceThresholdCentavos();
         long debtFloor = settings.debtFloorCentavos();
         return jdbc.query("""
                 SELECT t.id::text AS tenant_id,
                        t.slug     AS slug,
                        t.name     AS name,
                        COALESCE(w.balance_centavos, 0) AS balance,
+                       COALESCE(c.charge_per_upload_centavos, 8000) AS charge_per_upload,
+                       COALESCE(c.low_balance_threshold_centavos, 40000) AS low_threshold,
                        (SELECT count(*) FROM submissions s
                          WHERE s.tenant_id = t.id AND s.state = 'BLOCKED') AS blocked_count
                   FROM tenants t
                   LEFT JOIN wallet_accounts w ON w.tenant_id = t.id
+                  LEFT JOIN tenant_billing_configs c ON c.tenant_id = t.id
                  ORDER BY COALESCE(w.balance_centavos, 0) ASC, t.name
                 """,
                 (rs, i) -> {
                     long balance = rs.getLong("balance");
+                    long lowThreshold = rs.getLong("low_threshold");
                     return new CenterWalletResponse(
                             rs.getString("tenant_id"),
                             rs.getString("slug"),
@@ -69,7 +80,9 @@ public class WalletController {
                             balance < lowThreshold,
                             balance < 0,
                             balance <= debtFloor,
-                            rs.getInt("blocked_count")
+                            rs.getInt("blocked_count"),
+                            rs.getLong("charge_per_upload"),
+                            lowThreshold
                     );
                 });
     }
@@ -92,7 +105,26 @@ public class WalletController {
                 summary.low(),
                 summary.negative(),
                 summary.blockedCount(),
-                summary.chargePerUploadCentavos()
+                summary.chargePerUploadCentavos(),
+                summary.lowBalanceThresholdCentavos(),
+                summary.pricingUpdatedAt()
+        );
+    }
+
+    /** Immediate per-center price/threshold edit. Existing submissions keep their quote. */
+    @PutMapping("/centers/{tenantId}/pricing")
+    public CenterPricingService.PricingConfig updatePricing(
+            @PathVariable String tenantId,
+            @Valid @RequestBody PricingUpdateRequest req,
+            @AuthenticationPrincipal PetcUserPrincipal principal
+    ) {
+        requireTenant(tenantId);
+        return pricing.update(
+                tenantId,
+                req.chargePerUploadCentavos(),
+                req.lowBalanceThresholdCentavos(),
+                principal == null ? null : principal.userId(),
+                principal == null ? "unknown" : principal.email()
         );
     }
 
@@ -150,7 +182,9 @@ public class WalletController {
             boolean low,
             boolean negative,
             boolean belowDebtFloor,
-            int blockedCount
+            int blockedCount,
+            long chargePerUploadCentavos,
+            long lowBalanceThresholdCentavos
     ) {}
 
     /** balanceMatches false means the projection has drifted from the ledger — a bug. */
@@ -162,7 +196,14 @@ public class WalletController {
             boolean low,
             boolean negative,
             int blockedCount,
-            long chargePerUploadCentavos
+            long chargePerUploadCentavos,
+            long lowBalanceThresholdCentavos,
+            java.time.OffsetDateTime pricingUpdatedAt
+    ) {}
+
+    public record PricingUpdateRequest(
+            @NotNull @PositiveOrZero Long chargePerUploadCentavos,
+            @NotNull @PositiveOrZero Long lowBalanceThresholdCentavos
     ) {}
 
     /**

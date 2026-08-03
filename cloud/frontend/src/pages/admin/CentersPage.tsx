@@ -13,6 +13,8 @@ interface CenterWallet {
   low: boolean;
   negative: boolean;
   blockedCount: number;
+  chargePerUploadCentavos: number;
+  lowBalanceThresholdCentavos: number;
 }
 
 interface Center {
@@ -84,7 +86,7 @@ export default function CentersPage() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
             <tr>
-              {["Name", "Slug", "Balance", "Licenses", "Last Sync", ""].map((h) => (
+              {["Name", "Slug", "Price / CEC", "Balance", "Licenses", "Last Sync", ""].map((h) => (
                 <th key={h} className="px-5 py-3 text-left font-semibold">{h}</th>
               ))}
             </tr>
@@ -98,6 +100,9 @@ export default function CentersPage() {
                     <Link to={`/centers/${c.id}`} className="hover:underline">{c.name}</Link>
                   </td>
                   <td className="px-5 py-3 font-mono text-gray-500">{c.slug}</td>
+                  <td className="px-5 py-3 text-gray-700">
+                    {w ? formatCentavos(w.chargePerUploadCentavos) : "—"}
+                  </td>
                   <td className={clsx(
                     "px-5 py-3 font-medium",
                     w?.negative ? "text-red-600" : w?.low ? "text-amber-600" : "text-gray-700"
@@ -120,7 +125,7 @@ export default function CentersPage() {
               );
             })}
             {centers.length === 0 && (
-              <tr><td colSpan={6} className="px-5 py-10 text-center text-gray-400">No centers yet.</td></tr>
+              <tr><td colSpan={7} className="px-5 py-10 text-center text-gray-400">No centers yet.</td></tr>
             )}
           </tbody>
         </table>

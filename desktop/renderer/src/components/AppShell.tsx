@@ -115,6 +115,13 @@ function WalletIndicator({ status }: { status?: SidecarStatus }) {
     currency: "PHP",
     minimumFractionDigits: 2,
   });
+  const price = status.walletChargePerUploadCentavos === null
+    ? null
+    : (status.walletChargePerUploadCentavos / 100).toLocaleString("en-PH", {
+        style: "currency",
+        currency: "PHP",
+        minimumFractionDigits: 2,
+      });
 
   const fetchedAt = status.walletFetchedAt ? new Date(status.walletFetchedAt) : null;
   const stale = !fetchedAt || Date.now() - fetchedAt.getTime() > WALLET_STALE_MS;
@@ -138,9 +145,16 @@ function WalletIndicator({ status }: { status?: SidecarStatus }) {
           {pesos}
         </span>
       </div>
-      {stale && fetchedAt && (
-        <p className="text-gray-500">
-          as of {fetchedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+      {price && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-gray-400">Per accepted CEC</span>
+          <span className={stale ? "text-gray-500" : "text-gray-300"}>{price}</span>
+        </div>
+      )}
+      {fetchedAt && (
+        <p className={stale ? "text-gray-500" : "text-gray-500/80"}>
+          {stale ? "stale · as of " : "synced "}
+          {fetchedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </p>
       )}
       {/* Blocked submissions are invisible to the operator otherwise: the cloud

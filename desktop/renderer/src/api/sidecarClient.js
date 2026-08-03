@@ -34,6 +34,10 @@ export const sidecarClient = {
             walletNegative: data.wallet_negative ?? false,
             walletBlockedCount: data.wallet_blocked_count ?? 0,
             walletFetchedAt: data.wallet_fetched_at ?? null,
+            walletCenterId: data.wallet_center_id ?? null,
+            walletChargePerUploadCentavos: data.wallet_charge_per_upload_centavos ?? null,
+            walletLowBalanceThresholdCentavos: data.wallet_low_balance_threshold_centavos ?? null,
+            walletPricingUpdatedAt: data.wallet_pricing_updated_at ?? null,
         };
     },
     async startTest(params) {

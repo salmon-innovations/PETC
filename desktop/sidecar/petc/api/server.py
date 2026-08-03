@@ -156,6 +156,10 @@ class StatusResponse(BaseModel):
     wallet_negative: bool = False
     wallet_blocked_count: int = 0
     wallet_fetched_at: Optional[datetime] = None
+    wallet_center_id: Optional[str] = None
+    wallet_charge_per_upload_centavos: Optional[int] = None
+    wallet_low_balance_threshold_centavos: Optional[int] = None
+    wallet_pricing_updated_at: Optional[datetime] = None
 
 
 class VehicleLookupRequest(BaseModel):
@@ -252,6 +256,14 @@ def get_status(
         wallet_negative=wallet["negative"] if wallet else False,
         wallet_blocked_count=wallet["blocked_count"] if wallet else 0,
         wallet_fetched_at=wallet["fetched_at"] if wallet else None,
+        wallet_center_id=wallet.get("tenant_id") if wallet else None,
+        wallet_charge_per_upload_centavos=(
+            wallet.get("charge_per_upload_centavos") if wallet else None
+        ),
+        wallet_low_balance_threshold_centavos=(
+            wallet.get("low_balance_threshold_centavos") if wallet else None
+        ),
+        wallet_pricing_updated_at=wallet.get("pricing_updated_at") if wallet else None,
     )
 
 

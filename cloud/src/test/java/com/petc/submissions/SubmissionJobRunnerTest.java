@@ -63,7 +63,7 @@ class SubmissionJobRunnerTest {
                 "operatorId", "op-1"
         ));
         return new SubmissionService.PendingSubmission(
-                id, "tenant-1", "center-1", testId, payloadJson, attempts, graceReleased);
+                id, "tenant-1", "center-1", testId, payloadJson, attempts, graceReleased, CHARGE);
     }
 
     @Test
@@ -157,6 +157,38 @@ class SubmissionJobRunnerTest {
 
         verify(service, times(3)).markInFlight(any());
         verify(service, times(2)).markBlocked(any(), eq("tenant-1"), anyLong());
+    }
+
+    @Test
+    void processPending_usesEachSubmissionsSnapshottedPrice() throws Exception {
+        when(wallet.getBalance("tenant-1")).thenReturn(12_000L);
+        var cheap = pending("s1", "t1", "ABC1234", 0, false);
+        var expensive = new SubmissionService.PendingSubmission(
+                "s2", "tenant-1", "center-1", "t2", cheap.payloadJson(), 0, false, 10_000L);
+        var finalCheap = new SubmissionService.PendingSubmission(
+                "s3", "tenant-1", "center-1", "t3", cheap.payloadJson(), 0, false, 2_000L);
+        when(service.claimPending(anyInt())).thenReturn(List.of(cheap, expensive, finalCheap));
+
+        runner.processPending();
+
+        verify(service).markInFlight("s1");
+        verify(service).markBlocked("s2", "tenant-1", 4_000L);
+        verify(service).markInFlight("s3");
+    }
+
+    @Test
+    void processPending_rejectionDoesNotConsumeProjectedFunds() throws Exception {
+        when(wallet.getBalance("tenant-1")).thenReturn(CHARGE);
+        when(service.claimPending(anyInt())).thenReturn(List.of(
+                pending("rejected", "t1", "FAIL1234", 0, false),
+                pending("accepted", "t2", "ABC1234", 0, false)
+        ));
+
+        runner.processPending();
+
+        verify(service).markRejected(eq("rejected"), anyString());
+        verify(service).markInFlight("accepted");
+        verify(service, never()).markBlocked(any(), any(), anyLong());
     }
 
     /**

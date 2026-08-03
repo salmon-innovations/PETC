@@ -112,4 +112,9 @@ export interface SidecarStatus {
   walletBlockedCount: number;
   /** ISO timestamp of the last successful wallet read, for staleness display. */
   walletFetchedAt: string | null;
+  walletCenterId: string | null;
+  /** Last cloud-registered price; display only, never a local upload gate. */
+  walletChargePerUploadCentavos: number | null;
+  walletLowBalanceThresholdCentavos: number | null;
+  walletPricingUpdatedAt: string | null;
 }

@@ -60,10 +60,11 @@ public class SubmissionJobRunner {
     @Scheduled(fixedDelay = 2000)
     public void processPending() {
         List<SubmissionService.PendingSubmission> batch = service.claimPending(BATCH_SIZE);
-        long charge = settings.chargePerUploadCentavos();
         Map<String, Long> projected = new HashMap<>();
 
         for (var sub : batch) {
+            long charge = sub.chargeSnapshotCentavos();
+            Long remainingBefore = null;
             // Rows the grace sweep already released bypass the wallet entirely.
             // This is deliberately the only path that lets a balance go
             // negative: a billing shortfall must not become a DO 2023-008
@@ -74,13 +75,24 @@ public class SubmissionJobRunner {
                     service.markBlocked(sub.id(), sub.tenantId(), remaining);
                     continue;
                 }
-                projected.put(sub.tenantId(), remaining - charge);
+                remainingBefore = remaining;
             }
-            process(sub);
+            boolean accepted = process(sub);
+            if (accepted && charge > 0) {
+                if (remainingBefore != null) {
+                    projected.put(sub.tenantId(), remainingBefore - charge);
+                } else {
+                    // A grace-released acceptance still debits its quote. If
+                    // this tenant already has a running batch projection, keep
+                    // that projection aligned with the now-lower balance.
+                    projected.computeIfPresent(sub.tenantId(), (ignored, value) -> value - charge);
+                }
+            }
         }
     }
 
-    private void process(SubmissionService.PendingSubmission sub) {
+    /** Returns true only when LTMS accepted and the quoted charge was applied. */
+    private boolean process(SubmissionService.PendingSubmission sub) {
         service.markInFlight(sub.id());
         try {
             EmissionPayload payload = toEmissionPayload(sub);
@@ -98,14 +110,17 @@ public class SubmissionJobRunner {
                         result.validFrom(),
                         result.validUntil()
                 );
+                return true;
             } else {
                 // Gov rejections are definitive — do not retry
                 service.markRejected(sub.id(), result.rejectionReason());
+                return false;
             }
         } catch (Exception e) {
             log.warn("Submission {} attempt {} failed: {}", sub.id(), sub.attempts(), e.getMessage());
             service.markRetry(sub.id(), sub.attempts(),
                     settings.maxAttempts(), settings.backoffSeconds());
+            return false;
         }
     }
 

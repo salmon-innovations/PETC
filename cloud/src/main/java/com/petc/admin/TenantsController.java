@@ -11,6 +11,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.annotation.Transactional;
+import com.petc.wallet.CenterPricingService;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -27,9 +29,11 @@ import java.util.List;
 public class TenantsController {
 
     private final JdbcTemplate jdbc;
+    private final CenterPricingService pricing;
 
-    public TenantsController(JdbcTemplate jdbc) {
+    public TenantsController(JdbcTemplate jdbc, CenterPricingService pricing) {
         this.jdbc = jdbc;
+        this.pricing = pricing;
     }
 
     @GetMapping
@@ -58,12 +62,14 @@ public class TenantsController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @Transactional
     public CenterResponse create(@Valid @RequestBody CreateCenterRequest req) {
         try {
             var id = jdbc.queryForObject(
                     "INSERT INTO tenants (slug, name) VALUES (?, ?) RETURNING id::text",
                     String.class, req.slug(), req.name()
             );
+            pricing.ensureDefault(id);
             return new CenterResponse(id, req.slug(), req.name(), 0, null);
         } catch (DuplicateKeyException e) {
             throw new ResponseStatusException(

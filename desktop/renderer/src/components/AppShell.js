@@ -46,6 +46,13 @@ function WalletIndicator({ status }) {
         currency: "PHP",
         minimumFractionDigits: 2,
     });
+    const price = status.walletChargePerUploadCentavos === null
+        ? null
+        : (status.walletChargePerUploadCentavos / 100).toLocaleString("en-PH", {
+            style: "currency",
+            currency: "PHP",
+            minimumFractionDigits: 2,
+        });
     const fetchedAt = status.walletFetchedAt ? new Date(status.walletFetchedAt) : null;
     const stale = !fetchedAt || Date.now() - fetchedAt.getTime() > WALLET_STALE_MS;
     return (_jsxs("div", { className: "pt-1.5 border-t border-gray-700/60 space-y-0.5", children: [_jsxs("div", { className: "flex items-center justify-between gap-2", children: [_jsx("span", { className: "text-gray-400", children: "Wallet" }), _jsx("span", { className: clsx("font-medium", stale
@@ -54,5 +61,5 @@ function WalletIndicator({ status }) {
                                 ? "text-red-400"
                                 : status.walletLow
                                     ? "text-yellow-400"
-                                    : "text-gray-200"), children: pesos })] }), stale && fetchedAt && (_jsxs("p", { className: "text-gray-500", children: ["as of ", fetchedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })] })), status.walletBlockedCount > 0 && (_jsxs("p", { className: "text-yellow-400", children: [status.walletBlockedCount, " upload", status.walletBlockedCount > 1 ? "s" : "", " held \u2014 top up"] })), status.walletNegative && !stale && (_jsx("p", { className: "text-red-400", children: "Balance overdrawn" }))] }));
+                                    : "text-gray-200"), children: pesos })] }), price && (_jsxs("div", { className: "flex items-center justify-between gap-2", children: [_jsx("span", { className: "text-gray-400", children: "Per accepted CEC" }), _jsx("span", { className: stale ? "text-gray-500" : "text-gray-300", children: price })] })), fetchedAt && (_jsxs("p", { className: stale ? "text-gray-500" : "text-gray-500/80", children: [stale ? "stale · as of " : "synced ", fetchedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })] })), status.walletBlockedCount > 0 && (_jsxs("p", { className: "text-yellow-400", children: [status.walletBlockedCount, " upload", status.walletBlockedCount > 1 ? "s" : "", " held \u2014 top up"] })), status.walletNegative && !stale && (_jsx("p", { className: "text-red-400", children: "Balance overdrawn" }))] }));
 }

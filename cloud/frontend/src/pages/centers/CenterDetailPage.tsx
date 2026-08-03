@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
 import clsx from "clsx";
@@ -14,6 +14,8 @@ interface WalletDetail {
   negative: boolean;
   blockedCount: number;
   chargePerUploadCentavos: number;
+  lowBalanceThresholdCentavos: number;
+  pricingUpdatedAt: string;
 }
 
 interface LedgerEntry {
@@ -40,6 +42,9 @@ export default function CenterDetailPage() {
   const [amount, setAmount] = useState("");
   const [reference, setReference] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [price, setPrice] = useState("");
+  const [lowThreshold, setLowThreshold] = useState("");
+  const [pricingMessage, setPricingMessage] = useState<string | null>(null);
 
   const { data: wallet } = useQuery<WalletDetail>({
     queryKey: ["wallet", tenantId],
@@ -51,6 +56,39 @@ export default function CenterDetailPage() {
     queryKey: ["ledger", tenantId],
     queryFn: () => api.get<LedgerEntry[]>(`/wallet/centers/${tenantId}/ledger?limit=100`).then((r) => r.data),
   });
+
+  useEffect(() => {
+    if (!wallet) return;
+    setPrice(String(wallet.chargePerUploadCentavos / 100));
+    setLowThreshold(String(wallet.lowBalanceThresholdCentavos / 100));
+  }, [wallet?.chargePerUploadCentavos, wallet?.lowBalanceThresholdCentavos]);
+
+  const updatePricing = useMutation({
+    mutationFn: (body: {
+      chargePerUploadCentavos: number;
+      lowBalanceThresholdCentavos: number;
+    }) => api.put(`/wallet/centers/${tenantId}/pricing`, body).then((r) => r.data),
+    onSuccess: () => {
+      setPricingMessage("Pricing updated. Existing submissions keep their quoted price.");
+      qc.invalidateQueries({ queryKey: ["wallet", tenantId] });
+      qc.invalidateQueries({ queryKey: ["wallet-centers"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
+    },
+    onError: () => setPricingMessage("Pricing update failed. Check both amounts and try again."),
+  });
+
+  const savePricing = () => {
+    const charge = parsePesosToCentavos(price);
+    const threshold = parsePesosToCentavos(lowThreshold);
+    if (charge === null || charge < 0 || threshold === null || threshold < 0) {
+      setPricingMessage("Price and warning threshold must be zero or greater.");
+      return;
+    }
+    updatePricing.mutate({
+      chargePerUploadCentavos: charge,
+      lowBalanceThresholdCentavos: threshold,
+    });
+  };
 
   const topUp = useMutation({
     mutationFn: (body: { amountCentavos: number; reference: string }) =>
@@ -112,6 +150,52 @@ export default function CenterDetailPage() {
             authoritative.
           </p>
         )}
+      </div>
+
+      {/* Per-center pricing */}
+      <div className="bg-white rounded-xl shadow p-5 space-y-3">
+        <h2 className="font-semibold text-sm text-gray-700">Center pricing</h2>
+        <p className="text-xs text-gray-500">
+          Changes apply immediately to newly received submissions. A queued, held, or retried
+          submission keeps the price quoted when the cloud received it.
+        </p>
+        <div className="flex gap-3 items-end">
+          <div className="w-48">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Price per accepted CEC (₱)
+            </label>
+            <input
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              inputMode="decimal"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <div className="w-48">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Low-balance warning (₱)
+            </label>
+            <input
+              value={lowThreshold}
+              onChange={(e) => setLowThreshold(e.target.value)}
+              inputMode="decimal"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <button
+            onClick={savePricing}
+            disabled={updatePricing.isPending}
+            className="rounded-lg bg-blue-600 px-5 py-2 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+          >
+            {updatePricing.isPending ? "Saving…" : "Save pricing"}
+          </button>
+        </div>
+        {wallet?.pricingUpdatedAt && (
+          <p className="text-xs text-gray-400">
+            Last pricing update: {formatDateTime(wallet.pricingUpdatedAt)}
+          </p>
+        )}
+        {pricingMessage && <p className="text-xs text-gray-600">{pricingMessage}</p>}
       </div>
 
       {/* Top up */}

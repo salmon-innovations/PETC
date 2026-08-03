@@ -1,7 +1,6 @@
 package com.petc.wallet;
 
 import com.petc.audit.AuditService;
-import com.petc.settings.PlatformSettingsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
@@ -12,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.time.OffsetDateTime;
 
 /**
  * Prepaid wallet: balances, the immutable ledger, and the charge applied when
@@ -31,12 +31,12 @@ public class WalletService {
     private static final Logger log = LoggerFactory.getLogger(WalletService.class);
 
     private final JdbcTemplate jdbc;
-    private final PlatformSettingsService settings;
+    private final CenterPricingService pricing;
     private final AuditService audit;
 
-    public WalletService(JdbcTemplate jdbc, PlatformSettingsService settings, AuditService audit) {
+    public WalletService(JdbcTemplate jdbc, CenterPricingService pricing, AuditService audit) {
         this.jdbc = jdbc;
-        this.settings = settings;
+        this.pricing = pricing;
         this.audit = audit;
     }
 
@@ -61,15 +61,19 @@ public class WalletService {
 
     public WalletSummary summaryFor(String tenantId) {
         long balance = getBalance(tenantId);
+        var config = pricing.getFor(tenantId);
         Integer blocked = jdbc.queryForObject(
                 "SELECT count(*) FROM submissions WHERE tenant_id = ?::uuid AND state = 'BLOCKED'",
                 Integer.class, tenantId);
         return new WalletSummary(
+                tenantId,
                 balance,
-                balance < settings.lowBalanceThresholdCentavos(),
+                balance < config.lowBalanceThresholdCentavos(),
                 balance < 0,
                 blocked == null ? 0 : blocked,
-                settings.chargePerUploadCentavos()
+                config.chargePerUploadCentavos(),
+                config.lowBalanceThresholdCentavos(),
+                config.updatedAt()
         );
     }
 
@@ -121,7 +125,15 @@ public class WalletService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void chargeForAcceptance(String tenantId, String submissionId, int acceptanceSeq) {
-        long amount = settings.chargePerUploadCentavos();
+        Long amountValue = jdbc.queryForObject("""
+                SELECT charge_snapshot_centavos
+                  FROM submissions
+                 WHERE id = ?::uuid AND tenant_id = ?::uuid
+                """, Long.class, submissionId, tenantId);
+        if (amountValue == null) {
+            throw new IllegalStateException("Submission price snapshot is missing: " + submissionId);
+        }
+        long amount = amountValue;
         if (amount <= 0) {
             return;
         }
@@ -191,30 +203,33 @@ public class WalletService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public int releaseBlocked(String tenantId, long balance) {
-        long charge = settings.chargePerUploadCentavos();
-        if (charge <= 0) {
-            return 0;
-        }
-        int affordable = (int) Math.max(0, balance / charge);
-        if (affordable == 0) {
-            return 0;
-        }
-        List<String> ids = jdbc.queryForList("""
-                SELECT id::text FROM submissions
+        List<BlockedSubmission> blocked = jdbc.query("""
+                SELECT id::text, charge_snapshot_centavos FROM submissions
                  WHERE tenant_id = ?::uuid AND state = 'BLOCKED'
                  ORDER BY blocked_at
-                 LIMIT ?
-                """, String.class, tenantId, affordable);
-        for (String id : ids) {
+                """, (rs, rowNum) -> new BlockedSubmission(
+                        rs.getString(1), rs.getLong(2)), tenantId);
+
+        int released = 0;
+        long remaining = balance;
+        for (BlockedSubmission sub : blocked) {
+            // Preserve FIFO. A later cheaper quote must not jump an older held
+            // filing merely because the newer one happens to fit.
+            if (sub.chargeCentavos() > remaining) {
+                break;
+            }
             jdbc.update("""
                     UPDATE submissions
                        SET state = 'PENDING', blocked_at = NULL, next_attempt_at = now()
                      WHERE id = ?::uuid AND state = 'BLOCKED'
-                    """, id);
-            audit.recordSystem(tenantId, "SUBMISSION_RELEASED", "submission", id,
-                    Map.of("reason", "wallet topped up"));
+                    """, sub.id());
+            remaining -= sub.chargeCentavos();
+            released++;
+            audit.recordSystem(tenantId, "SUBMISSION_RELEASED", "submission", sub.id(),
+                    Map.of("reason", "wallet topped up",
+                           "quotedChargeCentavos", sub.chargeCentavos()));
         }
-        return ids.size();
+        return released;
     }
 
     private void applyBalance(String tenantId, long balanceAfter) {
@@ -228,12 +243,17 @@ public class WalletService {
     // ---------------------------------------------------------------- schema
 
     public record WalletSummary(
+            String tenantId,
             long balanceCentavos,
             boolean low,
             boolean negative,
             int blockedCount,
-            long chargePerUploadCentavos
+            long chargePerUploadCentavos,
+            long lowBalanceThresholdCentavos,
+            OffsetDateTime pricingUpdatedAt
     ) {}
 
     public record TopUpResult(long balanceCentavos, int releasedSubmissions) {}
+
+    private record BlockedSubmission(String id, long chargeCentavos) {}
 }

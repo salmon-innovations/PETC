@@ -55,7 +55,9 @@ public class SubmissionsAdminController {
                        s.accepted_at     AS accepted_at,
                        s.blocked_at      AS blocked_at,
                        s.grace_released_at AS grace_released_at,
-                       s.acceptance_seq  AS acceptance_seq
+                       s.acceptance_seq  AS acceptance_seq,
+                       s.charge_snapshot_centavos AS charge_snapshot_centavos,
+                       s.price_snapshotted_at AS price_snapshotted_at
                   FROM submissions s
                   JOIN tenants t ON t.id = s.tenant_id
                  WHERE 1 = 1
@@ -100,7 +102,8 @@ public class SubmissionsAdminController {
                        s.certificate_no, s.ltms_ref_no, s.or_no, s.dermalog_token,
                        s.rejection_reason, s.valid_from, s.valid_until,
                        s.created_at, s.accepted_at, s.blocked_at, s.grace_released_at,
-                       s.last_attempt_at, s.next_attempt_at, s.acceptance_seq
+                       s.last_attempt_at, s.next_attempt_at, s.acceptance_seq,
+                       s.charge_snapshot_centavos, s.price_snapshotted_at
                   FROM submissions s
                   JOIN tenants t ON t.id = s.tenant_id
                  WHERE s.id = ?::uuid

@@ -20,6 +20,8 @@ interface Submission {
   blocked_at: string | null;
   grace_released_at: string | null;
   acceptance_seq: number;
+  charge_snapshot_centavos: number;
+  price_snapshotted_at: string;
 }
 
 interface LedgerEntry {
@@ -95,6 +97,8 @@ function DetailPanel({ id, onClose }: { id: string; onClose: () => void }) {
               <Field label="OR No.">{data.or_no ?? "—"}</Field>
               <Field label="Created">{formatDateTime(data.created_at)}</Field>
               <Field label="Accepted">{formatDateTime(data.accepted_at)}</Field>
+              <Field label="Quoted price">{formatCentavos(data.charge_snapshot_centavos)}</Field>
+              <Field label="Price quoted">{formatDateTime(data.price_snapshotted_at)}</Field>
               <Field label="Valid from">{data.valid_from ?? "—"}</Field>
               <Field label="Valid until">{data.valid_until ?? "—"}</Field>
             </div>
