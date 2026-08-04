@@ -2,7 +2,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from petc.analyzer.mock import MockAnalyzer
-from petc.api.server import app, init
+from fastapi import HTTPException
+
+from petc.api.server import (
+    _validate_machine_readings,
+    _validate_readings_for_do,
+    app,
+    init,
+)
 from petc.camera.capture import MockCameraCapture
 from petc.db import models  # noqa: F401
 from petc.db.session import Base, engine
@@ -50,6 +57,33 @@ def test_status(client):
     data = r.json()
     assert data["analyzer_connected"] is True
     assert data["printer_status"]["online"] is True
+
+
+def test_machine_capture_accepts_zero_gas_values_without_rpm():
+    _validate_machine_readings("GAS", {
+        "co_pct": 0.0,
+        "hc_ppm": 44.0,
+        "co2_pct": 0.0,
+        "o2_pct": 20.72,
+        "lambda_value": 2.0,
+        "rpm": None,
+    })
+
+
+def test_do_submission_still_requires_positive_rpm():
+    readings = {
+        "co_pct": 0.0,
+        "hc_ppm": 44.0,
+        "co2_pct": 0.0,
+        "o2_pct": 20.72,
+        "lambda_value": 2.0,
+        "rpm": None,
+    }
+    with pytest.raises(HTTPException, match="reading rpm is required"):
+        _validate_readings_for_do("GAS", readings)
+
+    readings["rpm"] = 900
+    _validate_readings_for_do("GAS", readings)
 
 
 def test_start_and_get_result(client):

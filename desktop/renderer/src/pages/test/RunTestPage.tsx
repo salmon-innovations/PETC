@@ -27,6 +27,7 @@ export default function RunTestPage() {
   const user = useAuthStore((s) => s.user);
   const [result, setResult] = useState<TestResultResponse | null>(null);
   const [step, setStep] = useState<Step>("idle");
+  const [errorMessage, setErrorMessage] = useState("");
   const [photoCaptured, setPhotoCaptured] = useState(false);
   const cameraRef = useRef<CameraStreamHandle>(null);
 
@@ -68,12 +69,22 @@ export default function RunTestPage() {
       return r;
     },
     onSuccess: (data) => { setResult(data); setStep("done"); },
-    onError: () => setStep("error"),
+    onError: (error) => {
+      const detail = (error as { response?: { data?: { detail?: unknown } } })
+        .response?.data?.detail;
+      setErrorMessage(
+        typeof detail === "string"
+          ? detail
+          : "Test failed or timed out. Check the analyzer connection and try again."
+      );
+      setStep("error");
+    },
   });
 
   const reset = () => {
     setStep("idle");
     setResult(null);
+    setErrorMessage("");
     setPhotoCaptured(false);
     startMutation.reset();
   };
@@ -84,7 +95,12 @@ export default function RunTestPage() {
 
       {/* Input form */}
       <form
-        onSubmit={handleSubmit((v) => { setStep("idle"); setResult(null); startMutation.mutate(v); })}
+        onSubmit={handleSubmit((v) => {
+          setStep("idle");
+          setResult(null);
+          setErrorMessage("");
+          startMutation.mutate(v);
+        })}
         className="bg-white rounded-xl shadow p-6 space-y-4"
       >
         <div className="grid grid-cols-2 gap-4">
@@ -189,7 +205,7 @@ export default function RunTestPage() {
 
       {step === "error" && (
         <div className="rounded-xl bg-red-50 border border-red-200 px-5 py-4 text-sm text-red-800 flex items-center justify-between">
-          <span>Test failed or timed out. Check the analyzer connection and try again.</span>
+          <span>{errorMessage}</span>
           <button
             type="button"
             onClick={reset}
