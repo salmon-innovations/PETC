@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import { spawn, ChildProcess } from "child_process";
+import { randomBytes } from "crypto";
 import log from "electron-log";
 
 // ── logging ───────────────────────────────────────────────────────────────
@@ -22,6 +23,10 @@ if (!isDev) {
 
 // ── sidecar lifecycle ─────────────────────────────────────────────────────
 let sidecarProcess: ChildProcess | null = null;
+// Capability shared only with the context-isolated PETC renderer and its
+// localhost sidecar. It prevents arbitrary local web pages from replacing a
+// workstation credential through the commissioning endpoints.
+const commissioningToken = randomBytes(32).toString("hex");
 
 function sidecarBinary(): string {
   if (isDev) {
@@ -32,10 +37,10 @@ function sidecarBinary(): string {
       : path.join(desktopRoot, ".venv", "bin", "python");
     return fs.existsSync(venvPython) ? venvPython : (process.platform === "win32" ? "python" : "python3");
   }
-  // In production: PyInstaller-frozen directory bundle inside resources/petc-sidecar/
-  // The COLLECT() in petc_sidecar.spec names the directory "petc"; the exe inside is "petc".
+  // In production the FileSet copies the contents of sidecar/dist/petc into
+  // resources/petc-sidecar/, so the frozen executable is directly beneath it.
   const exe = process.platform === "win32" ? "petc.exe" : "petc";
-  return path.join(process.resourcesPath, "petc-sidecar", "petc", exe);
+  return path.join(process.resourcesPath, "petc-sidecar", exe);
 }
 
 function sidecarArgs(): string[] {
@@ -50,7 +55,7 @@ function spawnSidecar(): void {
   const args = sidecarArgs();
   const cwd = isDev
     ? path.join(__dirname, "..", "..", "sidecar")
-    : path.join(process.resourcesPath, "petc-sidecar", "petc");
+    : path.join(process.resourcesPath, "petc-sidecar");
 
   log.info(`Spawning sidecar: ${bin} ${args.join(" ")} (cwd: ${cwd})`);
 
@@ -60,6 +65,13 @@ function spawnSidecar(): void {
       ...process.env,
       PETC_PORT: String(SIDECAR_PORT),
       PETC_DATA_DIR: app.getPath("userData"),
+      PETC_COMMISSIONING_TOKEN: commissioningToken,
+      // Production configuration is deliberately beside PETC Desktop.exe,
+      // not beside the packaged sidecar under resources/. This is a trusted
+      // internal handoff, distinct from the dev/test PETC_CONFIG_PATH override.
+      ...(isDev ? { PETC_CONFIG_PATH: path.join(__dirname, "..", "..", "petc.properties") } : {
+        PETC_PACKAGED_CONFIG_PATH: path.join(path.dirname(app.getPath("exe")), "petc.properties"),
+      }),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -121,6 +133,7 @@ ipcMain.handle("sidecar:url", () => `http://127.0.0.1:${SIDECAR_PORT}`);
 
 /** Renderer asks for the app data directory (for DB file path display) */
 ipcMain.handle("app:userData", () => app.getPath("userData"));
+ipcMain.handle("commissioning:token", () => commissioningToken);
 
 /** Renderer asks to open a file in the OS file manager */
 ipcMain.handle("shell:openPath", (_e, filePath: string) => shell.openPath(filePath));

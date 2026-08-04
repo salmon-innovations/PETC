@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { sidecarClient, type LtmsSubmitResponse, type VehicleLookupResponse } from "../../api/sidecarClient";
+import { sidecarClient, sidecarErrorMessage, type LtmsSubmitResponse, type VehicleLookupResponse } from "../../api/sidecarClient";
 import { useAuthStore } from "../../store/authStore";
 import type { Classification, EmissionTest, EmissionTestDetail, FuelType, OwnerInfo, TestPhoto, VehicleInfo } from "../../types";
 import { evaluateEmission, type EngineFlags } from "../../utils/emissionLimits";
@@ -189,6 +189,7 @@ function UploadWizard({ test, onDone, onCancel }: { test: EmissionTest; onDone: 
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["tests", "pending-ltms"] });
       qc.invalidateQueries({ queryKey: ["test-detail", test.id] });
+      qc.invalidateQueries({ queryKey: ["tests", "all"] });
     },
   });
 
@@ -274,6 +275,7 @@ function UploadWizard({ test, onDone, onCancel }: { test: EmissionTest; onDone: 
           result={submitMutation.data}
           isPending={submitMutation.isPending}
           isError={submitMutation.isError}
+          error={submitMutation.error}
           onBack={goBack}
           onDone={onDone}
           onSubmit={() => submitMutation.mutate()}
@@ -485,11 +487,12 @@ function PhotoThumb({ photoId }: { photoId: string }) {
   );
 }
 
-function ReviewStep({ payload, result, isPending, isError, onBack, onDone, onSubmit }: {
+function ReviewStep({ payload, result, isPending, isError, error, onBack, onDone, onSubmit }: {
   payload: Record<string, unknown>;
   result?: LtmsSubmitResponse;
   isPending: boolean;
   isError: boolean;
+  error: unknown;
   onBack: () => void;
   onDone: () => void;
   onSubmit: () => void;
@@ -497,6 +500,20 @@ function ReviewStep({ payload, result, isPending, isError, onBack, onDone, onSub
   const vehicle = payload.vehicle as VehicleForm;
   const owner = payload.owner as OwnerForm;
   const verdict = payload.verdict as ReturnType<typeof evaluateEmission>;
+
+  if (isPending) {
+    return (
+      <section className="rounded-lg border border-blue-200 bg-blue-50 p-10 text-center shadow space-y-4">
+        <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+        <div>
+          <p className="text-xl font-bold text-blue-900">Submitting to LTMS…</p>
+          <p className="mt-1 text-sm text-blue-700">
+            Uploading evidence and waiting for the LTMS result. Keep this screen open.
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   if (result) {
     if (result.state === "ACCEPTED" && result.submissionId) {
@@ -510,13 +527,27 @@ function ReviewStep({ payload, result, isPending, isError, onBack, onDone, onSub
             The test has been submitted to the cloud. LTMS is processing the request.
             The CEC certificate will become available in <strong>History</strong> once approved.
           </p>
+          {result.statusMessage && <p className="text-xs text-blue-700">{result.statusMessage}</p>}
           <button onClick={onDone} className="rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700">Go to History</button>
         </section>
       );
     }
+    if (result.state === "BLOCKED") {
+      return (
+        <section className="rounded-lg border border-amber-300 bg-amber-50 p-8 text-center shadow space-y-3">
+          <p className="text-xl font-bold text-amber-900">Submission held for wallet funding</p>
+          <p className="text-sm text-amber-800">
+            {result.statusMessage ?? "The cloud will submit this test automatically after the center wallet is funded."}
+          </p>
+          <button onClick={onDone} className="rounded-md bg-amber-700 px-6 py-2 text-sm font-medium text-white hover:bg-amber-800">Go to History</button>
+        </section>
+      );
+    }
+    const retryQueued = result.state === "PENDING";
     return (
-      <section className={clsx("rounded-lg shadow p-8 text-center space-y-3", result.state === "PENDING" ? "bg-yellow-50 border border-yellow-200" : "bg-red-50 border border-red-200")}>
-        <p className="text-xl font-bold">{result.state === "PENDING" ? "Queued for retry" : "Rejected"}</p>
+      <section className={clsx("rounded-lg shadow p-8 text-center space-y-3", retryQueued ? "bg-yellow-50 border border-yellow-200" : "bg-red-50 border border-red-200")}>
+        <p className="text-xl font-bold">{retryQueued ? "Upload interrupted — queued for retry" : result.state === "REJECTED" ? "Rejected by LTMS" : "Submission could not be completed"}</p>
+        {result.statusMessage && <p className={clsx("text-sm", retryQueued ? "text-yellow-800" : "text-red-700")}>{result.statusMessage}</p>}
         {result.rejectionReason && <p className="text-sm text-red-700">{result.rejectionReason}</p>}
         <button onClick={onDone} className="rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700">Done</button>
       </section>
@@ -546,7 +577,7 @@ function ReviewStep({ payload, result, isPending, isError, onBack, onDone, onSub
           ["Attached", `${(payload.photos as TestPhoto[]).length}`],
         ]} />
       </div>
-      {isError && <p className="text-sm text-red-600">Submission failed before it reached the sidecar.</p>}
+      {isError && <p className="text-sm text-red-600">{sidecarErrorMessage(error)}</p>}
       <div className="flex justify-between">
         <button onClick={onBack} disabled={isPending} className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50">Back</button>
         <button onClick={onSubmit} disabled={isPending} className="rounded-md bg-green-600 px-6 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
@@ -557,7 +588,7 @@ function ReviewStep({ payload, result, isPending, isError, onBack, onDone, onSub
   );
 }
 
-function CecPreviewAndPrint({ submissionId, certificateNo, onDone }: {
+export function CecPreviewAndPrint({ submissionId, certificateNo, onDone }: {
   submissionId: string;
   certificateNo: string | null;
   onDone: () => void;

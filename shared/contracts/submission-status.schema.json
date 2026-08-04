@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "PETC Submission Status",
-  "description": "Response from GET /api/submissions/{id} and POST /api/submissions. Used by the desktop sidecar to short-poll for the LTMS result.",
+  "description": "Response from GET /api/submissions/{id} and POST /api/submissions. The authenticated numbered lane owns the submission. The desktop short-polls for the LTMS result.",
   "type": "object",
   "required": ["submissionId", "state"],
   "additionalProperties": false,
@@ -9,8 +9,23 @@
     "submissionId":    { "type": "string", "description": "Cloud UUID assigned at enqueue time" },
     "state": {
       "type": "string",
-      "enum": ["PENDING", "IN_FLIGHT", "ACCEPTED", "REJECTED", "DEAD"],
-      "description": "PENDING: queued; IN_FLIGHT: being submitted to LTMS; ACCEPTED/REJECTED: terminal LTMS decision; DEAD: max retry attempts exhausted"
+      "enum": ["PENDING", "IN_FLIGHT", "BLOCKED", "ACCEPTED", "REJECTED", "DEAD"],
+      "description": "PENDING: queued with a lane quota reservation; IN_FLIGHT: being submitted to LTMS; BLOCKED: held for a non-quota operational block such as insufficient shared center wallet funds; ACCEPTED/REJECTED: terminal LTMS decision; DEAD: retry attempts exhausted. Only ACCEPTED consumes a daily lane quota slot; REJECTED and DEAD release its reservation."
+    },
+    "laneId":          { "type": "string", "description": "Trusted cloud lane UUID derived from X-Center-Key" },
+    "laneNumber":      { "type": "integer", "minimum": 1, "description": "Numbered lane within the center" },
+    "quota": {
+      "type": "object",
+      "description": "Current Asia/Manila daily capacity for the authenticated lane, when included by the endpoint.",
+      "additionalProperties": false,
+      "properties": {
+        "accepted":     { "type": "integer", "minimum": 0, "description": "LTMS-accepted CECs today" },
+        "reserved":     { "type": "integer", "minimum": 0, "description": "In-flight quota reservations today" },
+        "limit":        { "type": "integer", "minimum": 0, "description": "Administrator-configured daily limit; defaults to 80" },
+        "remaining":    { "type": "integer", "minimum": 0, "description": "Slots remaining after accepted and reserved submissions" },
+        "businessDate": { "type": "string", "format": "date", "description": "Asia/Manila business date" },
+        "resetsAt":     { "type": "string", "format": "date-time", "description": "Next Asia/Manila midnight" }
+      }
     },
     "certificateNo":   { "type": ["string", "null"], "description": "LTMS-issued CEC certificate key; present only when state=ACCEPTED" },
     "ltmsRefNo":       { "type": ["string", "null"], "description": "LTMS internal reference number" },

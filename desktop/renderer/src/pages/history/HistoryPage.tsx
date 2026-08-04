@@ -1,11 +1,14 @@
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
 import clsx from "clsx";
 import { sidecarClient } from "../../api/sidecarClient";
 import type { EmissionTest } from "../../types";
+import { CecPreviewAndPrint } from "../upload/LtmsUploadPage";
 
 export default function HistoryPage() {
+  const [preview, setPreview] = useState<EmissionTest | null>(null);
   const { data: tests = [], isLoading } = useQuery<EmissionTest[]>({
     queryKey: ["tests", "all"],
     queryFn: async () => {
@@ -22,6 +25,18 @@ export default function HistoryPage() {
     },
   });
 
+  if (preview?.submissionId) {
+    return (
+      <div className="max-w-5xl mx-auto p-6">
+        <CecPreviewAndPrint
+          submissionId={preview.submissionId}
+          certificateNo={preview.certificateNo}
+          onDone={() => setPreview(null)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-5">
       <h1 className="text-xl font-bold text-gray-800">Test History</h1>
@@ -30,7 +45,7 @@ export default function HistoryPage() {
 
       <div className="bg-white rounded-xl shadow divide-y">
         {tests.map((t) => (
-          <HistoryRow key={t.id} test={t} />
+          <HistoryRow key={t.id} test={t} onView={() => setPreview(t)} />
         ))}
         {!isLoading && tests.length === 0 && (
           <p className="px-5 py-10 text-center text-sm text-gray-500">No tests recorded yet.</p>
@@ -40,7 +55,7 @@ export default function HistoryPage() {
   );
 }
 
-function HistoryRow({ test: t }: { test: EmissionTest }) {
+function HistoryRow({ test: t, onView }: { test: EmissionTest; onView: () => void }) {
   const printMutation = useMutation({
     mutationFn: () => sidecarClient.printCec(t.submissionId!, 2),
   });
@@ -67,13 +82,21 @@ function HistoryRow({ test: t }: { test: EmissionTest }) {
         )}
         <LtmsStateBadge state={t.ltmsState} />
         {t.ltmsState === "ACCEPTED" && t.submissionId && (
-          <button
-            onClick={() => printMutation.mutate()}
-            disabled={printMutation.isPending}
-            className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {printMutation.isPending ? "Printing…" : printMutation.isSuccess ? "Printed ✓" : "Print CEC"}
-          </button>
+          <>
+            <button
+              onClick={onView}
+              className="rounded-md border border-blue-300 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
+            >
+              View CEC
+            </button>
+            <button
+              onClick={() => printMutation.mutate()}
+              disabled={printMutation.isPending}
+              className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {printMutation.isPending ? "Printing…" : printMutation.isSuccess ? "Printed ✓" : "Print CEC"}
+            </button>
+          </>
         )}
         {t.ltmsState === "WAITING_FOR_LTMS" && (
           <span className="text-xs text-blue-600 animate-pulse">Awaiting LTMS…</span>

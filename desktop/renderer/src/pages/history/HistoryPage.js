@@ -1,10 +1,13 @@
-import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
 import clsx from "clsx";
 import { sidecarClient } from "../../api/sidecarClient";
+import { CecPreviewAndPrint } from "../upload/LtmsUploadPage";
 export default function HistoryPage() {
+    const [preview, setPreview] = useState(null);
     const { data: tests = [], isLoading } = useQuery({
         queryKey: ["tests", "all"],
         queryFn: async () => {
@@ -20,13 +23,16 @@ export default function HistoryPage() {
                 : 30_000;
         },
     });
-    return (_jsxs("div", { className: "max-w-3xl mx-auto p-6 space-y-5", children: [_jsx("h1", { className: "text-xl font-bold text-gray-800", children: "Test History" }), isLoading && _jsx("p", { className: "text-sm text-gray-500", children: "Loading\u2026" }), _jsxs("div", { className: "bg-white rounded-xl shadow divide-y", children: [tests.map((t) => (_jsx(HistoryRow, { test: t }, t.id))), !isLoading && tests.length === 0 && (_jsx("p", { className: "px-5 py-10 text-center text-sm text-gray-500", children: "No tests recorded yet." }))] })] }));
+    if (preview?.submissionId) {
+        return (_jsx("div", { className: "max-w-5xl mx-auto p-6", children: _jsx(CecPreviewAndPrint, { submissionId: preview.submissionId, certificateNo: preview.certificateNo, onDone: () => setPreview(null) }) }));
+    }
+    return (_jsxs("div", { className: "max-w-3xl mx-auto p-6 space-y-5", children: [_jsx("h1", { className: "text-xl font-bold text-gray-800", children: "Test History" }), isLoading && _jsx("p", { className: "text-sm text-gray-500", children: "Loading\u2026" }), _jsxs("div", { className: "bg-white rounded-xl shadow divide-y", children: [tests.map((t) => (_jsx(HistoryRow, { test: t, onView: () => setPreview(t) }, t.id))), !isLoading && tests.length === 0 && (_jsx("p", { className: "px-5 py-10 text-center text-sm text-gray-500", children: "No tests recorded yet." }))] })] }));
 }
-function HistoryRow({ test: t }) {
+function HistoryRow({ test: t, onView }) {
     const printMutation = useMutation({
         mutationFn: () => sidecarClient.printCec(t.submissionId, 2),
     });
-    return (_jsxs("div", { className: "flex items-center justify-between px-5 py-3", children: [_jsxs("div", { children: [_jsx("p", { className: "font-semibold text-sm text-gray-800", children: t.plateNumber }), _jsxs("p", { className: "text-xs text-gray-500", children: [t.fuelType, " \u00B7 ", t.startedAt ? new Date(t.startedAt).toLocaleString() : "—"] }), t.certificateNo && (_jsxs("p", { className: "text-xs text-blue-600 mt-0.5", children: ["Cert: ", t.certificateNo] }))] }), _jsxs("div", { className: "flex items-center gap-2", children: [t.passFail !== null && (_jsx("span", { className: clsx("rounded-full px-2 py-0.5 text-xs font-medium", t.passFail ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"), children: t.passFail ? "PASS" : "FAIL" })), _jsx(LtmsStateBadge, { state: t.ltmsState }), t.ltmsState === "ACCEPTED" && t.submissionId && (_jsx("button", { onClick: () => printMutation.mutate(), disabled: printMutation.isPending, className: "rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50", children: printMutation.isPending ? "Printing…" : printMutation.isSuccess ? "Printed ✓" : "Print CEC" })), t.ltmsState === "WAITING_FOR_LTMS" && (_jsx("span", { className: "text-xs text-blue-600 animate-pulse", children: "Awaiting LTMS\u2026" }))] })] }));
+    return (_jsxs("div", { className: "flex items-center justify-between px-5 py-3", children: [_jsxs("div", { children: [_jsx("p", { className: "font-semibold text-sm text-gray-800", children: t.plateNumber }), _jsxs("p", { className: "text-xs text-gray-500", children: [t.fuelType, " \u00B7 ", t.startedAt ? new Date(t.startedAt).toLocaleString() : "—"] }), t.certificateNo && (_jsxs("p", { className: "text-xs text-blue-600 mt-0.5", children: ["Cert: ", t.certificateNo] }))] }), _jsxs("div", { className: "flex items-center gap-2", children: [t.passFail !== null && (_jsx("span", { className: clsx("rounded-full px-2 py-0.5 text-xs font-medium", t.passFail ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"), children: t.passFail ? "PASS" : "FAIL" })), _jsx(LtmsStateBadge, { state: t.ltmsState }), t.ltmsState === "ACCEPTED" && t.submissionId && (_jsxs(_Fragment, { children: [_jsx("button", { onClick: onView, className: "rounded-md border border-blue-300 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50", children: "View CEC" }), _jsx("button", { onClick: () => printMutation.mutate(), disabled: printMutation.isPending, className: "rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50", children: printMutation.isPending ? "Printing…" : printMutation.isSuccess ? "Printed ✓" : "Print CEC" })] })), t.ltmsState === "WAITING_FOR_LTMS" && (_jsx("span", { className: "text-xs text-blue-600 animate-pulse", children: "Awaiting LTMS\u2026" }))] })] }));
 }
 function LtmsStateBadge({ state }) {
     const label = state ?? "pending LTMS";

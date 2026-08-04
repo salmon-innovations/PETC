@@ -35,6 +35,7 @@ public class SubmissionsAdminController {
     @GetMapping
     public List<Map<String, Object>> list(
             @RequestParam(required = false) String centerId,
+            @RequestParam(required = false) String laneId,
             @RequestParam(required = false) String state,
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to,
@@ -45,6 +46,8 @@ public class SubmissionsAdminController {
                 SELECT s.id::text        AS id,
                        s.test_id         AS test_id,
                        s.center_id       AS center_id,
+                       s.lane_id::text   AS lane_id,
+                       l.lane_number     AS lane_number,
                        t.name            AS center_name,
                        s.state           AS state,
                        s.attempts        AS attempts,
@@ -60,6 +63,7 @@ public class SubmissionsAdminController {
                        s.price_snapshotted_at AS price_snapshotted_at
                   FROM submissions s
                   JOIN tenants t ON t.id = s.tenant_id
+                  JOIN lanes l ON l.id = s.lane_id
                  WHERE 1 = 1
                 """);
         List<Object> args = new ArrayList<>();
@@ -67,6 +71,10 @@ public class SubmissionsAdminController {
         if (centerId != null && !centerId.isBlank()) {
             sql.append(" AND s.center_id = ?");
             args.add(centerId);
+        }
+        if (laneId != null && !laneId.isBlank()) {
+            sql.append(" AND s.lane_id = ?::uuid");
+            args.add(laneId);
         }
         if (state != null && !state.isBlank()) {
             sql.append(" AND s.state = ?");
@@ -97,7 +105,8 @@ public class SubmissionsAdminController {
         }
 
         var rows = jdbc.queryForList("""
-                SELECT s.id::text AS id, s.test_id, s.center_id, t.name AS center_name,
+                SELECT s.id::text AS id, s.test_id, s.center_id, s.lane_id::text AS lane_id,
+                       l.lane_number, t.name AS center_name,
                        s.tenant_id::text AS tenant_id, s.state, s.attempts, s.payload::text AS payload,
                        s.certificate_no, s.ltms_ref_no, s.or_no, s.dermalog_token,
                        s.rejection_reason, s.valid_from, s.valid_until,
@@ -106,6 +115,7 @@ public class SubmissionsAdminController {
                        s.charge_snapshot_centavos, s.price_snapshotted_at
                   FROM submissions s
                   JOIN tenants t ON t.id = s.tenant_id
+                  JOIN lanes l ON l.id = s.lane_id
                  WHERE s.id = ?::uuid
                 """, id);
         if (rows.isEmpty()) {

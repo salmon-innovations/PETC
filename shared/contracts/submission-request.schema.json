@@ -1,12 +1,11 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "PETC Submission Request",
-  "description": "Body sent by the desktop sidecar to POST /api/submissions to enqueue a test bundle for cloud-side LTMS submission.",
+  "description": "Body sent by the desktop sidecar to POST /api/submissions to enqueue a same-day test bundle for cloud-side LTMS submission. The center and numbered lane are derived from X-Center-Key; clients must not supply or select that identity.",
   "type": "object",
-  "required": ["centerId", "testId", "payload"],
+  "required": ["testId", "payload"],
   "additionalProperties": false,
   "properties": {
-    "centerId": { "type": "string", "minLength": 1, "description": "Logical PETC center identifier from PETC_CENTER_ID env" },
     "testId":   { "type": "string", "minLength": 1, "description": "Local emission test UUID (also used for cloud idempotency key)" },
     "payload":  {
       "type": "object",
@@ -16,7 +15,6 @@
       "properties": {
         "testId":       { "type": "string" },
         "testDatetime": { "type": ["string", "null"], "format": "date-time" },
-        "centerId":     { "type": "string" },
         "centerName":   { "type": "string" },
         "vehicle": {
           "type": "object",

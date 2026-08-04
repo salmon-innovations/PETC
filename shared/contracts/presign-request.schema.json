@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "PETC Photo Presign Request",
-  "description": "Body sent by the desktop sidecar to POST /api/photos/presign to obtain a presigned S3 PUT URL.",
+  "description": "Body sent by the desktop sidecar to POST /api/photos/presign to obtain a presigned S3 PUT URL. The center and numbered lane are derived from X-Center-Key.",
   "type": "object",
   "required": ["testId", "photoId"],
   "additionalProperties": false,

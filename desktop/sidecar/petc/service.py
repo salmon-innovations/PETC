@@ -28,9 +28,10 @@ _CONFIG = {
     "camera": os.environ.get("PETC_CAMERA", "mock"),
     "printer": os.environ.get("PETC_PRINTER", "mock"),
     "gov_mock": os.environ.get("PETC_GOV_MOCK", "true").lower() == "true",
-    "cloud_url": os.environ.get("PETC_CLOUD_URL", "http://localhost:8080"),
-    "center_id": os.environ.get("PETC_CENTER_ID", "dev-center"),
-    "cloud_key": os.environ.get("PETC_CLOUD_KEY", "dev-insecure-key"),
+    # Cloud identity is loaded exclusively from petc.properties in run().
+    "cloud_url": "",
+    "center_id": "",
+    "cloud_key": "",
     "port": int(os.environ.get("PETC_PORT", "8765")),
 }
 
@@ -51,12 +52,41 @@ def run() -> None:
     from .cloud_sync.pusher import CloudSyncPusher
     from .api.server import init as init_api, run as run_api
     from .runtime import ProductionConfigError, is_production, validate_desktop_startup_config
+    from .config import ConfigError, load_config
+    from .cloud_client import configure_identity
+
+    os.environ.pop("PETC_STARTUP_COMPLIANCE_ERROR", None)
+    try:
+        installation = load_config()
+        _CONFIG.update({
+            "profile": installation.profile,
+            "cloud_url": installation.cloud_url,
+            "center_id": installation.expected_center,
+            "cloud_key": installation.cloud_key,
+        })
+        # Do not log any property values here; particularly never the lane key.
+        configure_identity(installation.cloud_url, installation.cloud_key)
+        os.environ["PETC_RUNTIME_PROFILE"] = installation.profile
+    except ConfigError as exc:
+        # The local API must remain up for the shared commissioning and
+        # diagnostic UI. /test/start applies the readiness gate and fails shut.
+        logger.warning("PETC cloud commissioning is incomplete: %s", exc)
+        # A packaged process must fail closed even if its parent happened to
+        # carry legacy PETC_CLOUD_* environment variables.
+        configure_identity("", "")
+        _CONFIG["profile"] = "production" if sys.platform == "win32" else "dev"
+        os.environ["PETC_RUNTIME_PROFILE"] = _CONFIG["profile"]
 
     try:
         runtime_config = validate_desktop_startup_config(_CONFIG)
-    except ProductionConfigError:
-        logger.exception("Refusing to start sidecar with non-compliant production settings")
-        raise
+    except ProductionConfigError as exc:
+        logger.warning("Production readiness is incomplete; diagnostics/commissioning remain available: %s", exc)
+        # Safe, descriptive field consumed by the API readiness gate. The
+        # validation error names settings only and never includes a lane key.
+        os.environ["PETC_STARTUP_COMPLIANCE_ERROR"] = str(exc)
+        # Keep a usable descriptive profile in startup diagnostics instead of
+        # crashing before an administrator can repair a fresh install.
+        runtime_config = type("Runtime", (), {"profile": _CONFIG["profile"]})()
 
     init_db()
     logger.info("SQLite initialised (profile=%s)", runtime_config.profile)

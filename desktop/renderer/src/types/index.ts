@@ -81,6 +81,9 @@ export interface EmissionTest {
   certificateNo: string | null;
   submissionId: string | null;
   photoCount: number;
+  centerId?: string | null;
+  laneId?: string | null;
+  laneNumber?: number | null;
 }
 
 export interface TestPhoto {
@@ -117,4 +120,33 @@ export interface SidecarStatus {
   walletChargePerUploadCentavos: number | null;
   walletLowBalanceThresholdCentavos: number | null;
   walletPricingUpdatedAt: string | null;
+  /** Authenticated installation identity; absent until a lane-aware cloud responds. */
+  centerId: string | null;
+  centerName: string | null;
+  laneId: string | null;
+  laneNumber: number | null;
+  laneActive: boolean | null;
+  laneIdentityConflict: boolean;
+  /** Accepted CECs today (not including active reservations). */
+  laneQuotaUsed: number | null;
+  /** In-progress cloud reservations already holding lane capacity. */
+  laneQuotaReserved: number | null;
+  laneQuotaLimit: number | null;
+  /** Capacity after accepted CECs and reservations; this gates a new test. */
+  laneQuotaRemaining: number | null;
+  laneQuotaBusinessDate: string | null;
+  laneQuotaResetsAt: string | null;
+  laneQuotaFetchedAt: string | null;
+  configured: boolean;
+  commissioningRequired: boolean;
+  config: {
+    profile?: string;
+    cloudUrl?: string;
+    expectedCenter?: string;
+    expectedLane?: string;
+    keyConfigured?: boolean;
+    keyMasked?: string;
+  };
+  readinessReady: boolean;
+  readinessReason: string;
 }

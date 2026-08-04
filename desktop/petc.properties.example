@@ -1,0 +1,7 @@
+# Copy to desktop/petc.properties for macOS development. Windows commissioning
+# writes petc.properties beside PETC Desktop.exe. Never commit the real file.
+petc.profile=dev
+petc.cloud.url=http://localhost:8080
+petc.cloud.key=REPLACE_WITH_ISSUED_LANE_KEY
+petc.expected.center=REPLACE_WITH_ISSUED_CENTER_ID
+petc.expected.lane=1

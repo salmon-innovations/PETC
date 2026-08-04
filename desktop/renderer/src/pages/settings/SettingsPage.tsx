@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { sidecarClient, type AnalyzerSettings, type AnalyzerType } from "../../api/sidecarClient";
+import { Link } from "react-router-dom";
 
 const ANALYZER_TYPES: { value: AnalyzerType; label: string }[] = [
   { value: "mock", label: "Mock (no hardware)" },
@@ -29,6 +30,13 @@ export default function SettingsPage() {
         <Row label="Printer"         value={status?.printerStatus.online ? "Online" : "Offline"} ok={status?.printerStatus.online} />
         <Row label="Paper"           value={status?.printerStatus.paper_ok ? "OK" : "Low / empty"} ok={status?.printerStatus.paper_ok} />
         <Row label="Cloud sync queue" value={`${status?.cloudOutboxPending ?? "—"} pending`} />
+        <Row label="Testing readiness" value={status?.readinessReady ? "Ready" : status?.readinessReason ?? "Checking"} ok={status?.readinessReady} />
+      </section>
+
+      <section className="bg-white rounded-xl shadow p-5 space-y-2">
+        <h2 className="font-semibold text-sm text-gray-700">Cloud commissioning</h2>
+        <p className="text-xs text-gray-500">{status?.configured ? `${status.config.expectedCenter ?? "Configured center"}, lane ${status.config.expectedLane ?? "—"}; key ${status.config.keyMasked ?? "masked"}` : "Not configured — testing is blocked."}</p>
+        <Link to="/commissioning" className="inline-block rounded border border-blue-600 px-3 py-1.5 text-xs text-blue-700 hover:bg-blue-50">Reconfigure cloud lane</Link>
       </section>
 
       <AnalyzerHardwareSection />

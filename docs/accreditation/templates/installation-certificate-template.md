@@ -32,7 +32,7 @@
 | Production profile enabled |  |  |
 | Mock government mode disabled |  |  |
 | Mock analyzer/camera/printer disabled |  |  |
-| Center key issued and non-placeholder |  |  |
+| Numbered-lane credential issued and non-placeholder; `/api/lanes/me` confirms expected lane |  |  |
 | Analyzer detected before test start |  |  |
 | Photo upload before submission verified |  |  |
 | CEC print blocked before LTMS acceptance |  |  |

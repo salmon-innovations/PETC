@@ -75,6 +75,15 @@ def _additive_sqlite_migrations() -> None:
             "pdf_path": "VARCHAR",
             "incident_due_at": "DATETIME",
             "incident_reported_at": "DATETIME",
+            "center_id": "VARCHAR",
+            "lane_id": "VARCHAR",
+            "lane_number": "INTEGER",
+            "next_retry": "DATETIME",
+        },
+        "emission_tests": {
+            "center_id": "VARCHAR",
+            "lane_id": "VARCHAR",
+            "lane_number": "INTEGER",
         },
         "receipts": {
             "submission_id": "VARCHAR",

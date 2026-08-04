@@ -29,6 +29,11 @@ export default function AppShell() {
       <aside className="w-52 bg-gray-900 text-white flex flex-col">
         <div className="px-4 py-5 border-b border-gray-700">
           <p className="font-bold text-sm tracking-wide">PETC</p>
+          {status?.laneNumber !== null && status?.laneNumber !== undefined && (
+            <p className="text-xs text-blue-300 mt-0.5 truncate">
+              {status.centerName ?? "Center"} / Lane {status.laneNumber}
+            </p>
+          )}
           <p className="text-xs text-gray-400 mt-0.5 truncate">{user?.fullName}</p>
         </div>
 
@@ -67,6 +72,7 @@ export default function AppShell() {
             </p>
           )}
           <WalletIndicator status={status} />
+          <LaneQuotaIndicator status={status} />
         </div>
 
         <button
@@ -81,6 +87,36 @@ export default function AppShell() {
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>
+    </div>
+  );
+}
+
+function LaneQuotaIndicator({ status }: { status?: SidecarStatus }) {
+  if (!status || status.laneQuotaLimit === null || status.laneQuotaUsed === null) return null;
+  const exhausted = (status.laneQuotaRemaining ?? 0) <= 0;
+  const reserved = status.laneQuotaReserved ?? 0;
+  const reset = status.laneQuotaResetsAt ? new Date(status.laneQuotaResetsAt) : null;
+
+  return (
+    <div className="pt-1.5 border-t border-gray-700/60 space-y-0.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-gray-400">Accepted today</span>
+        <span className={exhausted ? "font-medium text-red-400" : "font-medium text-gray-200"}>
+          {status.laneQuotaUsed} / {status.laneQuotaLimit}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-gray-400">Slots available</span>
+        <span className={exhausted ? "font-medium text-red-400" : "text-gray-300"}>
+          {status.laneQuotaRemaining ?? "—"}{reserved > 0 ? ` (${reserved} reserved)` : ""}
+        </span>
+      </div>
+      {exhausted && (
+        <p className="text-red-400">
+          Daily lane limit reached{reset ? ` · resets ${reset.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}
+        </p>
+      )}
+      {status.laneIdentityConflict && <p className="text-red-400">Lane change blocked — pending work</p>}
     </div>
   );
 }

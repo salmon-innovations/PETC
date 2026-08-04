@@ -22,6 +22,7 @@ interface Center {
   slug: string;
   name: string;
   activeLicenses: number;
+  activeLaneCount?: number;
   lastSync: string | null;
 }
 
@@ -97,7 +98,7 @@ export default function CentersPage() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
             <tr>
-              {["Name", "Slug", "Price / CEC", "Balance", "Licenses", "Last Sync", ""].map((h) => (
+              {["Name", "Slug", "Price / CEC", "Balance", "Active lanes", "Last Sync", ""].map((h) => (
                 <th key={h} className="px-5 py-3 text-left font-semibold">{h}</th>
               ))}
             </tr>
@@ -123,13 +124,13 @@ export default function CentersPage() {
                       <span className="ml-2 text-xs text-amber-700">{w.blockedCount} held</span>
                     )}
                   </td>
-                  <td className="px-5 py-3">{c.activeLicenses}</td>
+                  <td className="px-5 py-3">{c.activeLaneCount ?? c.activeLicenses}</td>
                   <td className="px-5 py-3 text-gray-500">
                     {c.lastSync ? new Date(c.lastSync).toLocaleString() : "Never"}
                   </td>
                   <td className="px-5 py-3">
                     <Link to={`/centers/${c.id}`} className="text-blue-600 hover:underline text-xs">
-                      Wallet
+                      Manage
                     </Link>
                   </td>
                 </tr>

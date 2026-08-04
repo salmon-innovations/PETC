@@ -74,6 +74,11 @@ class EmissionTest(Base):
     __tablename__ = "emission_tests"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    # Snapshotted at test start.  A credential rotation/reprovision must never
+    # cause a pending local test to be filed under another lane.
+    center_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
+    lane_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
+    lane_number: Mapped[Optional[int]] = mapped_column(Integer)
     operator_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
     plate_number: Mapped[str] = mapped_column(String, nullable=False, index=True)
     fuel_type: Mapped[str] = mapped_column(String, nullable=False)  # GAS | DIESEL
@@ -141,8 +146,11 @@ class LtmsSubmission(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     test_id: Mapped[str] = mapped_column(String(36), ForeignKey("emission_tests.id"), nullable=False)
+    center_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
+    lane_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
+    lane_number: Mapped[Optional[int]] = mapped_column(Integer)
     payload_json: Mapped[Optional[str]] = mapped_column(Text)
-    # PENDING | IN_FLIGHT | ACCEPTED | REJECTED | DEAD | WAITING_FOR_LTMS
+    # PENDING | IN_FLIGHT | ACCEPTED | REJECTED | DEAD | EXPIRED | WAITING_FOR_LTMS
     state: Mapped[str] = mapped_column(String, nullable=False, default="PENDING")
     cloud_submission_id: Mapped[Optional[str]] = mapped_column(String)  # cloud UUID from POST /api/submissions
     certificate_no: Mapped[Optional[str]] = mapped_column(String)
@@ -157,6 +165,7 @@ class LtmsSubmission(Base):
     incident_reported_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     last_error: Mapped[Optional[str]] = mapped_column(Text)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_retry: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     pdf_path: Mapped[Optional[str]] = mapped_column(String)
 
     test: Mapped["EmissionTest"] = relationship(back_populates="ltms_submissions")

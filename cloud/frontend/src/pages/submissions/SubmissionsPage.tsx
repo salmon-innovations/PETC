@@ -10,6 +10,8 @@ interface Submission {
   test_id: string;
   center_id: string;
   center_name: string;
+  lane_id: string | null;
+  lane_number: number | null;
   state: string;
   attempts: number;
   certificate_no: string | null;
@@ -98,6 +100,7 @@ function DetailPanel({ id, onClose }: { id: string; onClose: () => void }) {
           <>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <Field label="State"><StateBadge state={data.state} /></Field>
+              <Field label="Lane">{data.lane_number ? `Lane ${data.lane_number}` : "—"}</Field>
               <Field label="Attempts">{data.attempts}</Field>
               <Field label="Certificate">{data.certificate_no ?? "—"}</Field>
               <Field label="OR No.">{data.or_no ?? "—"}</Field>
@@ -181,13 +184,15 @@ export default function SubmissionsPage() {
 
   const state = params.get("state") ?? "";
   const centerId = params.get("centerId") ?? "";
+  const laneId = params.get("laneId") ?? "";
 
   const submissionsQuery = useQuery<Submission[]>({
-    queryKey: ["submissions", state, centerId],
+    queryKey: ["submissions", state, centerId, laneId],
     queryFn: () => {
       const q = new URLSearchParams();
       if (state) q.set("state", state);
       if (centerId) q.set("centerId", centerId);
+      if (laneId) q.set("laneId", laneId);
       q.set("limit", "100");
       return api.get<Submission[]>(`/admin/submissions?${q}`).then((r) => r.data);
     },
@@ -235,6 +240,15 @@ export default function SubmissionsPage() {
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
         </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Lane ID</label>
+          <input
+            value={laneId}
+            onChange={(e) => setFilter("laneId", e.target.value)}
+            placeholder="Lane UUID"
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+        </div>
         <span className="ml-auto text-xs text-gray-500">{submissions.length} shown</span>
       </div>
 
@@ -242,7 +256,7 @@ export default function SubmissionsPage() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
             <tr>
-              {["Test", "Center", "State", "Certificate", "Created", ""].map((h) => (
+              {["Test", "Center", "Lane", "State", "Certificate", "Created", ""].map((h) => (
                 <th key={h} className="px-5 py-3 text-left font-semibold">{h}</th>
               ))}
             </tr>
@@ -252,6 +266,7 @@ export default function SubmissionsPage() {
               <tr key={s.id} className={clsx("hover:bg-gray-50", s.state === "BLOCKED" && "bg-amber-50/40")}>
                 <td className="px-5 py-3 font-medium">{s.test_id}</td>
                 <td className="px-5 py-3 text-gray-600">{s.center_name}</td>
+                <td className="px-5 py-3 text-gray-600">{s.lane_number ? `Lane ${s.lane_number}` : "—"}</td>
                 <td className="px-5 py-3">
                   <StateBadge state={s.state} />
                   {s.grace_released_at && (
@@ -271,7 +286,7 @@ export default function SubmissionsPage() {
               </tr>
             ))}
             {submissions.length === 0 && (
-              <tr><td colSpan={6} className="px-5 py-10 text-center text-gray-400">
+              <tr><td colSpan={7} className="px-5 py-10 text-center text-gray-400">
                 No submissions match these filters.
               </td></tr>
             )}

@@ -12,7 +12,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import clsx from "clsx";
-import { sidecarClient, type TestResultResponse } from "../../api/sidecarClient";
+import { sidecarClient, sidecarErrorMessage, type TestResultResponse } from "../../api/sidecarClient";
 import { useAuthStore } from "../../store/authStore";
 import { CameraStream, type CameraStreamHandle } from "../../components/CameraStream";
 
@@ -34,6 +34,25 @@ export default function RunTestPage() {
     useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { fuelType: "GAS" } });
 
   const plate = watch("plateNumber");
+  const { data: sidecarStatus } = useQuery({
+    queryKey: ["sidecar-status"],
+    queryFn: sidecarClient.getStatus,
+    refetchInterval: 10_000,
+    staleTime: 5_000,
+  });
+  const quotaExhausted = sidecarStatus?.laneQuotaRemaining !== null
+    && sidecarStatus?.laneQuotaRemaining !== undefined
+    && sidecarStatus.laneQuotaRemaining <= 0;
+  const startBlocked = sidecarStatus?.readinessReady === false || quotaExhausted || sidecarStatus?.laneActive === false || sidecarStatus?.laneIdentityConflict === true;
+  const startBlockedMessage = sidecarStatus?.readinessReady === false
+    ? sidecarStatus.readinessReason
+    : sidecarStatus?.laneIdentityConflict
+    ? "This workstation has pending tests for another lane. Resolve them before changing lane credentials."
+    : sidecarStatus?.laneActive === false
+      ? "This lane is inactive and cannot start tests."
+      : quotaExhausted
+        ? `No lane upload slots are available today${sidecarStatus?.laneQuotaResetsAt ? `; resets ${new Date(sidecarStatus.laneQuotaResetsAt).toLocaleString()}` : "."}`
+        : null;
 
   // Lookup vehicle info once plate is long enough
   const { data: vehicleLookup } = useQuery({
@@ -84,7 +103,10 @@ export default function RunTestPage() {
 
       {/* Input form */}
       <form
-        onSubmit={handleSubmit((v) => { setStep("idle"); setResult(null); startMutation.mutate(v); })}
+        onSubmit={handleSubmit((v) => {
+          if (startBlocked) return;
+          setStep("idle"); setResult(null); startMutation.mutate(v);
+        })}
         className="bg-white rounded-xl shadow p-6 space-y-4"
       >
         <div className="grid grid-cols-2 gap-4">
@@ -116,17 +138,23 @@ export default function RunTestPage() {
           </div>
         )}
 
+        {startBlockedMessage && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {startBlockedMessage}
+          </div>
+        )}
+
         <CameraStream ref={cameraRef} />
 
         <button
           type="submit"
-          disabled={step === "running"}
+          disabled={step === "running" || startBlocked}
           className={clsx(
             "w-full rounded-lg py-2.5 text-white font-semibold transition-colors",
-            step === "running" ? "bg-gray-400 cursor-not-allowed" : "bg-green-600 hover:bg-green-700"
+            step === "running" || startBlocked ? "bg-gray-400 cursor-not-allowed" : "bg-green-600 hover:bg-green-700"
           )}
         >
-          {step === "running" ? "Analyzer running…" : "Start Test"}
+          {step === "running" ? "Analyzer running…" : startBlocked ? "Test start unavailable" : "Start Test"}
         </button>
       </form>
 
@@ -189,7 +217,7 @@ export default function RunTestPage() {
 
       {step === "error" && (
         <div className="rounded-xl bg-red-50 border border-red-200 px-5 py-4 text-sm text-red-800 flex items-center justify-between">
-          <span>Test failed or timed out. Check the analyzer connection and try again.</span>
+          <span>{sidecarErrorMessage(startMutation.error)}</span>
           <button
             type="button"
             onClick={reset}
@@ -202,4 +230,3 @@ export default function RunTestPage() {
     </div>
   );
 }
-

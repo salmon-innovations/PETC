@@ -12,7 +12,7 @@ This folder holds the one-page AWS network diagram that accompanies the textual 
 
 The page is organised top-to-bottom in three bands:
 
-1. **CLIENTS** — PETC desktops (left) and the Operator portal users (right). PETCs authenticate with the per-center `X-Center-Key` header; portal users authenticate with a JWT issued by `/api/auth/login`.
+1. **CLIENTS** — PETC lane desktops (left) and the Operator portal users (right). A center may have multiple numbered lanes; each desktop authenticates with its lane-specific `X-Center-Key` credential, from which the cloud derives the trusted center and lane. Portal users authenticate with a JWT issued by `/api/auth/login`.
 
 2. **AWS — Digiflash Cloud (`ap-southeast-1`)** — the production target footprint. Inside the VPC: public subnets host the ALB and NAT Gateway; app private subnets host the Spring Boot ECS Fargate tasks and the Submission Job Runner; data private subnets host RDS Postgres Multi-AZ, ElastiCache Redis Multi-AZ, the S3 Gateway Endpoint and the Secrets Manager Interface Endpoint (so neither S3 nor Secrets Manager traffic ever leaves the AWS backbone). The "Managed services" row beneath the VPC lists the AWS services consumed through those endpoints: S3 (`petc-photos`), Secrets Manager (LTMS / IRDS credentials and the JWT signing key), and CloudWatch (logs, metrics, alarms).
 

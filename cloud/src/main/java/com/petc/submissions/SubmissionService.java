@@ -2,6 +2,8 @@ package com.petc.submissions;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.petc.audit.AuditService;
+import com.petc.lanes.LaneQuotaService;
+import com.petc.lanes.LateSubmissionException;
 import com.petc.wallet.CenterPricingService;
 import com.petc.wallet.WalletService;
 import org.slf4j.Logger;
@@ -14,6 +16,10 @@ import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.Map;
 import java.util.Optional;
 
@@ -27,19 +33,22 @@ public class SubmissionService {
     private final CenterPricingService pricing;
     private final WalletService wallet;
     private final AuditService audit;
+    private final LaneQuotaService quota;
 
     public SubmissionService(
             JdbcTemplate jdbc,
             ObjectMapper mapper,
             CenterPricingService pricing,
             WalletService wallet,
-            AuditService audit
+            AuditService audit,
+            LaneQuotaService quota
     ) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.pricing = pricing;
         this.wallet = wallet;
         this.audit = audit;
+        this.quota = quota;
     }
 
     /**
@@ -55,16 +64,17 @@ public class SubmissionService {
      * than inheriting the exhausted one from the rejected attempt.
      */
     @Transactional
-    public String enqueue(String tenantId, String centerId, String testId, Map<String, Object> payload) {
+    public String enqueue(String tenantId, String laneId, String centerId, String testId, Map<String, Object> payload) {
         try {
+            requireTodayTest(payload);
             String payloadJson = mapper.writeValueAsString(payload);
             long quotedCharge = pricing.getFor(tenantId).chargePerUploadCentavos();
-            return jdbc.queryForObject("""
+            String submissionId = jdbc.queryForObject("""
                     INSERT INTO submissions
-                        (tenant_id, center_id, test_id, payload,
+                        (tenant_id, lane_id, center_id, test_id, payload,
                          charge_snapshot_centavos, price_snapshotted_at)
-                    VALUES (?::uuid, ?, ?, ?::jsonb, ?, now())
-                    ON CONFLICT (tenant_id, test_id) DO UPDATE
+                    VALUES (?::uuid, ?::uuid, ?, ?, ?::jsonb, ?, now())
+                    ON CONFLICT (lane_id, test_id) DO UPDATE
                         SET state = CASE
                                 WHEN submissions.state IN ('REJECTED','DEAD') THEN 'PENDING'
                                 ELSE submissions.state
@@ -104,8 +114,16 @@ public class SubmissionService {
                                 ELSE submissions.grace_released_at
                             END
                     RETURNING id::text
-                    """, String.class, tenantId, centerId, testId, payloadJson, quotedCharge);
+                    """, String.class, tenantId, laneId, centerId, testId, payloadJson, quotedCharge);
+            // Existing PENDING/ACCEPTED rows already have a RESERVED/CONSUMED
+            // reservation and reserve() is a no-op.  A requeued REJECTED/DEAD
+            // row has RELEASED its previous reservation and receives one anew.
+            quota.reserve(tenantId, laneId, submissionId);
+            return submissionId;
         } catch (Exception e) {
+            if (e instanceof LateSubmissionException || e instanceof com.petc.lanes.LaneQuotaExceededException) {
+                throw (RuntimeException) e;
+            }
             throw new RuntimeException("Failed to enqueue submission for test " + testId, e);
         }
     }
@@ -119,12 +137,12 @@ public class SubmissionService {
      * permissive. Dropping it reopens a cross-tenant read of certificate and
      * DERMALOG data.
      */
-    public Optional<SubmissionStatus> getStatus(String submissionId, String tenantId) {
+    public Optional<SubmissionStatus> getStatus(String submissionId, String tenantId, String laneId) {
         var rows = jdbc.queryForList("""
                 SELECT state, certificate_no, ltms_ref_no, rejection_reason,
                        or_no, dermalog_token, valid_from, valid_until
-                FROM submissions WHERE id = ?::uuid AND tenant_id = ?::uuid
-                """, submissionId, tenantId);
+                FROM submissions WHERE id = ?::uuid AND tenant_id = ?::uuid AND lane_id = ?::uuid
+                """, submissionId, tenantId, laneId);
         if (rows.isEmpty()) return Optional.empty();
         var row = rows.get(0);
         return Optional.of(new SubmissionStatus(
@@ -148,8 +166,9 @@ public class SubmissionService {
                 """, submissionId);
     }
 
-    /** Record a successful LTMS acceptance with the CEC presentation fields. */
-    void markAccepted(
+    /** Legacy acceptance helper; quota conversion remains transactionally coupled. */
+    @Transactional
+    public void markAccepted(
             String submissionId,
             String certificateNo,
             String ltmsRefNo,
@@ -158,7 +177,7 @@ public class SubmissionService {
             LocalDate validFrom,
             LocalDate validUntil
     ) {
-        jdbc.update("""
+        String tenantId = jdbc.queryForObject("""
                 UPDATE submissions
                 SET state = 'ACCEPTED',
                     certificate_no = ?,
@@ -168,15 +187,17 @@ public class SubmissionService {
                     valid_from = ?,
                     valid_until = ?,
                     accepted_at = now()
-                WHERE id = ?::uuid
+                WHERE id = ?::uuid AND state IN ('PENDING', 'IN_FLIGHT')
+                RETURNING tenant_id::text
                 """,
-                certificateNo,
+                String.class, certificateNo,
                 ltmsRefNo,
                 orNo,
                 dermalogToken,
                 validFrom != null ? Date.valueOf(validFrom) : null,
                 validUntil != null ? Date.valueOf(validUntil) : null,
                 submissionId);
+        if (tenantId != null) quota.consume(submissionId, tenantId);
         log.info("Submission {} accepted cert={}", submissionId, certificateNo);
     }
 
@@ -220,7 +241,7 @@ public class SubmissionService {
                        valid_until = ?,
                        accepted_at = now(),
                        acceptance_seq = acceptance_seq + 1
-                 WHERE id = ?::uuid AND tenant_id = ?::uuid
+                 WHERE id = ?::uuid AND tenant_id = ?::uuid AND state IN ('PENDING', 'IN_FLIGHT')
              RETURNING acceptance_seq
                 """,
                 Integer.class,
@@ -234,10 +255,17 @@ public class SubmissionService {
                 tenantId);
 
         if (seq == null) {
-            throw new IllegalStateException(
-                    "Submission " + submissionId + " not found for tenant " + tenantId);
+            var states = jdbc.queryForList("SELECT state FROM submissions WHERE id = ?::uuid AND tenant_id = ?::uuid",
+                    submissionId, tenantId);
+            if (!states.isEmpty() && "ACCEPTED".equals(states.getFirst().get("state"))) {
+                // Duplicate LTMS success delivery after our transaction committed.
+                // Its quota/wallet effect was already finalized atomically.
+                return;
+            }
+            throw new IllegalStateException("Submission " + submissionId + " is not eligible for acceptance");
         }
 
+        quota.consume(submissionId, tenantId);
         wallet.chargeForAcceptance(tenantId, submissionId, seq);
         log.info("Submission {} accepted cert={} (acceptance #{})", submissionId, certificateNo, seq);
     }
@@ -265,18 +293,22 @@ public class SubmissionService {
     }
 
     /** Record a definitive LTMS rejection (non-retryable). */
-    void markRejected(String submissionId, String reason) {
+    @Transactional
+    public void markRejected(String submissionId, String reason) {
         jdbc.update("""
                 UPDATE submissions SET state = 'REJECTED', rejection_reason = ?
                 WHERE id = ?::uuid
                 """, reason, submissionId);
+        quota.release(submissionId);
         log.info("Submission {} rejected reason={}", submissionId, reason);
     }
 
     /** Schedule a retry with exponential backoff. Marks DEAD after maxAttempts. */
-    void markRetry(String submissionId, int attempts, int maxAttempts, int[] backoffSeconds) {
+    @Transactional
+    public void markRetry(String submissionId, int attempts, int maxAttempts, int[] backoffSeconds) {
         if (attempts >= maxAttempts) {
             jdbc.update("UPDATE submissions SET state = 'DEAD' WHERE id = ?::uuid", submissionId);
+            quota.release(submissionId);
             log.warn("Submission {} exhausted {} attempts — DEAD", submissionId, attempts);
             return;
         }
@@ -336,4 +368,32 @@ public class SubmissionService {
     record PendingSubmission(String id, String tenantId, String centerId, String testId,
                              String payloadJson, int attempts, boolean graceReleased,
                              long chargeSnapshotCentavos) {}
+
+    private void requireTodayTest(Map<String, Object> payload) {
+        Object raw = payload.get("testDatetime");
+        if (!(raw instanceof String value) || value.isBlank()) {
+            throw new LateSubmissionException("payload.testDatetime is required");
+        }
+        LocalDate testDate;
+        try {
+            testDate = Instant.parse(value).atZone(LaneQuotaService.BUSINESS_ZONE).toLocalDate();
+        } catch (Exception ignored) {
+            try {
+                testDate = OffsetDateTime.parse(value).atZoneSameInstant(LaneQuotaService.BUSINESS_ZONE).toLocalDate();
+            } catch (Exception ignoredAgain) {
+                try {
+                    testDate = ZonedDateTime.parse(value).withZoneSameInstant(LaneQuotaService.BUSINESS_ZONE).toLocalDate();
+                } catch (Exception ignoredThird) {
+                    try {
+                        testDate = LocalDateTime.parse(value).atZone(LaneQuotaService.BUSINESS_ZONE).toLocalDate();
+                    } catch (Exception invalid) {
+                        throw new LateSubmissionException("payload.testDatetime must be an ISO-8601 datetime");
+                    }
+                }
+            }
+        }
+        if (!LocalDate.now(LaneQuotaService.BUSINESS_ZONE).equals(testDate)) {
+            throw new LateSubmissionException("Late submissions are not permitted; testDatetime must be today in Asia/Manila");
+        }
+    }
 }

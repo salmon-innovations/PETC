@@ -11,7 +11,8 @@ import java.util.Map;
 import java.time.Instant;
 
 /**
- * Validates X-Center-Key against the center_licenses table and returns the tenant ID.
+ * Validates X-Center-Key against a lane credential and returns trusted center/lane
+ * context. The request body must never be trusted for either identity.
  * Keys are stored as bcrypt hashes; we iterate active licenses to find the match.
  *
  * Dev mode: a hardcoded insecure key automatically creates/reuses a dev tenant so
@@ -46,6 +47,11 @@ public class CenterKeyValidator {
     public record CenterContext(
             String tenantId,
             String centerId,
+            String centerName,
+            String laneId,
+            int laneNumber,
+            boolean laneActive,
+            int dailyUploadLimit,
             String authorizationStatus,
             Instant authorizationExpiresAt
     ) {}
@@ -61,13 +67,18 @@ public class CenterKeyValidator {
             throw new AuthException("Missing X-Center-Key");
         }
         if (devKeyEnabled && !devKey.isBlank() && rawKey.equals(devKey)) {
-            return new CenterContext(ensureDevTenant(), devTenantSlug, "ACTIVE", null);
+            return devContext();
         }
         List<Map<String, Object>> rows = jdbc.queryForList(
                 """
-                SELECT tenant_id::text, center_id, key_hash, authorization_status, authorization_expires_at
-                FROM center_licenses
-                WHERE active = true
+                SELECT l.tenant_id::text, t.slug AS center_id, t.name AS center_name, l.id::text AS lane_id,
+                       l.lane_number, l.active AS lane_active, l.daily_upload_limit, lc.id::text AS credential_id,
+                       lc.key_hash, ca.authorization_status, ca.authorization_expires_at
+                  FROM lane_credentials lc
+                  JOIN lanes l ON l.id = lc.lane_id
+                  JOIN tenants t ON t.id = l.tenant_id
+                  JOIN center_authorizations ca ON ca.tenant_id = l.tenant_id
+                 WHERE lc.active = true AND l.active = true
                 """
         );
         for (var row : rows) {
@@ -82,9 +93,16 @@ public class CenterKeyValidator {
                 if (expiresAt != null && expiresAt.isBefore(Instant.now())) {
                     throw new AuthException("PETC authorization is expired");
                 }
+                jdbc.update("UPDATE lane_credentials SET last_used_at = now() WHERE id = ?::uuid",
+                        row.get("credential_id"));
                 return new CenterContext(
                         (String) row.get("tenant_id"),
                         (String) row.get("center_id"),
+                        (String) row.get("center_name"),
+                        (String) row.get("lane_id"),
+                        ((Number) row.get("lane_number")).intValue(),
+                        (Boolean) row.get("lane_active"),
+                        ((Number) row.get("daily_upload_limit")).intValue(),
                         status,
                         expiresAt
                 );
@@ -107,6 +125,21 @@ public class CenterKeyValidator {
             return localDateTime.atZone(java.time.ZoneOffset.UTC).toInstant();
         }
         return Instant.parse(value.toString());
+    }
+
+    private CenterContext devContext() {
+        String tenantId = ensureDevTenant();
+        String laneId = jdbc.queryForObject("""
+                INSERT INTO lanes (tenant_id, lane_number)
+                VALUES (?::uuid, 1)
+                ON CONFLICT (tenant_id, lane_number) DO UPDATE SET updated_at = now()
+                RETURNING id::text
+                """, String.class, tenantId);
+        jdbc.update("""
+                INSERT INTO center_authorizations (tenant_id)
+                VALUES (?::uuid) ON CONFLICT (tenant_id) DO NOTHING
+                """, tenantId);
+        return new CenterContext(tenantId, devTenantSlug, devTenantName, laneId, 1, true, 80, "ACTIVE", null);
     }
 
     private String ensureDevTenant() {

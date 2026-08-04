@@ -6,6 +6,10 @@ new centers default to PHP 80 per accepted CEC and a PHP 400 warning threshold.
 The platform billing values are defaults for creating centers; changing them
 does not rewrite existing center configurations.
 
+Pricing and wallet balance are shared by all numbered lanes under the center.
+Lane capacity is separate: each lane has an administrator-configurable daily
+limit (default 80 LTMS-accepted CECs per Asia/Manila day).
+
 When the cloud receives a submission, it copies the center's current charge to
 `submissions.charge_snapshot_centavos`. Dispatch affordability, blocked-queue
 release, grace release, and the eventual accepted ledger debit all use that

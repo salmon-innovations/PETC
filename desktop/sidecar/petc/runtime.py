@@ -17,8 +17,8 @@ class ProductionConfigError(RuntimeError):
     """Raised when production is configured with demo or placeholder settings."""
 
 
-def profile() -> str:
-    value = os.environ.get("PETC_PROFILE", "dev").strip().lower() or "dev"
+def profile(configured_profile: str | None = None) -> str:
+    value = (configured_profile or os.environ.get("PETC_PROFILE", "dev")).strip().lower() or "dev"
     if value not in PROFILES:
         raise ProductionConfigError(
             f"PETC_PROFILE must be one of {sorted(PROFILES)}; got {value!r}"
@@ -27,11 +27,13 @@ def profile() -> str:
 
 
 def is_production() -> bool:
-    return profile() == "production"
+    # The service puts the properties profile here after loading it.  This is
+    # not an identity setting and avoids every caller carrying RuntimeConfig.
+    return profile(os.environ.get("PETC_RUNTIME_PROFILE")) == "production"
 
 
 def allow_mock_paths() -> bool:
-    return profile() in {"dev", "accreditation-demo"}
+    return profile(os.environ.get("PETC_RUNTIME_PROFILE")) in {"dev", "accreditation-demo"}
 
 
 def is_placeholder_secret(value: str | None) -> bool:
@@ -63,13 +65,13 @@ class RuntimeConfig:
 
 def validate_desktop_startup_config(config: dict) -> RuntimeConfig:
     runtime = RuntimeConfig(
-        profile=profile(),
+        profile=profile(str(config.get("profile", "")) or None),
         analyzer=str(config.get("analyzer", "")),
         camera=str(config.get("camera", "")),
         printer=str(config.get("printer", "")),
         gov_mock=bool(config.get("gov_mock")),
         cloud_url=str(config.get("cloud_url", "")).strip(),
-        center_id=str(config.get("center_id", "")).strip(),
+        center_id=str(config.get("expected_center", config.get("center_id", ""))).strip(),
         cloud_key=str(config.get("cloud_key", "")).strip(),
     )
     if runtime.profile != "production":
@@ -87,7 +89,7 @@ def validate_desktop_startup_config(config: dict) -> RuntimeConfig:
     if not runtime.cloud_url or "localhost" in runtime.cloud_url or "127.0.0.1" in runtime.cloud_url:
         errors.append("PETC_CLOUD_URL must point to the authorized cloud endpoint")
     if runtime.center_id in {"", "dev-center", "mock-center"}:
-        errors.append("PETC_CENTER_ID must be an issued PETC center identifier")
+        errors.append("petc.expected.center must be an issued PETC center identifier")
     if is_placeholder_secret(runtime.cloud_key):
         errors.append("PETC_CLOUD_KEY must be an issued non-placeholder center key")
     if errors:

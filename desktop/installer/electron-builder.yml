@@ -8,12 +8,13 @@ directories:
 
 # Renderer built bundle
 files:
+  - package.json
   - from: renderer/dist
-    to: .
+    to: electron/renderer
     filter:
       - "**/*"
   - from: electron/dist
-    to: electron
+    to: electron/dist
     filter:
       - "main.js"
       - "preload.js"
@@ -25,8 +26,7 @@ extraResources:
     filter:
       - "**/*"
 
-# electron-builder entry point
-main: electron/main.js
+# Entry point is declared in desktop/package.json (electron/dist/main.js).
 
 asar: true
 
@@ -35,7 +35,6 @@ mac:
     - target: dmg
       arch: [x64, arm64]
   category: public.app-category.productivity
-  icon: installer/assets/icon.icns
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: installer/assets/entitlements.mac.plist
@@ -54,16 +53,19 @@ win:
   target:
     - target: nsis
       arch: [x64]
-  icon: installer/assets/icon.ico
 
 nsis:
   oneClick: false
+  # Commissioning writes petc.properties beside PETC Desktop.exe.  A
+  # per-machine installation therefore obtains administrator approval during
+  # install; upgrades leave this non-packaged file in place.
+  perMachine: true
+  allowElevation: true
   allowToChangeInstallationDirectory: true
-  installerIcon: installer/assets/icon.ico
-  uninstallerIcon: installer/assets/icon.ico
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: PETC Desktop
+  include: installer/commissioning.nsh
 
 linux:
   target:

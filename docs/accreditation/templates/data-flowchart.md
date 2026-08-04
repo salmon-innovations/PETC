@@ -28,5 +28,5 @@ flowchart TD
 |---|---|---|
 | Local SQLite | Test record, readings, photos metadata, audit log, print history | Workstation ACLs, loopback-only sidecar |
 | Local filesystem | Captured photo bytes and CEC PDFs | Workstation ACLs |
-| Cloud Postgres | Tenant, center license, submissions, audit/reporting data | Tenant isolation, center-key auth, RLS where enabled |
-| Object storage | Uploaded vehicle photos | Presigned PUT, tenant/test scoped object keys |
+| Cloud Postgres | Tenant/center authorization, numbered lanes, lane credentials, submissions, quota, audit/reporting data | Tenant/lane isolation, lane-credential auth, RLS where enabled |
+| Object storage | Uploaded vehicle photos | Presigned PUT, tenant/lane/test scoped object keys |

@@ -162,11 +162,11 @@ A practical reading order for a reviewer doing a one-pass architectural assessme
 
 ### 3.2 What is NOT in the repository, deliberately
 
-The following are deliberately absent from the source tree and are loaded at runtime from AWS Secrets Manager (cloud) or per-center configuration (desktop):
+The following are deliberately absent from the source tree and are loaded at runtime from AWS Secrets Manager (cloud) or per-lane desktop configuration:
 
 - LTMS / IRDS production credentials.
 - AWS access keys for the production environment.
-- Per-center API keys (`X-Center-Key` values; only the bcrypt-hashed digests live in the database).
+- Per-lane API credentials (`X-Center-Key` values; a center may have multiple numbered lanes, while each lane has one active bcrypt-hashed credential in the database).
 - TLS private keys.
 - Operator passwords (only bcrypt-hashed digests live in the database).
 

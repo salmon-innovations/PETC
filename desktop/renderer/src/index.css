@@ -2,5 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+input { @apply w-full rounded border border-gray-300 px-3 py-2 text-sm; }
+
 :root { font-family: Inter, system-ui, sans-serif; }
 body { @apply bg-gray-100 text-gray-900; margin: 0; }

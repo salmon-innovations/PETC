@@ -17,11 +17,13 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Operator-portal center API-key administration.
+ * Legacy Lane 1 credential administration.
  *
  * The raw key is returned exactly once, at issue time, and only its bcrypt hash
  * is stored — matching how {@link com.petc.ingest.CenterKeyValidator} verifies
- * the X-Center-Key header. A lost key cannot be recovered, only re-issued.
+ * the X-Center-Key header. New integrations should use the lane endpoints;
+ * this surface remains so an older portal cannot issue a credential ignored by
+ * the lane-aware validator.
  */
 @RestController
 @RequestMapping("/api/licenses")
@@ -45,15 +47,18 @@ public class LicensesController {
     public List<LicenseResponse> list() {
         return jdbc.query(
                 """
-                SELECT cl.id::text        AS id,
-                       cl.tenant_id::text AS tenant_id,
+                SELECT lc.id::text        AS id,
+                       l.tenant_id::text  AS tenant_id,
                        t.name             AS center_name,
-                       cl.active          AS active,
-                       cl.created_at      AS issued_at,
-                       cl.authorization_expires_at AS expires_at
-                FROM center_licenses cl
-                JOIN tenants t ON t.id = cl.tenant_id
-                ORDER BY cl.created_at DESC
+                       lc.active          AS active,
+                       lc.created_at      AS issued_at,
+                       ca.authorization_expires_at AS expires_at
+                FROM lane_credentials lc
+                JOIN lanes l ON l.id = lc.lane_id
+                JOIN tenants t ON t.id = l.tenant_id
+                JOIN center_authorizations ca ON ca.tenant_id = l.tenant_id
+                WHERE l.lane_number = 1
+                ORDER BY lc.created_at DESC
                 """,
                 (rs, rowNum) -> new LicenseResponse(
                         rs.getString("id"),
@@ -67,9 +72,8 @@ public class LicensesController {
     }
 
     /**
-     * Issues a new key for a center. Any existing active key is revoked first:
-     * center_licenses has a UNIQUE (tenant_id) WHERE active partial index, so a
-     * center holds at most one usable key, and re-issuing rotates it.
+     * Issues/rotates Lane 1's credential.  This is compatibility behavior for
+     * the historical one-workstation portal; it never writes center_licenses.
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -91,19 +95,21 @@ public class LicensesController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such center");
         }
 
-        jdbc.update(
-                "UPDATE center_licenses SET active = false WHERE tenant_id = ? AND active = true",
-                tenantId
-        );
+        String laneId = jdbc.queryForObject("""
+                SELECT id::text FROM lanes WHERE tenant_id = ? AND lane_number = 1
+                """, String.class, tenantId);
+        jdbc.update("""
+                UPDATE lane_credentials SET active = false, revoked_at = now()
+                 WHERE lane_id = ?::uuid AND active = true
+                """, laneId);
 
         String rawKey = generateKey();
         var id = jdbc.queryForObject(
                 """
-                INSERT INTO center_licenses (tenant_id, key_hash, center_id, active)
-                VALUES (?, ?, ?, true)
+                INSERT INTO lane_credentials (lane_id, key_hash, active)
+                VALUES (?::uuid, ?, true)
                 RETURNING id::text
-                """,
-                String.class, tenantId, encoder.encode(rawKey), centerSlug
+                """, String.class, laneId, encoder.encode(rawKey)
         );
 
         // rawKey is returned here and never persisted in plain text.
@@ -120,7 +126,7 @@ public class LicensesController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Malformed license id");
         }
         int updated = jdbc.update(
-                "UPDATE center_licenses SET active = false WHERE id = ? AND active = true",
+                "UPDATE lane_credentials SET active = false, revoked_at = now() WHERE id = ? AND active = true",
                 licenseId
         );
         if (updated == 0) {

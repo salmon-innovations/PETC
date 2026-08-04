@@ -9,13 +9,15 @@ import os
 import uuid
 import json
 import hashlib
+import secrets
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import uvicorn
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -37,6 +39,11 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="PETC Sidecar", version="0.1.0")
 
+# Keep the operator on the submission screen for the normal LTMS round-trip.
+# Durable background recovery remains authoritative after this bounded wait.
+_FOREGROUND_SUBMISSION_TIMEOUT_S = 60.0
+_FOREGROUND_SUBMISSION_POLL_S = 1.0
+
 # Renderer runs on a Vite dev server in dev, or as a file:// page in prod.
 # In both cases requests to 127.0.0.1 originate from localhost.
 app.add_middleware(
@@ -54,6 +61,7 @@ _camera: Optional[CameraCapture] = None
 _printer: Optional[Printer] = None
 _gov: Optional[GovRegistryClient] = None
 _cloud_sync: Optional[CloudSyncPusher] = None
+_local_sessions: dict[str, str] = {}
 
 
 def init(
@@ -160,6 +168,57 @@ class StatusResponse(BaseModel):
     wallet_charge_per_upload_centavos: Optional[int] = None
     wallet_low_balance_threshold_centavos: Optional[int] = None
     wallet_pricing_updated_at: Optional[datetime] = None
+    center_id: Optional[str] = None
+    center_name: Optional[str] = None
+    lane_id: Optional[str] = None
+    lane_number: Optional[int] = None
+    lane_active: Optional[bool] = None
+    lane_identity_conflict: bool = False
+    lane_quota_used: Optional[int] = None
+    lane_quota_reserved: Optional[int] = None
+    lane_quota_limit: Optional[int] = None
+    lane_quota_remaining: Optional[int] = None
+    lane_quota_business_date: Optional[str] = None
+    lane_quota_resets_at: Optional[str] = None
+    lane_quota_fetched_at: Optional[datetime] = None
+    configured: bool = False
+    commissioning_required: bool = True
+    config: dict = {}
+    readiness_ready: bool = False
+    readiness_reason: str = "PETC commissioning is required"
+
+
+class CommissioningRequest(BaseModel):
+    cloud_url: str
+    cloud_key: str
+    expected_center: str
+    expected_lane: str
+    confirmed: bool = False
+
+
+def _require_commissioning_capability(
+    token: Optional[str] = Header(None, alias="X-PETC-Commissioning-Token"),
+    authorization: Optional[str] = Header(None),
+) -> None:
+    expected = os.environ.get("PETC_COMMISSIONING_TOKEN", "")
+    if not expected or not token or not secrets.compare_digest(expected, token):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Commissioning is available only from PETC Desktop")
+    if _commissioning_verified():
+        bearer = authorization.removeprefix("Bearer ").strip() if authorization else ""
+        if _local_sessions.get(bearer) not in {"manager", "tenant_admin"}:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Cloud reconfiguration requires a local manager or tenant administrator session")
+
+
+def _commissioning_verified() -> bool:
+    """Properties become commissioned only after an authoritative match."""
+    from ..config import ConfigError, load_config
+    from ..submissions.reconciler import get_cached_lane_status
+    try:
+        config = load_config()
+    except ConfigError:
+        return False
+    lane = get_cached_lane_status()
+    return bool(lane and lane.get("active") is True and _trusted_center_id(lane) == config.expected_center and lane.get("lane_number") == config.expected_lane and not lane.get("identity_conflict"))
 
 
 class VehicleLookupRequest(BaseModel):
@@ -190,6 +249,113 @@ def health() -> dict:
     return {"status": "ok", "ts": datetime.now(timezone.utc).isoformat()}
 
 
+def _commissioning_check(config) -> dict:
+    """Contact each authoritative endpoint once without exposing the key."""
+    from ..cloud_client import CloudClient
+
+    cloud = CloudClient(config.cloud_url, config.cloud_key)
+    profile = cloud.get_lane_profile()
+    wallet = cloud.get_wallet()
+    quota = cloud.get_lane_quota()
+    center = profile.center_id or profile.tenant_id
+    lane_matches = config.expected_lane == profile.lane_number
+    identity_matches = center == config.expected_center and lane_matches
+    today = datetime.now(_MANILA).date().isoformat()
+    readiness_reasons: list[str] = []
+    if not identity_matches:
+        readiness_reasons.append("The issued credential does not match the expected center or lane")
+    if not profile.active:
+        readiness_reasons.append("The issued lane is inactive")
+    if wallet.negative or wallet.balance_centavos < wallet.charge_per_upload_centavos:
+        readiness_reasons.append("The center wallet is insufficient for a new test")
+    if quota.business_date != today:
+        readiness_reasons.append("The cloud quota is not for the current Asia/Manila business date")
+    if quota.remaining <= 0:
+        readiness_reasons.append("The lane quota has no remaining capacity")
+    return {
+        "identityValid": identity_matches and profile.active,
+        "ready": not readiness_reasons,
+        "reason": "; ".join(readiness_reasons) if readiness_reasons else "Ready for testing",
+        "centerId": center,
+        "centerName": profile.center_name,
+        "laneId": profile.lane_id,
+        "laneNumber": profile.lane_number,
+        "laneActive": profile.active,
+        "walletBalanceCentavos": wallet.balance_centavos,
+        "walletChargePerUploadCentavos": wallet.charge_per_upload_centavos,
+        "walletLow": wallet.low,
+        "walletNegative": wallet.negative,
+        "quotaUsed": quota.used,
+        "quotaReserved": quota.reserved,
+        "quotaLimit": quota.limit,
+        "quotaRemaining": quota.remaining,
+        "quotaBusinessDate": quota.business_date,
+    }
+
+
+@app.post("/commissioning/validate")
+def validate_commissioning(req: CommissioningRequest, _: None = Depends(_require_commissioning_capability)) -> dict:
+    """Live, non-persisting validation used by the shared installer wizard."""
+    from ..config import ConfigError, PetcConfig, _lane_number
+
+    try:
+        candidate = PetcConfig(
+            profile="production" if os.name == "nt" else "dev",
+            cloud_url=req.cloud_url.strip().rstrip("/"), cloud_key=req.cloud_key.strip(),
+            expected_center=req.expected_center.strip(), expected_lane=_lane_number(req.expected_lane), path=Path("<unsaved>"),
+        )
+        if not all((candidate.cloud_url, candidate.cloud_key, candidate.expected_center, candidate.expected_lane)):
+            raise ConfigError("All commissioning fields are required")
+        if candidate.profile == "production" and not candidate.cloud_url.startswith("https://"):
+            raise ConfigError("Production cloud URL must use HTTPS")
+        return _commissioning_check(candidate)
+    except ConfigError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except Exception:
+        # HTTP client errors may contain a request URL, but never return it or
+        # any authentication material to the renderer.
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Cloud validation failed. Check the cloud URL and network connection.")
+
+
+@app.post("/commissioning/save")
+def save_commissioning(req: CommissioningRequest, _: None = Depends(_require_commissioning_capability)) -> dict:
+    from ..config import ConfigError, PetcConfig, _lane_number, write_config
+    from ..cloud_client import configure_identity
+
+    if not req.confirmed:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Confirm the resolved center and lane before saving")
+    try:
+        candidate = PetcConfig(
+            profile="production" if os.name == "nt" else "dev",
+            cloud_url=req.cloud_url.strip().rstrip("/"), cloud_key=req.cloud_key.strip(),
+            expected_center=req.expected_center.strip(), expected_lane=_lane_number(req.expected_lane), path=Path("<unsaved>"),
+        )
+        validation = _commissioning_check(candidate)
+        if not validation["identityValid"]:
+            raise ConfigError("The issued credential does not match the expected active center and lane")
+        saved = write_config(
+            cloud_url=candidate.cloud_url, cloud_key=candidate.cloud_key,
+            expected_center=candidate.expected_center, expected_lane=candidate.expected_lane,
+            profile=candidate.profile,
+        )
+        configure_identity(saved.cloud_url, saved.cloud_key)
+        # Seed the same persisted status cache used at startup, so a confirmed
+        # commissioning does not make the operator wait for the next 30-second
+        # reconciler tick before the readiness gate reflects the live check.
+        from ..cloud_client import CloudClient
+        cloud = CloudClient(saved.cloud_url, saved.cloud_key)
+        from ..submissions.reconciler import _store_lane_status, _store_wallet
+        _store_wallet(cloud.get_wallet())
+        _store_lane_status(cloud.get_lane_profile(), cloud.get_lane_quota())
+        return {"saved": True, "config": saved.public(), "validation": validation}
+    except ConfigError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Cloud validation failed. Configuration was not saved.")
+
+
 @app.post("/auth/login", response_model=LoginResponse)
 def login(req: LoginRequest) -> LoginResponse:
     import uuid
@@ -216,6 +382,7 @@ def login(req: LoginRequest) -> LoginResponse:
                 raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
 
         token = str(uuid.uuid4())
+        _local_sessions[token] = user.role
         return LoginResponse(
             token=token,
             user={
@@ -235,17 +402,24 @@ def get_status(
     printer: Printer = Depends(_get_printer),
 ) -> StatusResponse:
     from ..db.session import SessionLocal
-    from ..db.models import CloudOutbox
-    from ..submissions.reconciler import get_cached_wallet
+    from ..db.models import LtmsSubmission
+    from ..submissions.reconciler import get_cached_lane_status, get_cached_wallet
 
     with SessionLocal() as session:
-        pending = session.query(CloudOutbox).filter(CloudOutbox.status == "PENDING").count()
+        # cloud_outbox was the retired mirror transport. Operator visibility
+        # now reflects actual durable submission work only.
+        pending = session.query(LtmsSubmission).filter(
+            LtmsSubmission.state.in_(["PENDING", "WAITING_FOR_LTMS"])
+        ).count()
 
     # Read-through of the reconciler's cache — never a live cloud call. This
     # endpoint backs a 10 s UI poll and has to keep answering when the cloud is
     # unreachable.
     wallet = get_cached_wallet()
+    lane = get_cached_lane_status()
 
+    config, readiness = _readiness_status(lane, wallet)
+    verified = _commissioning_verified()
     return StatusResponse(
         analyzer_connected=analyzer.is_connected,
         printer_status=printer.check_status(),
@@ -264,6 +438,24 @@ def get_status(
             wallet.get("low_balance_threshold_centavos") if wallet else None
         ),
         wallet_pricing_updated_at=wallet.get("pricing_updated_at") if wallet else None,
+        center_id=_trusted_center_id(lane),
+        center_name=lane.get("center_name") if lane else None,
+        lane_id=lane.get("lane_id") if lane else None,
+        lane_number=lane.get("lane_number") if lane else None,
+        lane_active=lane.get("active") if lane else None,
+        lane_identity_conflict=lane.get("identity_conflict", False) if lane else False,
+        lane_quota_used=lane.get("used") if lane else None,
+        lane_quota_reserved=lane.get("reserved") if lane else None,
+        lane_quota_limit=lane.get("limit") if lane else None,
+        lane_quota_remaining=lane.get("remaining") if lane else None,
+        lane_quota_business_date=lane.get("business_date") if lane else None,
+        lane_quota_resets_at=lane.get("resets_at") if lane else None,
+        lane_quota_fetched_at=lane.get("fetched_at") if lane else None,
+        configured=config is not None,
+        commissioning_required=not verified,
+        config=config.public() if config else {},
+        readiness_ready=readiness["ready"],
+        readiness_reason=readiness["reason"],
     )
 
 
@@ -275,8 +467,12 @@ def start_test(
 ) -> StartTestResponse:
     from ..db.session import SessionLocal
     from ..db.models import EmissionTest, User
+    from ..submissions.reconciler import get_cached_lane_status
 
     started_at = datetime.now(timezone.utc)
+    lane = get_cached_lane_status()
+    _require_start_readiness(lane)
+    _require_lane_start_capacity(lane)
     if is_production() and not analyzer.is_connected:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -321,6 +517,9 @@ def start_test(
             session.flush()
         test = EmissionTest(
             id=test_id,
+            center_id=_trusted_center_id(lane),
+            lane_id=lane.get("lane_id") if lane else None,
+            lane_number=lane.get("lane_number") if lane else None,
             operator_id=req.operator_id,
             plate_number=plate_number,
             fuel_type=req.fuel_type.upper(),
@@ -346,6 +545,9 @@ def start_test(
             "plate_number": plate_number,
             "fuel_type": req.fuel_type.upper(),
             "started_at": started_at.isoformat(),
+            "center_id": _trusted_center_id(lane),
+            "lane_id": lane.get("lane_id") if lane else None,
+            "lane_number": lane.get("lane_number") if lane else None,
         },
     )
 
@@ -826,6 +1028,7 @@ def submit_ltms(
         test = session.get(EmissionTest, test_id)
         if test is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"Test {test_id} not found")
+        _require_current_lane_for_submission(test)
 
         readings: dict = {}
         if test.gas_result:
@@ -853,6 +1056,7 @@ def submit_ltms(
         sub = LtmsSubmission(
             id=str(uuid.uuid4()),
             test_id=test_id,
+            **_lane_snapshot(test),
             state=result.state,
             certificate_no=result.certificate_no,
             submitted_at=datetime.now(timezone.utc),
@@ -894,6 +1098,7 @@ def submit_upload_v1(
     from ..db.session import SessionLocal
     from ..db.models import EmissionTest, GovOutbox, LtmsSubmission, TestPhoto
     from .. import cloud_client as cc
+    from ..submissions.reconciler import get_cached_lane_status
 
     payload = req.payload
     test_id = payload.get("testId")
@@ -901,12 +1106,13 @@ def submit_upload_v1(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "payload.testId is required")
 
     now = datetime.now(timezone.utc)
-    center_id = payload.get("centerId") or os.environ.get("PETC_CENTER_ID", "dev-center")
 
     with SessionLocal() as session:
         test = session.get(EmissionTest, test_id)
         if test is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"Test {test_id} not found")
+        _require_current_lane_for_submission(test)
+        payload = _apply_authoritative_lane_identity(payload, get_cached_lane_status())
 
         vehicle = payload.get("vehicle", {})
         readings = payload.get("readings") or _readings_for_test(test)
@@ -918,187 +1124,37 @@ def submit_upload_v1(
             for p in test.photos
         ]
 
+    center_id = payload.get("centerId") or os.environ.get("PETC_CENTER_ID", "dev-center")
+
     request_json = json.dumps(payload, default=str)
 
     # ── Cloud submission path ─────────────────────────────────────────────
     if cc.is_available():
-        cloud = cc.get_client()
-
-        # 1. Presign + upload photos; collect s3_keys
-        photo_refs: list[dict] = []
+        # Persist the immutable test UUID and payload before *any* photo or
+        # submission network call. The reconciler owns retries after this
+        # point, so a restart/transient outage cannot turn into a manual retry
+        # or a second cloud submission.
         with SessionLocal() as session:
-            for photo_id, file_path, photo_type, mime_type in photo_rows:
-                try:
-                    data = Path(file_path).read_bytes()
-                    digest = hashlib.sha256(data).hexdigest()
-                    presign = cloud.presign_photo(
-                        test_id=test_id,
-                        photo_id=photo_id,
-                        photo_type=photo_type,
-                        content_type=mime_type,
-                        sha256=digest,
-                    )
-                    cloud.upload_photo(presign.upload_url, data, mime_type)
-                    photo_refs.append({
-                        "photoId": photo_id,
-                        "s3Key": presign.s3_key,
-                        "photoType": photo_type,
-                        "sha256": digest,
-                    })
-                    # Persist s3_key + uploaded_at on the local photo row
-                    photo_row = session.get(TestPhoto, photo_id)
-                    if photo_row:
-                        photo_row.s3_key = presign.s3_key
-                        photo_row.uploaded_at = now
-                except Exception:
-                    logger.exception("Failed to presign/upload photo %s for test %s", photo_id, test_id)
-                    raise HTTPException(
-                        status.HTTP_409_CONFLICT,
-                        "Required realtime photo upload failed; CEC generation is blocked",
-                    )
-            session.commit()
-
-        if len(photo_refs) != len(photo_rows):
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                "All captured photos must be uploaded before LTMS submission",
+            existing = (
+                session.query(LtmsSubmission)
+                .filter(LtmsSubmission.test_id == test_id, LtmsSubmission.state.notin_(["REJECTED", "DEAD"]))
+                .order_by(LtmsSubmission.submitted_at.desc())
+                .first()
             )
-
-        # 2. Build cloud submission payload and enqueue
-        cloud_payload = {
-            **payload,
-            "vehicle": {
-                **vehicle,
-                "plateNo": vehicle.get("plateNo") or "",
-                "fuelType": vehicle.get("fuelType") or "",
-            },
-            "readings": readings,
-            "photos": photo_refs,
-        }
-        created = cloud.create_submission(center_id, test_id, cloud_payload)
-        cloud_submission_id = created.submission_id
-
-        # 3. Persist local LtmsSubmission row immediately
-        sub_id = str(uuid.uuid4())
-        with SessionLocal() as session:
-            outbox = GovOutbox(
-                id=str(uuid.uuid4()),
-                event_type="LTMS_SUBMIT",
-                payload_json=request_json,
-                status="IN_FLIGHT",
-            )
-            session.add(outbox)
-            sub = LtmsSubmission(
-                id=sub_id,
-                test_id=test_id,
-                payload_json=request_json,
-                state="PENDING",
-                cloud_submission_id=cloud_submission_id,
-                submitted_at=now,
-                incident_due_at=now + timedelta(hours=24),
-            )
-            session.add(sub)
+            if existing:
+                existing_id = existing.id
+                if existing.state in ("ACCEPTED", "REJECTED", "DEAD", "EXPIRED"):
+                    return _local_submission_response(existing_id)
+                # A renderer refresh or repeated click should resume waiting on
+                # the same idempotent durable row, never create a duplicate.
+                return _dispatch_and_wait_for_cloud(existing_id, cc.get_client())
+            sub_id = str(uuid.uuid4())
+            session.add(LtmsSubmission(
+                id=sub_id, test_id=test_id, **_lane_snapshot(test), payload_json=request_json,
+                state="PENDING", submitted_at=now, incident_due_at=now + timedelta(hours=24),
+            ))
             session.commit()
-
-        # 4. Short-poll for up to 60s
-        import time
-        deadline = time.monotonic() + 60.0
-        final_status = None
-        while time.monotonic() < deadline:
-            try:
-                st = cloud.get_submission(cloud_submission_id)
-                if st.is_terminal:
-                    final_status = st
-                    break
-            except Exception:
-                logger.exception("Error polling submission %s", cloud_submission_id)
-            time.sleep(1)
-
-        if final_status is None:
-            # Timed out — leave in WAITING_FOR_LTMS; reconciler will pick it up
-            with SessionLocal() as session:
-                sub = session.get(LtmsSubmission, sub_id)
-                if sub:
-                    sub.state = "WAITING_FOR_LTMS"
-                    sub.last_error = "LTMS did not return a terminal status during realtime polling window"
-                    _audit(session, "SUBMISSION_WAITING_FOR_LTMS", "ltms_submission", sub_id, {
-                        "testId": test_id,
-                        "incidentDueAt": (now + timedelta(hours=24)).isoformat(),
-                    })
-                session.commit()
-            return {
-                "state": "WAITING_FOR_LTMS",
-                "certificateNo": None,
-                "rejectionReason": None,
-                "queued": True,
-                "submissionId": sub_id,
-                "incidentDueAt": (now + timedelta(hours=24)).isoformat(),
-            }
-
-        # 5. Terminal result received — persist and optionally render CEC
-        result_state = final_status.state
-        cert_no = final_status.certificate_no
-        rejection_reason = final_status.rejection_reason
-        ltms_ref_no = final_status.ltms_ref_no
-
-        pdf_path: Optional[str] = None
-        if result_state == "ACCEPTED" and cert_no:
-            from ..cec.pdf import render_cec_pdf
-            try:
-                pdf_path = str(render_cec_pdf(
-                    submission_id=sub_id,
-                    certificate_no=cert_no,
-                    payload=payload,
-                    issued_at=now,
-                    or_no=final_status.or_no,
-                    dermalog_token=final_status.dermalog_token,
-                    valid_from=final_status.valid_from,
-                    valid_until=final_status.valid_until,
-                ))
-            except Exception:
-                logger.exception("Failed to render CEC PDF for submission %s", sub_id)
-
-        with SessionLocal() as session:
-            sub = session.get(LtmsSubmission, sub_id)
-            if sub:
-                sub.state = result_state
-                sub.certificate_no = cert_no
-                sub.ltms_reference_no = ltms_ref_no
-                sub.or_no = final_status.or_no
-                sub.dermalog_token = final_status.dermalog_token
-                sub.valid_from = final_status.valid_from
-                sub.valid_until = final_status.valid_until
-                sub.accepted_at = now if result_state == "ACCEPTED" else None
-                sub.last_error = rejection_reason
-                sub.pdf_path = pdf_path
-                _audit(session, "SUBMISSION_ACCEPTED" if result_state == "ACCEPTED" else "SUBMISSION_REJECTED",
-                       "ltms_submission", sub_id, {
-                           "testId": test_id,
-                           "state": result_state,
-                           "certificateNo": cert_no,
-                           "ltmsRefNo": ltms_ref_no,
-                           "rejectionReason": rejection_reason,
-                       })
-            test_row = session.get(EmissionTest, test_id)
-            if test_row and result_state == "ACCEPTED":
-                test_row.uploaded_at = now
-            session.commit()
-
-        cloud_sync.enqueue("ltms_submission", sub_id, {
-            "test_id": test_id,
-            "state": result_state,
-            "certificate_no": cert_no,
-            "rejection_reason": rejection_reason,
-            "submitted_at": now.isoformat(),
-        })
-
-        return {
-            "state": result_state,
-            "certificateNo": cert_no,
-            "rejectionReason": rejection_reason,
-            "queued": False,
-            "submissionId": sub_id,
-        }
+        return _dispatch_and_wait_for_cloud(sub_id, cc.get_client())
 
     if not allow_mock_paths():
         raise HTTPException(
@@ -1148,6 +1204,7 @@ def submit_upload_v1(
             sub = LtmsSubmission(
                 id=sub_id,
                 test_id=test_id,
+                **_lane_snapshot(test),
                 payload_json=request_json,
                 state="PENDING",
                 submitted_at=now,
@@ -1181,6 +1238,7 @@ def submit_upload_v1(
         sub = LtmsSubmission(
             id=sub_id,
             test_id=test_id,
+            **_lane_snapshot(test),
             payload_json=request_json,
             state=result.state,
             certificate_no=result.certificate_no,
@@ -1219,6 +1277,93 @@ def submit_upload_v1(
         "submissionId": sub_id,
         "official": False,
     }
+
+
+def _local_submission_response(
+    submission_id: str,
+    *,
+    state_override: Optional[str] = None,
+    message_override: Optional[str] = None,
+) -> dict:
+    """Build the renderer contract from the durable local source of truth."""
+    from ..db.models import LtmsSubmission
+    from ..db.session import SessionLocal
+
+    with SessionLocal() as session:
+        sub = session.get(LtmsSubmission, submission_id)
+        if sub is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "submission not found")
+        state = state_override or sub.state
+        queued = state not in ("ACCEPTED", "REJECTED", "DEAD", "EXPIRED")
+        return {
+            "state": state,
+            "certificateNo": sub.certificate_no,
+            "rejectionReason": sub.last_error,
+            "statusMessage": message_override,
+            "queued": queued,
+            "submissionId": sub.id,
+            "incidentDueAt": sub.incident_due_at.isoformat() if sub.incident_due_at else None,
+        }
+
+
+def _dispatch_and_wait_for_cloud(submission_id: str, cloud) -> dict:
+    """Attempt immediately, then short-poll while the operator is watching.
+
+    Any transient dispatch/poll failure is already recorded by the reconciler
+    with its retry schedule.  In that case this request returns promptly and
+    the daemon continues from the same row after a restart or network outage.
+    """
+    from ..db.models import LtmsSubmission
+    from ..db.session import SessionLocal
+    from ..submissions.reconciler import SubmissionReconciler
+
+    reconciler = SubmissionReconciler()
+    reconciler._dispatch_pending(cloud, submission_id)
+
+    with SessionLocal() as session:
+        row = session.get(LtmsSubmission, submission_id)
+        if row is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "submission not found")
+        if row.state in ("ACCEPTED", "REJECTED", "DEAD", "EXPIRED"):
+            return _local_submission_response(submission_id)
+        if not row.cloud_submission_id:
+            # The immediate photo/cloud call failed. _dispatch_pending has
+            # persisted the error and next retry; do not pretend this is a
+            # healthy LTMS processing delay.
+            return _local_submission_response(
+                submission_id,
+                state_override="PENDING",
+                message_override="The cloud upload failed temporarily and is queued for automatic retry.",
+            )
+
+    deadline = time.monotonic() + _FOREGROUND_SUBMISSION_TIMEOUT_S
+    while True:
+        try:
+            cloud_state = reconciler.reconcile_submission(cloud, submission_id)
+        except Exception:
+            return _local_submission_response(
+                submission_id,
+                state_override="PENDING",
+                message_override="LTMS status is temporarily unavailable; automatic recovery will continue.",
+            )
+
+        if cloud_state in ("ACCEPTED", "REJECTED", "DEAD", "EXPIRED"):
+            return _local_submission_response(submission_id)
+        if cloud_state == "BLOCKED":
+            return _local_submission_response(
+                submission_id,
+                state_override="BLOCKED",
+                message_override="The cloud is holding this submission until the center wallet is funded.",
+            )
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return _local_submission_response(
+                submission_id,
+                state_override="WAITING_FOR_LTMS",
+                message_override="LTMS is still processing. The result will continue updating in History.",
+            )
+        time.sleep(min(_FOREGROUND_SUBMISSION_POLL_S, remaining))
 
 
 class CecPrintRequest(BaseModel):
@@ -1405,12 +1550,15 @@ def list_tests(
                 "plateNumber": t.plate_number,
                 "fuelType": t.fuel_type,
                 "passFail": t.pass_fail,
-                "startedAt": t.started_at.isoformat() if t.started_at else None,
-                "completedAt": t.completed_at.isoformat() if t.completed_at else None,
+                "startedAt": _utc_iso(t.started_at),
+                "completedAt": _utc_iso(t.completed_at),
                 "ltmsState": t.ltms_submissions[0].state if t.ltms_submissions else None,
                 "certificateNo": t.ltms_submissions[0].certificate_no if t.ltms_submissions else None,
                 "submissionId": t.ltms_submissions[0].id if t.ltms_submissions else None,
                 "photoCount": len(t.photos),
+                "centerId": t.center_id,
+                "laneId": t.lane_id,
+                "laneNumber": t.lane_number,
             }
             for t in tests
         ]
@@ -1436,7 +1584,7 @@ def get_test_photos(test_id: str) -> list:
                 "photoType": p.photo_type,
                 "mimeType": p.mime_type,
                 "filePath": p.file_path,
-                "capturedAt": p.captured_at.isoformat() if p.captured_at else None,
+                "capturedAt": _utc_iso(p.captured_at),
                 "cameraId": p.camera_id,
             }
             for p in photos
@@ -2021,9 +2169,12 @@ def _test_detail_to_response(test) -> dict:
         "plateNumber": test.plate_number,
         "fuelType": test.fuel_type,
         "passFail": test.pass_fail,
-        "startedAt": test.started_at.isoformat() if test.started_at else None,
-        "completedAt": test.completed_at.isoformat() if test.completed_at else None,
-        "testedAt": test.tested_at.isoformat() if test.tested_at else None,
+        # SQLite returns its UTC timestamps as naive datetimes.  Always expose
+        # an explicit UTC offset so the cloud cannot interpret a near-midnight
+        # test as a different Asia/Manila business date.
+        "startedAt": _utc_iso(test.started_at),
+        "completedAt": _utc_iso(test.completed_at),
+        "testedAt": _utc_iso(test.tested_at),
         "readings": _readings_for_test(test),
         "photos": [
             {
@@ -2032,7 +2183,7 @@ def _test_detail_to_response(test) -> dict:
                 "photoType": p.photo_type,
                 "mimeType": p.mime_type,
                 "filePath": p.file_path,
-                "capturedAt": p.captured_at.isoformat() if p.captured_at else None,
+                "capturedAt": _utc_iso(p.captured_at),
                 "cameraId": p.camera_id,
             }
             for p in test.photos
@@ -2040,6 +2191,211 @@ def _test_detail_to_response(test) -> dict:
         "ltmsState": test.ltms_submissions[0].state if test.ltms_submissions else None,
         "certificateNo": test.ltms_submissions[0].certificate_no if test.ltms_submissions else None,
         "submissionId": test.ltms_submissions[0].id if test.ltms_submissions else None,
+        "centerId": test.center_id,
+        "laneId": test.lane_id,
+        "laneNumber": test.lane_number,
+    }
+
+
+_MANILA = ZoneInfo("Asia/Manila")
+_LANE_QUOTA_MAX_AGE_SECONDS = 120
+
+
+def _readiness_status(lane: Optional[dict], wallet: Optional[dict]) -> tuple[object | None, dict]:
+    """Return the fail-closed operational gate without ever reading a key out."""
+    # Explicit test-only escape hatch keeps legacy isolated API tests focused
+    # on analyzer behavior. It is never used by an Electron launch.
+    if os.environ.get("PETC_TEST_ALLOW_UNCONFIGURED") == "1":
+        return None, {"ready": True, "reason": "Test mode"}
+    from ..config import ConfigError, load_config
+    try:
+        config = load_config()
+    except ConfigError as exc:
+        return None, {"ready": False, "reason": str(exc)}
+
+    reasons: list[str] = []
+    startup_error = os.environ.get("PETC_STARTUP_COMPLIANCE_ERROR")
+    if startup_error:
+        reasons.append(startup_error)
+    today = datetime.now(_MANILA).date().isoformat()
+    now = datetime.now(timezone.utc)
+    if not lane:
+        reasons.append("Cloud lane profile is unavailable")
+    else:
+        fetched_at = lane.get("fetched_at")
+        if isinstance(fetched_at, str):
+            try:
+                fetched_at = datetime.fromisoformat(fetched_at)
+            except ValueError:
+                fetched_at = None
+        if fetched_at and fetched_at.tzinfo is None:
+            fetched_at = fetched_at.replace(tzinfo=timezone.utc)
+        if not fetched_at or (now - fetched_at).total_seconds() > _LANE_QUOTA_MAX_AGE_SECONDS:
+            reasons.append("Cloud lane profile or quota is offline/stale")
+        actual_center = _trusted_center_id(lane)
+        if actual_center != config.expected_center or config.expected_lane != lane.get("lane_number"):
+            reasons.append("Credential identity does not match the commissioned center/lane")
+        if lane.get("active") is not True:
+            reasons.append("Commissioned lane is inactive")
+        if lane.get("identity_conflict"):
+            reasons.append("Unresolved tests belong to another lane")
+        if lane.get("business_date") != today:
+            reasons.append("Lane quota is not current for the Asia/Manila business date")
+        if int(lane.get("remaining", 0)) <= 0:
+            reasons.append("Lane quota is exhausted")
+    if not wallet:
+        reasons.append("Cloud wallet is unavailable")
+    else:
+        fetched_at = wallet.get("fetched_at")
+        if isinstance(fetched_at, str):
+            try:
+                fetched_at = datetime.fromisoformat(fetched_at)
+            except ValueError:
+                fetched_at = None
+        if fetched_at and fetched_at.tzinfo is None:
+            fetched_at = fetched_at.replace(tzinfo=timezone.utc)
+        if not fetched_at or (now - fetched_at).total_seconds() > _LANE_QUOTA_MAX_AGE_SECONDS:
+            reasons.append("Cloud wallet is offline/stale")
+        if wallet.get("negative") or int(wallet.get("balance_centavos", 0)) < int(wallet.get("charge_per_upload_centavos", 1)):
+            reasons.append("Center wallet is insufficient for a new test")
+    return config, {"ready": not reasons, "reason": "; ".join(dict.fromkeys(reasons)) or "Ready for testing"}
+
+
+def _require_start_readiness(lane: Optional[dict]) -> None:
+    from ..submissions.reconciler import get_cached_wallet
+    _config, readiness = _readiness_status(lane, get_cached_wallet())
+    if not readiness["ready"]:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            {"code": "PETC_NOT_READY", "message": readiness["reason"]},
+        )
+
+
+def _manila_date(value: datetime) -> str:
+    """Return a business date even for SQLite's legacy naive timestamps."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(_MANILA).date().isoformat()
+
+
+def _utc_iso(value: Optional[datetime]) -> Optional[str]:
+    """Serialize legacy naive SQLite datetimes as UTC, never local time."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat()
+
+
+def _require_lane_start_capacity(lane: Optional[dict]) -> None:
+    """Use the last cloud-authoritative capacity to keep a lane below its cap.
+
+    No lane record means an older/dev cloud deployment, so existing local mock
+    installs keep working. A stale record from a previous Philippine business
+    date is also not used to block the new day.
+    """
+    if not lane:
+        if is_production():
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                {"code": "LANE_QUOTA_UNAVAILABLE", "message": "A current lane quota is required before starting a production test."},
+            )
+        return
+    if lane.get("identity_conflict"):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {
+                "code": "LANE_IDENTITY_CHANGE_BLOCKED",
+                "message": "This workstation has pending tests for another lane. Complete or resolve them before changing credentials.",
+            },
+        )
+    if lane.get("active") is False:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            {"code": "LANE_INACTIVE", "message": "This lane is inactive and cannot start tests."},
+        )
+    today = datetime.now(_MANILA).date().isoformat()
+    fetched_at = lane.get("fetched_at")
+    if isinstance(fetched_at, str):
+        fetched_at = datetime.fromisoformat(fetched_at)
+    if fetched_at and fetched_at.tzinfo is None:
+        fetched_at = fetched_at.replace(tzinfo=timezone.utc)
+    fresh = bool(fetched_at and (datetime.now(timezone.utc) - fetched_at).total_seconds() <= _LANE_QUOTA_MAX_AGE_SECONDS)
+    if is_production() and (lane.get("business_date") != today or not fresh):
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            {"code": "LANE_QUOTA_UNAVAILABLE", "message": "The lane quota is stale or unavailable. Reconnect to the cloud before starting a test."},
+        )
+    if lane.get("business_date") == today and int(lane.get("remaining", 0)) <= 0:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            {
+                "code": "LANE_DAILY_UPLOAD_LIMIT_REACHED",
+                "message": "This lane has no upload slots available today.",
+                "used": lane.get("used", 0),
+                "reserved": lane.get("reserved", 0),
+                "limit": lane.get("limit"),
+                "remaining": lane.get("remaining", 0),
+                "resetsAt": lane.get("resets_at"),
+            },
+        )
+
+
+def _require_current_lane_for_submission(test) -> None:
+    """Reject late tests and lane credential swaps before photo/cloud work."""
+    if _manila_date(test.tested_at) != datetime.now(_MANILA).date().isoformat():
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {
+                "code": "LATE_TEST_SUBMISSION_NOT_ALLOWED",
+                "message": "Tests must be submitted on the same Asia/Manila calendar date they were performed.",
+            },
+        )
+
+    from ..submissions.reconciler import get_cached_lane_status
+    lane = get_cached_lane_status()
+    if not lane:
+        return
+    if lane.get("identity_conflict") or (test.lane_id and test.lane_id != lane.get("lane_id")):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {
+                "code": "LANE_IDENTITY_CHANGE_BLOCKED",
+                "message": "This test belongs to a different lane and cannot be submitted from this workstation credential.",
+            },
+        )
+
+
+def _lane_snapshot(test) -> dict:
+    return {
+        "center_id": test.center_id,
+        "lane_id": test.lane_id,
+        "lane_number": test.lane_number,
+    }
+
+
+def _trusted_center_id(lane: Optional[dict]) -> Optional[str]:
+    """Center identity from the credential profile, not renderer input.
+
+    Older profile responses exposed only tenantId. Keep that compatibility
+    fallback during rollout, while retaining center_id separately whenever the
+    lane-aware cloud supplies its operational center identifier.
+    """
+    if not lane:
+        return None
+    return lane.get("center_id") or lane.get("tenant_id")
+
+
+def _apply_authoritative_lane_identity(payload: dict, lane: Optional[dict]) -> dict:
+    """Replace display/CEC identity fields with the credential-bound profile."""
+    if not lane or not lane.get("lane_id"):
+        return dict(payload)
+    return {
+        **payload,
+        "centerId": _trusted_center_id(lane),
+        "centerName": lane.get("center_name"),
+        "laneId": lane["lane_id"],
+        "laneNumber": lane.get("lane_number"),
     }
 
 

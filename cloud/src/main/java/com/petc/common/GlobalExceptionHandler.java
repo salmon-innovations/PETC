@@ -1,6 +1,8 @@
 package com.petc.common;
 
 import com.petc.auth.AuthException;
+import com.petc.lanes.LaneQuotaExceededException;
+import com.petc.lanes.LateSubmissionException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.security.authorization.AuthorizationDeniedException;
@@ -18,6 +20,25 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AuthException.class)
     public ProblemDetail handleAuth(AuthException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+    }
+
+    @ExceptionHandler(LaneQuotaExceededException.class)
+    public ProblemDetail handleLaneQuota(LaneQuotaExceededException ex) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
+        detail.setProperty("code", "LANE_DAILY_UPLOAD_LIMIT_REACHED");
+        detail.setProperty("laneId", ex.laneId());
+        detail.setProperty("accepted", ex.accepted());
+        detail.setProperty("reserved", ex.reserved());
+        detail.setProperty("limit", ex.limit());
+        detail.setProperty("resetsAt", ex.resetsAt());
+        return detail;
+    }
+
+    @ExceptionHandler(LateSubmissionException.class)
+    public ProblemDetail handleLateSubmission(LateSubmissionException ex) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        detail.setProperty("code", "LATE_TEST_SUBMISSION_NOT_ALLOWED");
+        return detail;
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

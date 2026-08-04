@@ -48,7 +48,7 @@ The accompanying Network Architecture document (deliverable #6) shows the same t
 
 ## 2. Reference Center Hardware (Budget Tier)
 
-Digiflash recommends the following minimum-viable hardware per accredited PETC. The specification is sized for the operational ceiling of **80 emission tests per day** per center.
+Digiflash recommends the following minimum-viable hardware **per numbered lane** at an accredited PETC. Each lane is one desktop installation. Its administrator-configurable limit defaults to **80 LTMS-accepted CECs per Asia/Manila day**; the center capacity is the sum of its active-lane limits.
 
 ### 2.1 Workstation
 
@@ -239,12 +239,13 @@ flowchart LR
     NAT -- whitelisted source IP --> IRDS
 ```
 
-The desktop application:
+The desktop application, provisioned for one numbered lane:
 
 1. Captures the test locally and writes it to SQLite as the source of truth.
 2. **Presigns and uploads each photo directly to S3** via short-lived (≤ 300 s) presigned PUT URLs issued by the cloud — photo bytes never transit the API server.
-3. **Posts the test bundle** (record + S3 photo keys) to `POST /api/submissions` on the Digiflash cloud over HTTPS. Authentication uses the `X-Center-Key` header carrying the per-center API key.
-4. **Short-polls** `GET /api/submissions/{id}` for up to 60 seconds. On `ACCEPTED`, the desktop receives the LTMS-issued certificate number and renders the CEC PDF locally.
+3. Obtains its authenticated center/lane identity from `GET /api/lanes/me` and capacity from `GET /api/lanes/me/quota`. Authentication uses the `X-Center-Key` header carrying that lane's credential; the cloud, not the desktop request body, derives the center and lane.
+4. **Posts the same-day test bundle** (record + S3 photo keys) to `POST /api/submissions` on the Digiflash cloud over HTTPS. The cloud reserves a slot while LTMS processing is in flight, consumes it only when LTMS returns `ACCEPTED`, and releases it for `REJECTED` or `DEAD`. The desktop prevents a new test when no slots remain; late submissions are rejected.
+5. **Short-polls** `GET /api/submissions/{id}` for up to 60 seconds. On `ACCEPTED`, the desktop receives the LTMS-issued certificate number and renders the CEC PDF locally.
 
 The Digiflash cloud service:
 
@@ -284,7 +285,7 @@ Both endpoints will be configured to **whitelist only the NAT gateway's elastic 
 
 ### 6.5 Offline Tolerance and Slow-LTMS Recovery
 
-The desktop continues to capture and store tests during a center-side internet outage. Captured tests sit in the local outbox and are pushed to the cloud when connectivity is restored. CECs cannot be issued until the cloud round-trip with LTMS / IRDS completes, because the certificate number originates from LTMS.
+The desktop continues to capture and store tests during a temporary outage, but official cloud submission is permitted only on the test's Asia/Manila calendar day. A test that cannot be submitted before midnight must not be uploaded late or issued a CEC. CECs cannot be issued until the cloud round-trip with LTMS / IRDS completes, because the certificate number originates from LTMS.
 
 When a submission reaches the cloud but LTMS does not respond within the 60-second short-poll window, the desktop persists the local row in state `WAITING_FOR_LTMS` and returns the operator to the History page with an "Awaiting LTMS…" indicator. A daemon thread (the **Submission Reconciler**) inside the Digiflash desktop sidecar polls the cloud every 30 seconds for any local row still in `PENDING` or `WAITING_FOR_LTMS` and updates it once the cloud reaches a terminal state. When the row flips to `ACCEPTED`, the CEC PDF is rendered locally and the **Print CEC** button becomes available from the History row without an application restart. Cloud-side retries follow a fixed back-off schedule (5 s, 15 s, 60 s, 300 s, 900 s) up to five attempts; if all attempts fail the submission is marked `DEAD` and surfaced to the operator with the LTMS rejection reason.
 
@@ -308,20 +309,20 @@ When a submission reaches the cloud but LTMS does not respond within the 60-seco
 
 ### 7.3 Authentication and Tenant Isolation
 
-- Every desktop request to the cloud carries the `X-Center-Key` header. The cloud validates the key (bcrypt-hashed at rest) and resolves it to a tenant ID.
+- Every desktop request to the cloud carries the `X-Center-Key` header. The cloud validates the credential (bcrypt-hashed at rest) and resolves it to a tenant ID and numbered lane ID. Exactly one active credential is permitted for each lane.
 - Postgres Row-Level Security policies bind every row in `submissions`, `mirror_emission_tests`, `mirror_test_photos`, and related tables to a tenant ID and reject cross-tenant reads or writes at the database level — defence in depth beyond application-layer checks.
-- The S3 key namespace is scoped under `tenants/{tenantId}/tests/{testId}/{photoId}.jpg`, so presigned URLs are inherently tenant-bound.
+- The S3 key namespace is scoped under `tenants/{tenantId}/lanes/{laneId}/tests/{testId}/{photoId}.jpg`, so presigned URLs are inherently center- and lane-bound.
 
 ---
 
 ## 8. Capacity Planning
 
-The pilot is sized for **80 emission tests per day per center**. Each test produces one mandatory vehicle photo (FRONT) plus up to one optional supplementary photo, sized below 500 KB after compression.
+Each lane is sized for a default limit of **80 LTMS-accepted CECs per Asia/Manila day**. The administrator may configure a different per-lane limit. Each test produces one mandatory vehicle photo (FRONT) plus up to one optional supplementary photo, sized below 500 KB after compression. For a center with _N_ lanes at the default limit, multiply the per-lane figures below by _N_.
 
 | Resource | Calculation | Result |
 |---|---|---|
-| Photo bandwidth per center | 80 tests × 1–2 photos × ≤ 500 KB | 40–80 MB/day outbound |
-| Record bandwidth per center | 80 tests × ~10 KB JSON | ~0.8 MB/day |
+| Photo bandwidth per lane | 80 tests × 1–2 photos × ≤ 500 KB | 40–80 MB/day outbound |
+| Record bandwidth per lane | 80 tests × ~10 KB JSON | ~0.8 MB/day |
 | Local SQLite growth | ~50 KB/test (record + thumbnails) | ~4 MB/day, ~1.5 GB/year |
 | Local photo storage | 80 × 1–2 × 500 KB | 40–80 MB/day, 15–30 GB/year |
 | Cloud upload concurrency | 80 tests / 8 working hours | ~10 tests/hour, trivial concurrency |
@@ -349,7 +350,7 @@ Every accepted test record and its photo references are mirrored to the Digiflas
 
 ### 9.4 Workstation Failure
 
-If the workstation hardware fails, a replacement PC is provisioned by Digiflash, the application is reinstalled with the same Center ID and API key, and the last cloud snapshot of the SQLite database is restored locally. The center resumes normal operation within one working day.
+If a lane workstation fails, a replacement PC is provisioned by Digiflash, the application is reinstalled with the same Center ID and that lane's credential, and the last cloud snapshot of the lane SQLite database is restored locally. The lane resumes normal operation within one working day.
 
 ---
 
@@ -368,7 +369,7 @@ The Digiflash field engineer completes the following checklist at every new cent
 | 7 | Webcam mounted and capturing a legible plate at the typical bay distance | ☐ |
 | 8 | Thermal printer prints a test CEC layout | ☐ |
 | 9 | Outbound HTTPS to Digiflash cloud confirmed | ☐ |
-| 10 | Center API key entered; first heartbeat received by cloud | ☐ |
+| 10 | Numbered lane credential entered; `/api/lanes/me` confirms the expected lane; first heartbeat received by cloud | ☐ |
 | 11 | One mock test submitted end-to-end and CEC printed | ☐ |
 | 12 | Daily local backup job verified | ☐ |
 | 13 | Operator accounts created (encoder + supervisor) | ☐ |
