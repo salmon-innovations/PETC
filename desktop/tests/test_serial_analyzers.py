@@ -343,7 +343,7 @@ def test_cartesykj_command_flow_recovers_after_busy_byte():
     assert analyzer._stop_bits == 1
     assert analyzer.poll_command() is None
     assert analyzer.start_command() == CARTESYKJ_CURRENT_ANALYSIS_REQUEST
-    assert analyzer.poll_command() == CARTESYKJ_CURRENT_ANALYSIS_REQUEST
+    assert analyzer.poll_command() is None
 
     result = analyzer.parse_frame(b"\x15" + MQ550_CAPTURE)
     assert result is not None
@@ -351,6 +351,40 @@ def test_cartesykj_command_flow_recovers_after_busy_byte():
     assert result.serial_no == "MQ550-TEST-001"
     assert result.raw_bytes == MQ550_CAPTURE
     assert result.reading.hc_ppm == pytest.approx(252)
+    assert analyzer.poll_command() is None
+
+
+def test_cartesykj_reopens_port_and_sends_one_request_per_test(monkeypatch):
+    class _FakeSerial:
+        is_open = True
+
+        def __init__(self):
+            self.writes = []
+            self.input_resets = 0
+
+        def write(self, value):
+            self.writes.append(value)
+
+        def reset_input_buffer(self):
+            self.input_resets += 1
+
+    analyzer = CartesykjGasAnalyzer(port="STUB", serial_no="MQ550-TEST-001")
+    fake = _FakeSerial()
+    analyzer._serial = fake
+    connection_events = []
+    monkeypatch.setattr(analyzer, "disconnect", lambda: connection_events.append("disconnect"))
+    monkeypatch.setattr(analyzer, "connect", lambda: connection_events.append("connect"))
+    monkeypatch.setattr(
+        "petc.analyzer.cartesykj_gas.time.sleep",
+        lambda delay: connection_events.append(("sleep", delay)),
+    )
+
+    token = analyzer.start_test(FuelType.GAS)
+
+    assert connection_events == ["disconnect", ("sleep", 0.25), "connect"]
+    assert fake.input_resets == 1
+    assert fake.writes == [CARTESYKJ_CURRENT_ANALYSIS_REQUEST]
+    assert token in analyzer._pending
     assert analyzer.poll_command() is None
 
 
