@@ -107,6 +107,7 @@ def _seed_default_settings() -> None:
         "analyzer.parity": os.environ.get("PETC_ANALYZER_PARITY", "N"),
         "analyzer.stop_bits": os.environ.get("PETC_ANALYZER_STOPBITS", "1"),
         "analyzer.address": os.environ.get("PETC_ANALYZER_ADDRESS", "01"),
+        "analyzer.serial_no": os.environ.get("PETC_ANALYZER_SERIAL_NO", ""),
         "camera.type": os.environ.get("PETC_CAMERA", "mock"),
         "camera.device": os.environ.get("PETC_CAMERA_DEVICE", "0"),
     }

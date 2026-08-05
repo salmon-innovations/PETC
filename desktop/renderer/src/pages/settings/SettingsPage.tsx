@@ -9,6 +9,8 @@ const ANALYZER_TYPES: { value: AnalyzerType; label: string }[] = [
   { value: "fty_opacimeter", label: "FTY-100 Opacimeter (FOFEN SINGLE)" },
   { value: "fofen_gas", label: "Fofen Petrol Gas Analyzer — binary push" },
   { value: "fofen_ascii", label: "Fofen Petrol Gas Analyzer — ASCII receipt (PRINT)" },
+  { value: "koeng_gas", label: "KOENG KEG-500 CE Gas Analyzer" },
+  { value: "koeng_diesel", label: "KOENG Diesel Analyzer" },
 ];
 
 const BAUD_OPTIONS = [9600, 19200, 38400, 57600, 115200];
@@ -127,7 +129,21 @@ function AnalyzerHardwareSection() {
         <select
           className="w-full border rounded px-2 py-1 text-sm"
           value={form.type}
-          onChange={(e) => setForm({ ...form, type: e.target.value as AnalyzerType })}
+          onChange={(e) => {
+            const type = e.target.value as AnalyzerType;
+            const typeChanged = type !== form.type;
+            setForm(type === "koeng_gas" || type === "koeng_diesel"
+              ? {
+                  ...form,
+                  type,
+                  baud: 9600,
+                  dataBits: 8,
+                  parity: "N",
+                  stopBits: 1,
+                  serialNo: typeChanged ? "" : form.serialNo,
+                }
+              : { ...form, type, serialNo: typeChanged ? "" : form.serialNo });
+          }}
         >
           {ANALYZER_TYPES.map((t) => (
             <option key={t.value} value={t.value}>{t.label}</option>
@@ -175,6 +191,24 @@ function AnalyzerHardwareSection() {
               ))}
             </select>
           </Field>
+
+          {(form.type === "koeng_gas" || form.type === "koeng_diesel") && (
+            <>
+              <Field label="Analyzer serial number">
+                <input
+                  className="w-full border rounded px-2 py-1 text-sm font-mono"
+                  value={form.serialNo}
+                  onChange={(e) => setForm({ ...form, serialNo: e.target.value })}
+                  placeholder="From the calibration plate"
+                />
+              </Field>
+              <p className="text-xs text-gray-500">
+                KOENG communication is fixed at 9600 baud, 8N1. The diesel analyzer
+                continuously transmits readings. Close the vendor Koeng Analyzer System
+                before connecting because COM ports are exclusive.
+              </p>
+            </>
+          )}
 
           <button
             type="button"

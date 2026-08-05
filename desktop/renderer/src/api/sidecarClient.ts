@@ -73,7 +73,7 @@ export interface LtmsSubmitResponse {
   submissionId?: string;
 }
 
-export type AnalyzerType = "mock" | "serial_gas" | "serial_diesel" | "fty_opacimeter" | "fofen_gas" | "fofen_ascii";
+export type AnalyzerType = "mock" | "serial_gas" | "serial_diesel" | "fty_opacimeter" | "fofen_gas" | "fofen_ascii" | "koeng_gas" | "koeng_diesel";
 
 export interface AnalyzerSettings {
   type: AnalyzerType;
@@ -83,6 +83,7 @@ export interface AnalyzerSettings {
   parity: "N" | "E" | "O";
   stopBits: number;
   address: string;
+  serialNo: string;
 }
 
 export interface SerialPortInfo {
