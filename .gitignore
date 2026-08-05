@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+dist/
+*.egg-info/
+petc_outbox.db
+petc.db
+petc.db-*
+photos/
+!cloud/src/**/photos/
+build/
+
+# Java / Gradle
+.gradle/
+web/backend/build/
+web/backend/.env
+*.class
+*.jar
+
+# Node
+web/frontend/node_modules/
+web/frontend/dist/
+desktop/node_modules/
+desktop/renderer/node_modules/
+desktop/renderer/dist/
+cloud/frontend/node_modules/
+cloud/frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+*.env
+.env.local
+application-local.yml
+
+# Local CEC PDFs (rendered at runtime under PETC_DATA_DIR or desktop/)
+desktop/cec/
+
+# Claude session state
+.claude/
+
+# Docs PDF build tooling (mermaid-cli + md-to-pdf; build.mjs/rebrand.mjs tracked, deps not)
+docs/accreditation/.pdfbuild/node_modules/
+docs/accreditation/.pdfbuild/package-lock.json

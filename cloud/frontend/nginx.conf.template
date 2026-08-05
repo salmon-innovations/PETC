@@ -1,0 +1,25 @@
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # SPA routing — all non-asset paths serve index.html
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Proxy /api to the cloud backend.
+    # Defaults to the compose service; override with API_UPSTREAM to point at a
+    # backend running on the host, e.g. host.docker.internal:8080 when running
+    # cloud/ via ./gradlew bootRun.
+    # Resolver + variable so nginx starts even when the upstream is not yet up.
+    resolver 127.0.0.11 ipv6=off valid=10s;
+    location /api {
+        set $api_upstream "${API_UPSTREAM}";
+        proxy_pass http://$api_upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}

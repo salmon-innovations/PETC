@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PETC Submission Status",
+  "description": "Response from GET /api/submissions/{id} and POST /api/submissions. Used by the desktop sidecar to short-poll for the LTMS result.",
+  "type": "object",
+  "required": ["submissionId", "state"],
+  "additionalProperties": false,
+  "properties": {
+    "submissionId":    { "type": "string", "description": "Cloud UUID assigned at enqueue time" },
+    "state": {
+      "type": "string",
+      "enum": ["PENDING", "IN_FLIGHT", "ACCEPTED", "REJECTED", "DEAD"],
+      "description": "PENDING: queued; IN_FLIGHT: being submitted to LTMS; ACCEPTED/REJECTED: terminal LTMS decision; DEAD: max retry attempts exhausted"
+    },
+    "certificateNo":   { "type": ["string", "null"], "description": "LTMS-issued CEC certificate key; present only when state=ACCEPTED" },
+    "ltmsRefNo":       { "type": ["string", "null"], "description": "LTMS internal reference number" },
+    "rejectionReason": { "type": ["string", "null"], "description": "Human-readable rejection reason; present only when state=REJECTED" }
+  }
+}

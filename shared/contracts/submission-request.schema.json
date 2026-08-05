@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PETC Submission Request",
+  "description": "Body sent by the desktop sidecar to POST /api/submissions to enqueue a test bundle for cloud-side LTMS submission.",
+  "type": "object",
+  "required": ["centerId", "testId", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "centerId": { "type": "string", "minLength": 1, "description": "Logical PETC center identifier from PETC_CENTER_ID env" },
+    "testId":   { "type": "string", "minLength": 1, "description": "Local emission test UUID (also used for cloud idempotency key)" },
+    "payload":  {
+      "type": "object",
+      "description": "Full test bundle forwarded to LTMS/IRDS. Shape mirrors the wizard payload.",
+      "required": ["vehicle", "owner", "readings", "verdict", "technician", "photos"],
+      "additionalProperties": true,
+      "properties": {
+        "testId":       { "type": "string" },
+        "testDatetime": { "type": ["string", "null"], "format": "date-time" },
+        "centerId":     { "type": "string" },
+        "centerName":   { "type": "string" },
+        "vehicle": {
+          "type": "object",
+          "required": ["plateNo", "fuelType"],
+          "properties": {
+            "plateNo":       { "type": "string" },
+            "mvNo":          { "type": "string" },
+            "engineNo":      { "type": "string" },
+            "chassisNo":     { "type": "string" },
+            "make":          { "type": "string" },
+            "series":        { "type": "string" },
+            "vehicleType":   { "type": "string" },
+            "yearModel":     { "type": "integer" },
+            "color":         { "type": "string" },
+            "transmission":  { "type": "string", "enum": ["M/T", "A/T"] },
+            "fuelType":      { "type": "string", "enum": ["GAS", "DIESEL", "MOTORCYCLE"] },
+            "orType":        { "type": "string" },
+            "crDate":        { "type": "string" },
+            "crNo":          { "type": "string" },
+            "districtOffice":{ "type": "string" }
+          }
+        },
+        "owner": {
+          "type": "object",
+          "required": ["ownerType"],
+          "properties": {
+            "ownerType":    { "type": "string", "enum": ["INDIVIDUAL", "ORGANIZATION"] },
+            "lastName":     { "type": "string" },
+            "firstName":    { "type": "string" },
+            "middleName":   { "type": "string" },
+            "organization": { "type": "string" },
+            "address":      { "type": "string" },
+            "city":         { "type": "string" }
+          }
+        },
+        "engineFlags": {
+          "type": "object",
+          "properties": {
+            "turbo":       { "type": "string", "enum": ["TURBO", "NON_TURBO"] },
+            "aspiration":  { "type": "string", "enum": ["ELEVATION", "N_ASPIRATED"] },
+            "condition":   { "type": "string", "enum": ["REBUILT", "CONVENTIONAL"] }
+          }
+        },
+        "readings": {
+          "type": "object",
+          "description": "Emission analyzer readings. Keys depend on fuel type.",
+          "additionalProperties": { "type": ["number", "null"] }
+        },
+        "verdict": {
+          "type": "object",
+          "required": ["pass", "label"],
+          "properties": {
+            "pass":    { "type": "boolean" },
+            "label":   { "type": "string" },
+            "reasons": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "technician": {
+          "type": "object",
+          "required": ["technicianName", "tesdaCertNo", "certificationNo"],
+          "properties": {
+            "technicianName":  { "type": "string" },
+            "tesdaCertNo":     { "type": "string" },
+            "certificationNo": { "type": "string" }
+          }
+        },
+        "photos": {
+          "type": "array",
+          "description": "Photos already uploaded to S3. filePath fields (local paths) are replaced by s3Key after presign+upload.",
+          "items": {
+            "type": "object",
+            "required": ["photoId", "s3Key", "photoType"],
+            "properties": {
+              "photoId":   { "type": "string" },
+              "s3Key":     { "type": "string", "description": "Canonical S3 key from the presign response" },
+              "photoType": { "type": "string" },
+              "sha256":    { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    }
+  }
+}
