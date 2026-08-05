@@ -7,7 +7,8 @@ Used by:
 
 Keys read:
   analyzer.type        mock | serial_gas | serial_diesel | fty_opacimeter |
-                       fofen_gas | fofen_ascii | koeng_gas | koeng_diesel
+                       fofen_gas | fofen_ascii | koeng_gas | koeng_diesel |
+                       cartesykj_gas
   analyzer.port        e.g. "COM3" or "/dev/ttyUSB0"
   analyzer.baud        e.g. "19200"
   analyzer.data_bits   "7" or "8"
@@ -81,6 +82,12 @@ def build_analyzer_from_settings() -> Analyzer:
     if kind == "koeng_diesel":
         from .koeng_diesel import KoengDieselAnalyzer
         return KoengDieselAnalyzer(
+            port=common["port"],
+            serial_no=settings.get("analyzer.serial_no", ""),
+        )
+    if kind == "cartesykj_gas":
+        from .cartesykj_gas import CartesykjGasAnalyzer
+        return CartesykjGasAnalyzer(
             port=common["port"],
             serial_no=settings.get("analyzer.serial_no", ""),
         )
