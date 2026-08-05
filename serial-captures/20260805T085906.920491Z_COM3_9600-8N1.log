@@ -1,0 +1,1 @@
+{"baud": 9600, "data_bits": 8, "dtr": false, "duration_seconds": 5.0, "parity": "N", "port": "COM3", "rts": false, "started_utc": "2026-08-05T08:59:06.920491+00:00", "stop_bits": 1, "writes_sent": 0}
