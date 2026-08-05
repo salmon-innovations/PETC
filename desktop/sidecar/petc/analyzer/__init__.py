@@ -17,6 +17,7 @@ from .fofen_gas import FofenGasAnalyzer
 from .fofen_ascii import FofenAsciiReceiptAnalyzer
 from .koeng_gas import KoengGasAnalyzer
 from .koeng_diesel import KoengDieselAnalyzer
+from .cartesykj_gas import CartesykjGasAnalyzer
 
 __all__ = [
     "Analyzer",
@@ -36,5 +37,6 @@ __all__ = [
     "FofenAsciiReceiptAnalyzer",
     "KoengGasAnalyzer",
     "KoengDieselAnalyzer",
+    "CartesykjGasAnalyzer",
     "list_serial_ports",
 ]
