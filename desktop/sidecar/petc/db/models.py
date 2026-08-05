@@ -102,6 +102,7 @@ class GasTestResult(Base):
     co2_pct: Mapped[Optional[float]] = mapped_column(Float)
     o2_pct: Mapped[Optional[float]] = mapped_column(Float)
     lambda_value: Mapped[Optional[float]] = mapped_column(Float)
+    no_ppm: Mapped[Optional[float]] = mapped_column(Float)
     rpm: Mapped[Optional[int]] = mapped_column(Integer)
     oil_temp_c: Mapped[Optional[float]] = mapped_column(Float)
 

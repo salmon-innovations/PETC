@@ -69,6 +69,9 @@ def _additive_sqlite_migrations() -> None:
             "city": "VARCHAR",
             "source": "VARCHAR DEFAULT 'LTMS' NOT NULL",
         },
+        "gas_test_results": {
+            "no_ppm": "FLOAT",
+        },
         "ltms_submissions": {
             "payload_json": "TEXT",
             "ltms_reference_no": "VARCHAR",

@@ -111,6 +111,7 @@ class FofenAsciiReceiptAnalyzer(SerialAnalyzer):
             co2_pct=co2_pct,
             o2_pct=o2_pct,
             lambda_value=lam,
+            no_ppm=fields.get("no_ppm"),
             rpm=int(rpm_value) if rpm_value is not None else None,
             oil_temp_c=t_oil_value / 10.0 if t_oil_value is not None else None,
         )

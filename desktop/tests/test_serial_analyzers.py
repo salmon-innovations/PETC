@@ -31,6 +31,12 @@ from petc.analyzer.koeng_diesel import (
     KoengDieselAnalyzer,
     parse_measurement_frame as parse_koeng_diesel_frame,
 )
+from petc.analyzer.cartesykj_gas import (
+    CURRENT_ANALYSIS_REQUEST as CARTESYKJ_CURRENT_ANALYSIS_REQUEST,
+    CartesykjGasAnalyzer,
+    measurement_checksum as cartesykj_checksum,
+    parse_measurement_frame as parse_cartesykj_frame,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -294,6 +300,82 @@ def test_koeng_restore_standby_is_sent_once():
     analyzer._restore_standby()
     analyzer._restore_standby()
     assert fake.writes == [STANDBY_REQUEST]
+
+
+# ---------------------------------------------------------------------------
+# CARTESYKJ MQ-550 — recovered 9600/8N1 polled binary protocol
+# ---------------------------------------------------------------------------
+
+MQ550_CAPTURE = bytes.fromhex(
+    "06 00 FC 00 0E 02 6A 00 02 00 00 00 00 00 60 03 DC"
+)
+
+
+def test_cartesykj_parses_verified_live_capture():
+    reading = parse_cartesykj_frame(MQ550_CAPTURE)
+    assert reading is not None
+    assert reading.hc_ppm == pytest.approx(252)
+    assert reading.co_pct == pytest.approx(0.14)
+    assert reading.co2_pct == pytest.approx(6.18)
+    assert reading.o2_pct == pytest.approx(0.02)
+    assert reading.no_ppm == pytest.approx(0)
+    assert reading.rpm == 0
+    assert reading.lambda_value == pytest.approx(0.96)
+    assert reading.oil_temp_c is None
+
+
+def test_cartesykj_checksum_matches_verified_capture():
+    values = (252, 14, 618, 2, 0, 0, 96)
+    assert cartesykj_checksum(values) == 0x03DC
+
+
+def test_cartesykj_rejects_bad_checksum_or_incomplete_frame():
+    corrupt = MQ550_CAPTURE[:-1] + bytes([MQ550_CAPTURE[-1] ^ 0x01])
+    assert parse_cartesykj_frame(corrupt) is None
+    assert parse_cartesykj_frame(MQ550_CAPTURE[:-1]) is None
+
+
+def test_cartesykj_command_flow_recovers_after_busy_byte():
+    analyzer = CartesykjGasAnalyzer(port="STUB", serial_no="MQ550-TEST-001")
+    assert analyzer._baud_rate == 9600
+    assert analyzer._data_bits == 8
+    assert analyzer._parity == "N"
+    assert analyzer._stop_bits == 1
+    assert analyzer.poll_command() is None
+    assert analyzer.start_command() == CARTESYKJ_CURRENT_ANALYSIS_REQUEST
+    assert analyzer.poll_command() == CARTESYKJ_CURRENT_ANALYSIS_REQUEST
+
+    result = analyzer.parse_frame(b"\x15" + MQ550_CAPTURE)
+    assert result is not None
+    assert result.fuel_type is FuelType.GAS
+    assert result.serial_no == "MQ550-TEST-001"
+    assert result.raw_bytes == MQ550_CAPTURE
+    assert result.reading.hc_ppm == pytest.approx(252)
+    assert analyzer.poll_command() is None
+
+
+def test_cartesykj_accepts_valid_all_zero_measurement():
+    zero_values = (0, 0, 0, 0, 0, 0, 0)
+    frame = b"\x06" + (b"\x00\x00" * 7) + cartesykj_checksum(zero_values).to_bytes(2, "big")
+    reading = parse_cartesykj_frame(frame)
+    assert reading is not None
+    assert reading.co_pct == 0
+    assert reading.hc_ppm == 0
+    assert reading.rpm == 0
+
+
+def test_cartesykj_builder_selection(monkeypatch):
+    from petc.analyzer import builder
+
+    monkeypatch.setattr(builder, "_read_settings", lambda: {
+        "analyzer.type": "cartesykj_gas",
+        "analyzer.port": "COM3",
+        "analyzer.serial_no": "MQ550-BUILDER-001",
+    })
+    analyzer = builder.build_analyzer_from_settings()
+    assert isinstance(analyzer, CartesykjGasAnalyzer)
+    assert analyzer._port == "COM3"
+    assert analyzer._configured_serial_no == "MQ550-BUILDER-001"
 
 
 # ---------------------------------------------------------------------------

@@ -59,6 +59,7 @@ export interface GasReadings {
   co2_pct: number;
   o2_pct: number;
   lambda_value: number;
+  no_ppm?: number;
   rpm?: number;
   oil_temp_c?: number;
 }

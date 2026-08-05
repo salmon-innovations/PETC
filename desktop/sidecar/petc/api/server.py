@@ -823,7 +823,8 @@ def submit_ltms(
         if test.gas_result:
             r = test.gas_result
             readings = {"co_pct": r.co_pct, "hc_ppm": r.hc_ppm, "co2_pct": r.co2_pct,
-                        "o2_pct": r.o2_pct, "lambda_value": r.lambda_value}
+                        "o2_pct": r.o2_pct, "lambda_value": r.lambda_value,
+                        "no_ppm": r.no_ppm}
         elif test.diesel_result:
             r = test.diesel_result
             readings = {"opacity_pct": r.opacity_pct, "k_value": r.k_value}
@@ -1561,6 +1562,7 @@ _ANALYZER_TYPES = {
     "fofen_ascii",
     "koeng_gas",
     "koeng_diesel",
+    "cartesykj_gas",
 }
 _PARITY_VALUES = {"N", "E", "O"}
 
@@ -1917,6 +1919,7 @@ def _reading_to_dict(result) -> dict:
             "co2_pct": r.co2_pct,
             "o2_pct": r.o2_pct,
             "lambda_value": r.lambda_value,
+            "no_ppm": r.no_ppm,
             "rpm": r.rpm,
             "oil_temp_c": r.oil_temp_c,
         }
@@ -2051,6 +2054,7 @@ def _readings_for_test(test) -> dict:
             "co2_pct": r.co2_pct,
             "o2_pct": r.o2_pct,
             "lambda_value": r.lambda_value,
+            "no_ppm": r.no_ppm,
             "rpm": r.rpm,
             "oil_temp_c": r.oil_temp_c,
         }
