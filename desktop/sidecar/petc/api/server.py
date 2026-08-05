@@ -366,7 +366,11 @@ def get_result(
         )
 
     readings = _reading_to_dict(result)
-    _validate_readings_for_do(result.fuel_type.value, readings)
+    # A captured analyzer frame may legitimately contain zero pollutant values,
+    # and some gas benches (including the KOENG KEG-500 CE) do not carry RPM in
+    # their gas-data frame.  Preserve and display that machine result here; the
+    # stricter DO/LTMS completeness check still runs before submission.
+    _validate_machine_readings(result.fuel_type.value, readings)
     captured_at = result.captured_at
     raw_bytes_hex = result.raw_bytes.hex()
 
@@ -1545,9 +1549,19 @@ _ANALYZER_SETTING_KEYS = (
     "analyzer.parity",
     "analyzer.stop_bits",
     "analyzer.address",
+    "analyzer.serial_no",
 )
 
-_ANALYZER_TYPES = {"mock", "serial_gas", "serial_diesel", "fty_opacimeter", "fofen_gas", "fofen_ascii"}
+_ANALYZER_TYPES = {
+    "mock",
+    "serial_gas",
+    "serial_diesel",
+    "fty_opacimeter",
+    "fofen_gas",
+    "fofen_ascii",
+    "koeng_gas",
+    "koeng_diesel",
+}
 _PARITY_VALUES = {"N", "E", "O"}
 
 
@@ -1559,6 +1573,7 @@ class AnalyzerSettings(BaseModel):
     parity: str
     stopBits: int
     address: str
+    serialNo: str = ""
 
 
 def _load_analyzer_settings() -> AnalyzerSettings:
@@ -1578,6 +1593,7 @@ def _load_analyzer_settings() -> AnalyzerSettings:
         parity=rows.get("analyzer.parity", "N"),
         stopBits=int(rows.get("analyzer.stop_bits", "1")),
         address=rows.get("analyzer.address", "01"),
+        serialNo=rows.get("analyzer.serial_no", ""),
     )
 
 
@@ -1610,6 +1626,16 @@ def update_analyzer_settings(req: AnalyzerSettings) -> dict:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "baud must be positive")
 
     previous = _load_analyzer_settings()
+    normalized_req = req.model_copy(update={
+        "parity": req.parity.upper(),
+        "serialNo": req.serialNo.strip(),
+    })
+    if normalized_req == previous and _analyzer is not None and _analyzer.is_connected:
+        # The selected adapter already owns the serial port.  Re-saving an
+        # unchanged form must not construct a second adapter for the same COM
+        # port, which Windows correctly rejects as "Access is denied".
+        return {"applied": True, "connected": True}
+
     new_values = {
         "analyzer.type": req.type,
         "analyzer.port": req.port,
@@ -1618,6 +1644,7 @@ def update_analyzer_settings(req: AnalyzerSettings) -> dict:
         "analyzer.parity": req.parity.upper(),
         "analyzer.stop_bits": str(req.stopBits),
         "analyzer.address": req.address,
+        "analyzer.serial_no": req.serialNo.strip(),
     }
 
     def _persist(values: dict[str, str]) -> None:
@@ -1633,8 +1660,20 @@ def update_analyzer_settings(req: AnalyzerSettings) -> dict:
     _persist(new_values)
 
     old_analyzer = _analyzer
+    old_disconnected = False
     try:
         new_analyzer = build_analyzer_from_settings()
+        # Serial ports are exclusive on Windows.  When changing settings for
+        # the same physical port, release the old handle before connecting the
+        # replacement.  For a different port we retain the zero-downtime order.
+        if (
+            old_analyzer is not None
+            and old_analyzer.is_connected
+            and previous.type != "mock"
+            and previous.port.casefold() == req.port.casefold()
+        ):
+            old_analyzer.disconnect()
+            old_disconnected = True
         new_analyzer.connect()
     except Exception as exc:
         logger.exception("Failed to bring up new analyzer; rolling back")
@@ -1646,7 +1685,13 @@ def update_analyzer_settings(req: AnalyzerSettings) -> dict:
             "analyzer.parity": previous.parity,
             "analyzer.stop_bits": str(previous.stopBits),
             "analyzer.address": previous.address,
+            "analyzer.serial_no": previous.serialNo,
         })
+        if old_disconnected and old_analyzer is not None:
+            try:
+                old_analyzer.connect()
+            except Exception:
+                logger.exception("Failed to reconnect previous analyzer after rollback")
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             f"Could not connect with new settings: {exc}. Reverted to previous configuration.",
@@ -1803,11 +1848,11 @@ def _require_nonblank(value, label: str) -> None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{label} is required")
 
 
-def _validate_readings_for_do(fuel_type: str, readings: dict) -> None:
+def _validate_machine_readings(fuel_type: str, readings: dict) -> None:
     if not readings:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "machine readings are required")
-    gas_fields = ("co_pct", "hc_ppm", "co2_pct", "o2_pct", "lambda_value", "rpm")
-    diesel_fields = ("opacity_pct", "k_value", "rpm")
+    gas_fields = ("co_pct", "hc_ppm", "co2_pct", "o2_pct", "lambda_value")
+    diesel_fields = ("opacity_pct", "k_value")
     fields = gas_fields if fuel_type.upper() == "GAS" else diesel_fields
     for field in fields:
         value = readings.get(field)
@@ -1817,11 +1862,28 @@ def _validate_readings_for_do(fuel_type: str, readings: dict) -> None:
             numeric = float(value)
         except (TypeError, ValueError) as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"reading {field} must be numeric") from exc
-        if numeric <= 0:
+        minimum_is_exclusive = field == "lambda_value"
+        if numeric < 0 or (minimum_is_exclusive and numeric == 0):
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
-                f"reading {field} must be greater than zero under DO 2023-008",
+                f"reading {field} must be {'greater than' if minimum_is_exclusive else 'at least'} zero",
             )
+
+
+def _validate_readings_for_do(fuel_type: str, readings: dict) -> None:
+    _validate_machine_readings(fuel_type, readings)
+    rpm = readings.get("rpm")
+    if rpm is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "reading rpm is required")
+    try:
+        numeric_rpm = float(rpm)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "reading rpm must be numeric") from exc
+    if numeric_rpm <= 0:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "reading rpm must be greater than zero under DO 2023-008",
+        )
 
 
 def _validate_submission_payload(payload: dict, test, readings: dict, photo_count: int) -> None:

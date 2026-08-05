@@ -15,6 +15,8 @@ from .binary_diesel import BinaryDieselAnalyzer
 from .fty_opacimeter import FtyOpacimeterAnalyzer
 from .fofen_gas import FofenGasAnalyzer
 from .fofen_ascii import FofenAsciiReceiptAnalyzer
+from .koeng_gas import KoengGasAnalyzer
+from .koeng_diesel import KoengDieselAnalyzer
 
 __all__ = [
     "Analyzer",
@@ -32,5 +34,7 @@ __all__ = [
     "FtyOpacimeterAnalyzer",
     "FofenGasAnalyzer",
     "FofenAsciiReceiptAnalyzer",
+    "KoengGasAnalyzer",
+    "KoengDieselAnalyzer",
     "list_serial_ports",
 ]

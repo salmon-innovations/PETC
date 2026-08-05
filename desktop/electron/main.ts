@@ -1,16 +1,15 @@
-﻿import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, shell } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import { spawn, ChildProcess } from "child_process";
 import log from "electron-log";
 
-// â”€â”€ logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── logging ───────────────────────────────────────────────────────────────
 log.transports.file.level = "info";
 
-// â”€â”€ constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── constants ─────────────────────────────────────────────────────────────
 const SIDECAR_PORT = 8765;
 const isDev = !app.isPackaged;
-const useExternalSidecar = process.env.PETC_EXTERNAL_SIDECAR === "true";
 
 // electron-updater is only loaded in packaged builds. Loading it during
 // `electron .` dev runs trips an internal `app.getVersion()` call before
@@ -21,7 +20,7 @@ if (!isDev) {
   if (autoUpdater) autoUpdater.logger = log;
 }
 
-// â”€â”€ sidecar lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── sidecar lifecycle ─────────────────────────────────────────────────────
 let sidecarProcess: ChildProcess | null = null;
 
 function sidecarBinary(): string {
@@ -85,7 +84,7 @@ function killSidecar(): void {
   }
 }
 
-// â”€â”€ window â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── window ─────────────────────────────────────────────────────────────────
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
@@ -94,7 +93,7 @@ function createWindow(): void {
     height: 800,
     minWidth: 1024,
     minHeight: 640,
-    title: "PETC â€” Emission Testing",
+    title: "PETC — Emission Testing",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -115,7 +114,7 @@ function createWindow(): void {
   });
 }
 
-// â”€â”€ IPC handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── IPC handlers ───────────────────────────────────────────────────────────
 
 /** Renderer asks for the sidecar base URL */
 ipcMain.handle("sidecar:url", () => `http://127.0.0.1:${SIDECAR_PORT}`);
@@ -131,7 +130,7 @@ ipcMain.on("renderer:fatal", (_e, msg: string) => {
   log.error("Renderer fatal:", msg);
 });
 
-// â”€â”€ auto-updater â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── auto-updater ───────────────────────────────────────────────────────────
 function setupAutoUpdater(): void {
   if (!autoUpdater) return; // disabled in dev
   autoUpdater.checkForUpdatesAndNotify();
@@ -147,13 +146,9 @@ function setupAutoUpdater(): void {
   ipcMain.on("update:install", () => autoUpdater!.quitAndInstall());
 }
 
-// â”€â”€ app lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── app lifecycle ──────────────────────────────────────────────────────────
 app.whenReady().then(() => {
-  if (useExternalSidecar) {
-    log.info("Using external sidecar; Electron will not spawn its own sidecar process.");
-  } else {
-    spawnSidecar();
-  }
+  spawnSidecar();
   createWindow();
 
   if (!isDev) {
@@ -173,4 +168,3 @@ app.on("before-quit", () => {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
-
