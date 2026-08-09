@@ -213,7 +213,7 @@ jobs:
           PETC_PROFILE=dev PETC_GOV_MOCK=true PETC_DATA_DIR="$RUNNER_TEMP/petc-sidecar-smoke" ./dist/petc/petc &
           SIDECAR_PID=$!
           trap 'kill $SIDECAR_PID 2>/dev/null || true' EXIT
-          curl --fail --retry 8 --retry-delay 2 http://127.0.0.1:8765/health
+          curl --fail --retry 8 --retry-connrefused --retry-delay 2 http://127.0.0.1:8765/health
           kill "$SIDECAR_PID"
           trap - EXIT
           cd ../renderer

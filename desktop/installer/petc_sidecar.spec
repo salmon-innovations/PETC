@@ -2,14 +2,17 @@
 # Run from desktop/sidecar/: pyinstaller ../installer/petc_sidecar.spec
 # Output: sidecar/dist/petc  (directory bundle, not one-file, for faster cold start)
 
+from pathlib import Path
+
 block_cipher = None
+sidecar_dir = Path(SPECPATH).parent / 'sidecar'
 
 a = Analysis(
-    ['petc/service.py'],
-    pathex=['.'],
+    [str(sidecar_dir / 'launcher.py')],
+    pathex=[str(sidecar_dir)],
     binaries=[],
     datas=[
-        ('petc', 'petc'),
+        (str(sidecar_dir / 'petc'), 'petc'),
     ],
     hiddenimports=[
         'uvicorn.logging',

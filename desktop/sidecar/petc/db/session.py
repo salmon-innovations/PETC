@@ -10,6 +10,7 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 # Data directory is set by the Electron main process via env var;
 # falls back to cwd for dev use.
 _DATA_DIR = Path(os.environ.get("PETC_DATA_DIR", "."))
+_DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = _DATA_DIR / "petc.db"
 
 engine = create_engine(

@@ -9,12 +9,13 @@ artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
 
 # Renderer built bundle
 files:
+  - package.json
   - from: renderer/dist
     to: .
     filter:
       - "**/*"
   - from: electron/dist
-    to: electron
+    to: electron/dist
     filter:
       - "main.js"
       - "preload.js"
@@ -25,9 +26,6 @@ extraResources:
     to: petc-sidecar
     filter:
       - "**/*"
-
-# electron-builder entry point
-main: electron/main.js
 
 asar: true
 
