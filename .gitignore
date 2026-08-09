@@ -18,6 +18,7 @@ web/backend/build/
 web/backend/.env
 *.class
 *.jar
+!cloud/gradle/wrapper/gradle-wrapper.jar
 
 # Node
 web/frontend/node_modules/
