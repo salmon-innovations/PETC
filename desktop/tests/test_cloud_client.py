@@ -267,6 +267,32 @@ def test_get_submission_dead_is_terminal():
     assert status.is_terminal is True
 
 
+@pytest.mark.parametrize(
+    ("state", "terminal", "success"),
+    [
+        ("PASSED", True, True),
+        ("FAILED_EVALUATION", True, False),
+        ("ACTION_REQUIRED", True, False),
+        ("AUTH_BLOCKED", True, False),
+        ("DEFERRED", False, False),
+        ("RECONCILING", False, False),
+        ("IN_FLIGHT", False, False),
+        ("BLOCKED", False, False),
+        ("UNKNOWN_FUTURE_STATE", False, False),
+    ],
+)
+def test_submission_state_semantics_are_safe(state, terminal, success):
+    status = SubmissionStatus(state, None, None, None)
+    assert status.is_terminal is terminal
+    assert status.is_success is success
+
+
+def test_unknown_submission_state_is_not_saved_as_a_known_waiting_state():
+    status = SubmissionStatus("UNKNOWN_FUTURE_STATE", None, None, None)
+    assert status.is_terminal is False
+    assert status.is_known_nonterminal is False
+
+
 # ── lookup_vehicle ────────────────────────────────────────────────────────────
 
 def test_lookup_vehicle_found():

@@ -17,10 +17,15 @@ module "petc" {
   spring_profile          = "uat"
   government_mock         = true
   government_require_live = false
-  service_desired_count   = 1
-  bootstrap_mode          = false
-  log_retention_days      = 90
-  object_retention_days   = 1095
+  # UAT portal/application only. LTMS is reachable solely through the
+  # production NAT, so this environment must never initiate an LTMS request.
+  ltms_mode             = "qa_disabled"
+  ltms_outbound_enabled = false
+  ltms_upload_enabled   = false
+  service_desired_count = 1
+  bootstrap_mode        = false
+  log_retention_days    = 90
+  object_retention_days = 1095
 
   create_rds                     = false
   existing_rds_endpoint          = "driving-school-uat-postgres.cd6aggqyq8qp.ap-southeast-1.rds.amazonaws.com"

@@ -117,6 +117,19 @@ initial production deployment can run against the government mock before live
 hardware/government commissioning. Change it to `true` before accredited live
 operation; production startup will then fail closed on mock adapters.
 
+## LTMS deployment gates
+
+The ECS task receives three independent LTMS settings from Terraform:
+
+- `LTMS_MODE` selects the logical LTMS mode but never enables traffic by itself.
+- `LTMS_OUTBOUND_ENABLED` permits any LTMS network request only when explicitly true.
+- `LTMS_UPLOAD_ENABLED` separately permits mutating CEC upload/replacement calls.
+
+Both UAT and production currently set the two enablement flags to `false` and
+use `qa_disabled`. The UAT portal therefore cannot contact LTMS. Although only
+the production NAT IP is allowlisted, using that network for a future controlled
+UAT exercise must not be treated as production go-live.
+
 The current packages are unsigned. Windows displays an unknown-publisher
 warning. macOS requires the operator to approve the quarantined application,
 and automatic macOS updates should be considered unsupported until Apple code

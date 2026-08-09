@@ -5,6 +5,7 @@ import com.petc.settings.PlatformSettingsService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -48,10 +49,12 @@ public class WalletController {
     public List<CenterWalletResponse> listCenters() {
         long lowThreshold = settings.lowBalanceThresholdCentavos();
         long debtFloor = settings.debtFloorCentavos();
+        long defaultCharge = settings.chargePerUploadCentavos();
         return jdbc.query("""
                 SELECT t.id::text AS tenant_id,
                        t.slug     AS slug,
                        t.name     AS name,
+                       t.cec_charge_override_centavos AS charge_override,
                        COALESCE(w.balance_centavos, 0) AS balance,
                        (SELECT count(*) FROM submissions s
                          WHERE s.tenant_id = t.id AND s.state = 'BLOCKED') AS blocked_count
@@ -61,6 +64,8 @@ public class WalletController {
                 """,
                 (rs, i) -> {
                     long balance = rs.getLong("balance");
+                    Number rawOverride = (Number) rs.getObject("charge_override");
+                    Long chargeOverride = rawOverride == null ? null : rawOverride.longValue();
                     return new CenterWalletResponse(
                             rs.getString("tenant_id"),
                             rs.getString("slug"),
@@ -69,7 +74,9 @@ public class WalletController {
                             balance < lowThreshold,
                             balance < 0,
                             balance <= debtFloor,
-                            rs.getInt("blocked_count")
+                            rs.getInt("blocked_count"),
+                            chargeOverride == null ? defaultCharge : chargeOverride,
+                            chargeOverride
                     );
                 });
     }
@@ -92,8 +99,27 @@ public class WalletController {
                 summary.low(),
                 summary.negative(),
                 summary.blockedCount(),
-                summary.chargePerUploadCentavos()
+                summary.chargePerUploadCentavos(),
+                summary.chargeOverrideCentavos(),
+                summary.defaultChargePerUploadCentavos()
         );
+    }
+
+    /** Set a negotiated accepted-CEC price, or send null to inherit the platform default. */
+    @PutMapping("/centers/{tenantId}/cec-charge")
+    public CenterWalletDetail updateCecCharge(
+            @PathVariable String tenantId,
+            @Valid @RequestBody CecChargeOverrideRequest req,
+            @AuthenticationPrincipal PetcUserPrincipal principal
+    ) {
+        requireTenant(tenantId);
+        wallet.setChargeOverride(
+                tenantId,
+                req.chargeOverrideCentavos(),
+                principal == null ? null : principal.userId(),
+                principal == null ? "unknown" : principal.email()
+        );
+        return centerDetail(tenantId);
     }
 
     @GetMapping("/centers/{tenantId}/ledger")
@@ -150,7 +176,9 @@ public class WalletController {
             boolean low,
             boolean negative,
             boolean belowDebtFloor,
-            int blockedCount
+            int blockedCount,
+            long chargePerUploadCentavos,
+            Long chargeOverrideCentavos
     ) {}
 
     /** balanceMatches false means the projection has drifted from the ledger — a bug. */
@@ -162,7 +190,13 @@ public class WalletController {
             boolean low,
             boolean negative,
             int blockedCount,
-            long chargePerUploadCentavos
+            long chargePerUploadCentavos,
+            Long chargeOverrideCentavos,
+            long defaultChargePerUploadCentavos
+    ) {}
+
+    public record CecChargeOverrideRequest(
+            @PositiveOrZero Long chargeOverrideCentavos
     ) {}
 
     /**

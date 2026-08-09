@@ -50,6 +50,22 @@ petc:
     # Deployment can begin in mock mode. Set this true once the live government
     # integration is commissioned; the production guard will then fail closed.
     require-live: ${GOV_REQUIRE_LIVE:false}
+  # LTMS is independently guarded from the legacy registry adapter.  Defaults
+  # deliberately permit no LTMS egress in any local/test deployment.
+  ltms:
+    mode: ${LTMS_MODE:mock}
+    outbound-enabled: ${LTMS_OUTBOUND_ENABLED:false}
+    # Separate mutation gate: false permits no CEC upload or replacement even
+    # if read-only LTMS access is enabled later for an approved UAT exercise.
+    upload-enabled: ${LTMS_UPLOAD_ENABLED:false}
+    commissioning-approved: ${LTMS_COMMISSIONING_APPROVED:false}
+    # Comma-separated exact HTTPS hosts. Empty is valid only while outbound is disabled.
+    allowed-hosts: ${LTMS_ALLOWED_HOSTS:}
+    petc-base-url: ${LTMS_PETC_BASE_URL:}
+    jwt-base-url: ${LTMS_JWT_BASE_URL:}
+    connect-timeout: ${LTMS_CONNECT_TIMEOUT:5s}
+    read-timeout: ${LTMS_READ_TIMEOUT:15s}
+    total-timeout: ${LTMS_TOTAL_TIMEOUT:20s}
   ingest:
     dev-key-enabled: ${DEV_CENTER_KEY_ENABLED:true}
     dev-key: ${DEV_CENTER_KEY:dev-insecure-key}

@@ -2,10 +2,14 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { sidecarClient } from "../../api/sidecarClient";
+import { isLtmsNonterminalState, isLtmsSuccessState, sidecarClient } from "../../api/sidecarClient";
 import { useAuthStore } from "../../store/authStore";
+import { INSPECTION_PURPOSE_LABELS } from "../../types";
 import { evaluateEmission } from "../../utils/emissionLimits";
 import { CameraStream } from "../../components/CameraStream";
+import { TestListFilters } from "../../components/TestListFilters";
+import { useSearchParams } from "react-router-dom";
+import { EMPTY_TEST_FILTERS, filterEmissionTests } from "../../utils/testFilters";
 const EMPTY_VEHICLE = {
     plateNo: "",
     mvNo: "",
@@ -36,6 +40,9 @@ const EMPTY_OWNER = {
 const STEP_LABELS = ["Vehicle", "Owner", "Results", "Technician", "Photos", "Review"];
 export default function LtmsUploadPage() {
     const [selected, setSelected] = useState(null);
+    const [filters, setFilters] = useState({ ...EMPTY_TEST_FILTERS });
+    const [searchParams, setSearchParams] = useSearchParams();
+    const requestedTestId = searchParams.get("testId");
     const { data: pending = [] } = useQuery({
         queryKey: ["tests", "pending-ltms"],
         queryFn: async () => {
@@ -47,12 +54,30 @@ export default function LtmsUploadPage() {
         },
         refetchInterval: 30_000,
     });
+    useEffect(() => {
+        if (selected || !requestedTestId)
+            return;
+        const requestedTest = pending.find((test) => test.id === requestedTestId);
+        if (requestedTest)
+            setSelected(requestedTest);
+    }, [pending, requestedTestId, selected]);
+    const closeWizard = () => {
+        setSelected(null);
+        if (requestedTestId)
+            setSearchParams({}, { replace: true });
+    };
+    const openWizard = (test) => {
+        setSelected(test);
+        setSearchParams({ testId: test.id }, { replace: true });
+    };
+    const filteredPending = useMemo(() => filterEmissionTests(pending, filters), [pending, filters]);
     if (selected) {
-        return _jsx(UploadWizard, { test: selected, onDone: () => setSelected(null), onCancel: () => setSelected(null) });
+        return _jsx(UploadWizard, { test: selected, onDone: closeWizard, onCancel: closeWizard });
     }
-    return (_jsxs("div", { className: "max-w-4xl mx-auto p-6 space-y-5", children: [_jsxs("div", { children: [_jsx("h1", { className: "text-xl font-bold text-gray-800", children: "LTMS Upload Queue" }), _jsx("p", { className: "text-sm text-gray-500", children: "Completed local tests waiting for registry submission." })] }), pending.length === 0 ? (_jsx("div", { className: "bg-white rounded-lg shadow px-6 py-12 text-center text-gray-500", children: "No tests pending LTMS submission." })) : (_jsx("div", { className: "bg-white rounded-lg shadow divide-y", children: pending.map((test) => (_jsxs("div", { className: "flex items-center justify-between px-5 py-3", children: [_jsxs("div", { children: [_jsx("p", { className: "font-semibold text-sm text-gray-800", children: test.plateNumber }), _jsxs("p", { className: "text-xs text-gray-500", children: [test.fuelType, " \u00B7 ", test.startedAt ? new Date(test.startedAt).toLocaleString() : "No date"] })] }), _jsxs("div", { className: "flex items-center gap-3", children: [_jsx("span", { className: clsx("rounded-full px-2 py-0.5 text-xs font-medium", test.passFail ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"), children: test.passFail ? "PASS" : "FAIL" }), _jsx("button", { onClick: () => setSelected(test), className: "rounded-md bg-blue-600 px-3 py-1.5 text-xs text-white font-medium hover:bg-blue-700", children: "Open Wizard" })] })] }, test.id))) }))] }));
+    return (_jsxs("div", { className: "max-w-4xl mx-auto p-6 space-y-5", children: [_jsxs("div", { children: [_jsx("h1", { className: "text-xl font-bold text-gray-800", children: "LTMS Upload Queue" }), _jsx("p", { className: "text-sm text-gray-500", children: "Completed local tests waiting for registry submission." })] }), _jsx(TestListFilters, { filters: filters, onChange: setFilters }), pending.length > 0 && (_jsxs("p", { className: "text-xs text-gray-500", children: ["Showing ", filteredPending.length, " of ", pending.length, " pending tests"] })), pending.length === 0 ? (_jsx("div", { className: "bg-white rounded-lg shadow px-6 py-12 text-center text-gray-500", children: "No tests pending LTMS submission." })) : filteredPending.length === 0 ? (_jsx("div", { className: "bg-white rounded-lg shadow px-6 py-12 text-center text-gray-500", children: "No pending tests match the selected filters." })) : (_jsx("div", { className: "bg-white rounded-lg shadow divide-y", children: filteredPending.map((test) => (_jsxs("div", { className: "flex items-center justify-between px-5 py-3", children: [_jsxs("div", { children: [_jsx("p", { className: "font-semibold text-sm text-gray-800", children: test.plateNumber }), _jsxs("p", { className: "text-xs text-gray-500", children: [test.fuelType, " \u00B7 ", INSPECTION_PURPOSE_LABELS[test.inspectionPurpose], " \u00B7 ", test.startedAt ? new Date(test.startedAt).toLocaleString() : "No date"] })] }), _jsxs("div", { className: "flex items-center gap-3", children: [_jsx("span", { className: clsx("rounded-full px-2 py-0.5 text-xs font-medium", test.passFail ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"), children: test.passFail ? "PASS" : "FAIL" }), _jsx("button", { onClick: () => openWizard(test), className: "rounded-md bg-blue-600 px-3 py-1.5 text-xs text-white font-medium hover:bg-blue-700", children: "Open Wizard" })] })] }, test.id))) }))] }));
 }
 function UploadWizard({ test, onDone, onCancel }) {
+    const requiresManualEntry = test.inspectionPurpose === "FOR_INIT_REG";
     const [step, setStep] = useState(1);
     const [vehicle, setVehicle] = useState({ ...EMPTY_VEHICLE, plateNo: test.plateNumber, fuelType: test.fuelType });
     const [owner, setOwner] = useState(EMPTY_OWNER);
@@ -77,21 +102,26 @@ function UploadWizard({ test, onDone, onCancel }) {
         mutationFn: (plate) => sidecarClient.lookupVehicle(plate),
         onSuccess: (result) => {
             setLookup(result);
-            if (result.vehicle)
-                setVehicle(mapVehicle(result.vehicle));
+            if (result.vehicle) {
+                setVehicle((current) => mapVehicle(result.vehicle, current.fuelType));
+            }
             if (result.owner)
                 setOwner(result.owner);
         },
     });
     useEffect(() => {
+        if (requiresManualEntry) {
+            setLookup({ found: false, source: "LTMS", vehicle: null, owner: null });
+            return;
+        }
         lookupMutation.mutate(test.plateNumber);
-    }, [test.plateNumber]);
+    }, [requiresManualEntry, test.plateNumber]);
     const verdict = useMemo(() => evaluateEmission(vehicle.fuelType, detail?.readings ?? {}, engineFlags), [detail?.readings, engineFlags, vehicle.fuelType]);
     const payload = useMemo(() => ({
-        centerId: "dev-center",
         centerName: "PETC Center",
         testId: test.id,
         testDatetime: detail?.testedAt ?? test.completedAt ?? test.startedAt,
+        inspection: { purpose: test.inspectionPurpose },
         vehicle,
         owner,
         engineFlags,
@@ -109,15 +139,17 @@ function UploadWizard({ test, onDone, onCancel }) {
     });
     const goNext = () => setStep((current) => Math.min(6, current + 1));
     const goBack = () => setStep((current) => Math.max(1, current - 1));
-    return (_jsxs("div", { className: "max-w-5xl mx-auto p-6 space-y-5", children: [_jsxs("div", { className: "flex items-center justify-between gap-3", children: [_jsxs("div", { className: "flex items-center gap-3", children: [_jsx("button", { onClick: onCancel, className: "text-sm text-gray-500 hover:text-gray-700", children: "Back" }), _jsxs("div", { children: [_jsxs("h1", { className: "text-xl font-bold text-gray-800", children: ["LTMS Upload - ", test.plateNumber] }), _jsx("p", { className: "text-xs text-gray-500", children: lookupStatusText(lookup, lookupMutation.isPending) })] })] }), _jsx("button", { onClick: () => lookupMutation.mutate(vehicle.plateNo), disabled: lookupMutation.isPending, className: "rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50", children: lookupMutation.isPending ? "Looking up..." : "Lookup Plate" })] }), _jsx("div", { className: "grid grid-cols-6 gap-2", children: STEP_LABELS.map((label, index) => {
+    return (_jsxs("div", { className: "max-w-5xl mx-auto p-6 space-y-5", children: [_jsxs("div", { className: "flex items-center justify-between gap-3", children: [_jsxs("div", { className: "flex items-center gap-3", children: [_jsx("button", { onClick: onCancel, className: "text-sm text-gray-500 hover:text-gray-700", children: "Back" }), _jsxs("div", { children: [_jsxs("h1", { className: "text-xl font-bold text-gray-800", children: ["LTMS Upload - ", test.plateNumber] }), _jsxs("p", { className: "text-xs text-gray-500", children: [INSPECTION_PURPOSE_LABELS[test.inspectionPurpose], " \u00B7 ", requiresManualEntry
+                                                ? "New registration: no registry lookup; manually encode vehicle and owner data."
+                                                : lookupStatusText(lookup, lookupMutation.isPending)] })] })] }), requiresManualEntry ? (_jsx("span", { className: "rounded-md bg-amber-100 px-3 py-1.5 text-xs font-medium text-amber-800", children: "Manual encoding required" })) : (_jsx("button", { onClick: () => lookupMutation.mutate(vehicle.plateNo), disabled: lookupMutation.isPending, className: "rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50", children: lookupMutation.isPending ? "Looking up..." : "Lookup Plate" }))] }), _jsx("div", { className: "grid grid-cols-6 gap-2", children: STEP_LABELS.map((label, index) => {
                     const number = (index + 1);
                     return (_jsxs("button", { onClick: () => setStep(number), className: clsx("rounded-md py-2 text-xs font-semibold", step === number ? "bg-blue-600 text-white" : number < step ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"), children: [number, ". ", label] }, label));
-                }) }), step === 1 && (_jsx(VehicleStep, { vehicle: vehicle, lookup: lookup, onChange: setVehicle, onNext: goNext })), step === 2 && _jsx(OwnerStep, { owner: owner, onChange: setOwner, onBack: goBack, onNext: goNext }), step === 3 && (_jsx(ResultsStep, { fuelType: vehicle.fuelType, readings: detail?.readings ?? {}, flags: engineFlags, verdict: verdict, onChange: setEngineFlags, onBack: goBack, onNext: goNext })), step === 4 && (_jsx(TechnicianStep, { technician: technician, onChange: setTechnician, onBack: goBack, onNext: goNext })), step === 5 && (_jsx(PhotosStep, { testId: test.id, photos: detail?.photos ?? [], onBack: goBack, onNext: goNext })), step === 6 && (_jsx(ReviewStep, { payload: payload, result: submitMutation.data, isPending: submitMutation.isPending, isError: submitMutation.isError, onBack: goBack, onDone: onDone, onSubmit: () => submitMutation.mutate() }))] }));
+                }) }), step === 1 && (_jsx(VehicleStep, { vehicle: vehicle, lookup: lookup, requiresManualEntry: requiresManualEntry, onChange: setVehicle, onNext: goNext })), step === 2 && _jsx(OwnerStep, { owner: owner, onChange: setOwner, onBack: goBack, onNext: goNext }), step === 3 && (_jsx(ResultsStep, { fuelType: vehicle.fuelType, readings: detail?.readings ?? {}, flags: engineFlags, verdict: verdict, onChange: setEngineFlags, onBack: goBack, onNext: goNext })), step === 4 && (_jsx(TechnicianStep, { technician: technician, onChange: setTechnician, onBack: goBack, onNext: goNext })), step === 5 && (_jsx(PhotosStep, { testId: test.id, photos: detail?.photos ?? [], onBack: goBack, onNext: goNext })), step === 6 && (_jsx(ReviewStep, { payload: payload, result: submitMutation.data, isPending: submitMutation.isPending, isError: submitMutation.isError, onBack: goBack, onDone: onDone, onSubmit: () => submitMutation.mutate() }))] }));
 }
-function VehicleStep({ vehicle, lookup, onChange, onNext }) {
+function VehicleStep({ vehicle, lookup, requiresManualEntry, onChange, onNext }) {
     const set = (key, value) => onChange({ ...vehicle, [key]: value });
     const valid = vehicle.plateNo && vehicle.make && vehicle.series && vehicle.engineNo && vehicle.chassisNo;
-    return (_jsxs("section", { className: "bg-white rounded-lg shadow p-5 space-y-4", children: [_jsx(StepHeading, { title: "Step 1 - Plate Lookup + Vehicle Details" }), _jsxs("div", { className: "grid grid-cols-3 gap-4", children: [_jsx(TextField, { label: "Plate No", value: vehicle.plateNo, onChange: (value) => set("plateNo", value.toUpperCase()) }), _jsx(TextField, { label: "MV No", value: vehicle.mvNo, onChange: (value) => set("mvNo", value), badge: badgeFor("mvNo", vehicle.mvNo, lookup?.vehicle?.mvNo) }), _jsx(TextField, { label: "Engine No", value: vehicle.engineNo, onChange: (value) => set("engineNo", value), badge: badgeFor("engineNo", vehicle.engineNo, lookup?.vehicle?.engineNo) }), _jsx(TextField, { label: "Chassis No", value: vehicle.chassisNo, onChange: (value) => set("chassisNo", value), badge: badgeFor("chassisNo", vehicle.chassisNo, lookup?.vehicle?.chassisNo) }), _jsx(SelectField, { label: "OR Type", value: vehicle.orType, options: ["MVRR", "MVRS"], onChange: (value) => set("orType", value), badge: badgeFor("orType", vehicle.orType, lookup?.vehicle?.orType) }), _jsx(TextField, { label: "CR Date", type: "date", value: vehicle.crDate, onChange: (value) => set("crDate", value), badge: badgeFor("crDate", vehicle.crDate, lookup?.vehicle?.crDate) }), _jsx(TextField, { label: "CR No", value: vehicle.crNo, onChange: (value) => set("crNo", value), badge: badgeFor("crNo", vehicle.crNo, lookup?.vehicle?.crNo) }), _jsx(SelectField, { label: "District Office", value: vehicle.districtOffice, options: ["1368 - PASAY CITY DISTRICT OFFICE", "1301 - QUEZON CITY DISTRICT OFFICE", "1401 - MAKATI DISTRICT OFFICE"], onChange: (value) => set("districtOffice", value), badge: badgeFor("districtOffice", vehicle.districtOffice, lookup?.vehicle?.districtOffice) }), _jsx(TextField, { label: "Make", value: vehicle.make, onChange: (value) => set("make", value.toUpperCase()), badge: badgeFor("make", vehicle.make, lookup?.vehicle?.make) }), _jsx(TextField, { label: "Series", value: vehicle.series, onChange: (value) => set("series", value.toUpperCase()), badge: badgeFor("series", vehicle.series, lookup?.vehicle?.series) }), _jsx(SelectField, { label: "Vehicle Type", value: vehicle.vehicleType, options: ["CAR", "MOTORCYCLE", "TRUCK", "BUS", "JEEPNEY"], onChange: (value) => set("vehicleType", value), badge: badgeFor("vehicleType", vehicle.vehicleType, lookup?.vehicle?.vehicleType) }), _jsx(TextField, { label: "Year Model", type: "number", value: String(vehicle.yearModel), onChange: (value) => set("yearModel", Number(value || 0)), badge: badgeFor("yearModel", String(vehicle.yearModel), lookup?.vehicle ? String(lookup.vehicle.yearModel) : undefined) }), _jsx(TextField, { label: "Color", value: vehicle.color, onChange: (value) => set("color", value.toUpperCase()), badge: badgeFor("color", vehicle.color, lookup?.vehicle?.color) }), _jsx(Segment, { label: "Transmission", value: vehicle.transmission, options: ["M/T", "A/T"], onChange: (value) => set("transmission", value) }), _jsx(Segment, { label: "Fuel Type", value: vehicle.fuelType, options: ["GAS", "DIESEL", "MOTORCYCLE"], onChange: (value) => set("fuelType", value) }), _jsx(Segment, { label: "Classification", value: vehicle.classification, options: ["PRIVATE", "PUBLIC", "GOVERNMENT", "DIPLOMATIC"], onChange: (value) => set("classification", value) })] }), _jsx(FooterNav, { nextDisabled: !valid, onNext: onNext })] }));
+    return (_jsxs("section", { className: "bg-white rounded-lg shadow p-5 space-y-4", children: [_jsx(StepHeading, { title: requiresManualEntry ? "Step 1 - Manual Vehicle Details" : "Step 1 - Plate Lookup + Vehicle Details" }), requiresManualEntry && (_jsx("div", { className: "rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900", children: "Initial registration is treated as not yet available in LTMS or Stradcom. Enter the vehicle details manually. The fuel type remains the value selected when the emission test started." })), _jsxs("div", { className: "grid grid-cols-3 gap-4", children: [_jsx(TextField, { label: "Plate No", value: vehicle.plateNo, onChange: (value) => set("plateNo", value.toUpperCase()) }), _jsx(TextField, { label: "MV No", value: vehicle.mvNo, onChange: (value) => set("mvNo", value), badge: badgeFor("mvNo", vehicle.mvNo, lookup?.vehicle?.mvNo) }), _jsx(TextField, { label: "Engine No", value: vehicle.engineNo, onChange: (value) => set("engineNo", value), badge: badgeFor("engineNo", vehicle.engineNo, lookup?.vehicle?.engineNo) }), _jsx(TextField, { label: "Chassis No", value: vehicle.chassisNo, onChange: (value) => set("chassisNo", value), badge: badgeFor("chassisNo", vehicle.chassisNo, lookup?.vehicle?.chassisNo) }), _jsx(SelectField, { label: "OR Type", value: vehicle.orType, options: ["MVRR", "MVRS"], onChange: (value) => set("orType", value), badge: badgeFor("orType", vehicle.orType, lookup?.vehicle?.orType) }), _jsx(TextField, { label: "CR Date", type: "date", value: vehicle.crDate, onChange: (value) => set("crDate", value), badge: badgeFor("crDate", vehicle.crDate, lookup?.vehicle?.crDate) }), _jsx(TextField, { label: "CR No", value: vehicle.crNo, onChange: (value) => set("crNo", value), badge: badgeFor("crNo", vehicle.crNo, lookup?.vehicle?.crNo) }), _jsx(SelectField, { label: "District Office", value: vehicle.districtOffice, options: ["1368 - PASAY CITY DISTRICT OFFICE", "1301 - QUEZON CITY DISTRICT OFFICE", "1401 - MAKATI DISTRICT OFFICE"], onChange: (value) => set("districtOffice", value), badge: badgeFor("districtOffice", vehicle.districtOffice, lookup?.vehicle?.districtOffice) }), _jsx(TextField, { label: "Make", value: vehicle.make, onChange: (value) => set("make", value.toUpperCase()), badge: badgeFor("make", vehicle.make, lookup?.vehicle?.make) }), _jsx(TextField, { label: "Series", value: vehicle.series, onChange: (value) => set("series", value.toUpperCase()), badge: badgeFor("series", vehicle.series, lookup?.vehicle?.series) }), _jsx(SelectField, { label: "Vehicle Type", value: vehicle.vehicleType, options: ["CAR", "MOTORCYCLE", "TRUCK", "BUS", "JEEPNEY"], onChange: (value) => set("vehicleType", value), badge: badgeFor("vehicleType", vehicle.vehicleType, lookup?.vehicle?.vehicleType) }), _jsx(TextField, { label: "Year Model", type: "number", value: String(vehicle.yearModel), onChange: (value) => set("yearModel", Number(value || 0)), badge: badgeFor("yearModel", String(vehicle.yearModel), lookup?.vehicle ? String(lookup.vehicle.yearModel) : undefined) }), _jsx(TextField, { label: "Color", value: vehicle.color, onChange: (value) => set("color", value.toUpperCase()), badge: badgeFor("color", vehicle.color, lookup?.vehicle?.color) }), _jsx(Segment, { label: "Transmission", value: vehicle.transmission, options: ["M/T", "A/T"], onChange: (value) => set("transmission", value) }), _jsx(Segment, { label: "Fuel Type", value: vehicle.fuelType, options: ["GAS", "DIESEL", "MOTORCYCLE"], onChange: (value) => set("fuelType", value) }), _jsx(Segment, { label: "Classification", value: vehicle.classification, options: ["PRIVATE", "PUBLIC", "GOVERNMENT", "DIPLOMATIC"], onChange: (value) => set("classification", value) })] }), _jsx(FooterNav, { nextDisabled: !valid, onNext: onNext })] }));
 }
 function OwnerStep({ owner, onChange, onBack, onNext }) {
     const set = (key, value) => onChange({ ...owner, [key]: value });
@@ -169,16 +201,18 @@ function ReviewStep({ payload, result, isPending, isError, onBack, onDone, onSub
     const vehicle = payload.vehicle;
     const owner = payload.owner;
     const verdict = payload.verdict;
+    const purpose = payload.inspection.purpose;
     if (result) {
-        if (result.state === "ACCEPTED" && result.submissionId) {
+        if (isLtmsSuccessState(result.state) && result.submissionId) {
             return _jsx(CecPreviewAndPrint, { submissionId: result.submissionId, certificateNo: result.certificateNo, onDone: onDone });
         }
-        if (result.state === "WAITING_FOR_LTMS") {
-            return (_jsxs("section", { className: "rounded-lg shadow p-8 text-center space-y-3 bg-blue-50 border border-blue-200", children: [_jsx("p", { className: "text-xl font-bold text-blue-800", children: "Queued \u2014 awaiting LTMS response" }), _jsxs("p", { className: "text-sm text-blue-700", children: ["The test has been submitted to the cloud. LTMS is processing the request. The CEC certificate will become available in ", _jsx("strong", { children: "History" }), " once approved."] }), _jsx("button", { onClick: onDone, className: "rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700", children: "Go to History" })] }));
+        if (isLtmsNonterminalState(result.state)) {
+            return (_jsxs("section", { className: "rounded-lg shadow p-8 text-center space-y-3 bg-blue-50 border border-blue-200", children: [_jsxs("p", { className: "text-xl font-bold text-blue-800", children: [result.state, " \u2014 awaiting LTMS response"] }), _jsxs("p", { className: "text-sm text-blue-700", children: ["The test has been submitted to the cloud. LTMS is processing the request. The CEC certificate will become available in ", _jsx("strong", { children: "History" }), " once approved."] }), _jsx("button", { onClick: onDone, className: "rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700", children: "Go to History" })] }));
         }
-        return (_jsxs("section", { className: clsx("rounded-lg shadow p-8 text-center space-y-3", result.state === "PENDING" ? "bg-yellow-50 border border-yellow-200" : "bg-red-50 border border-red-200"), children: [_jsx("p", { className: "text-xl font-bold", children: result.state === "PENDING" ? "Queued for retry" : "Rejected" }), result.rejectionReason && _jsx("p", { className: "text-sm text-red-700", children: result.rejectionReason }), _jsx("button", { onClick: onDone, className: "rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700", children: "Done" })] }));
+        return (_jsxs("section", { className: "rounded-lg shadow p-8 text-center space-y-3 bg-red-50 border border-red-200", children: [_jsx("p", { className: "text-xl font-bold", children: result.state.replaceAll("_", " ") }), result.rejectionReason && _jsx("p", { className: "text-sm text-red-700", children: result.rejectionReason }), _jsx("button", { onClick: onDone, className: "rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700", children: "Done" })] }));
     }
     return (_jsxs("section", { className: "bg-white rounded-lg shadow p-5 space-y-4", children: [_jsx(StepHeading, { title: "Step 6 - Review & Submit" }), _jsxs("div", { className: "grid grid-cols-2 gap-4 text-sm", children: [_jsx(SummaryBlock, { title: "Vehicle", rows: [
+                            ["Purpose", INSPECTION_PURPOSE_LABELS[purpose]],
                             ["Plate", vehicle.plateNo],
                             ["Vehicle", `${vehicle.yearModel} ${vehicle.make} ${vehicle.series}`],
                             ["Fuel", vehicle.fuelType],
@@ -234,7 +268,7 @@ function ReadingsGrid({ readings }) {
 function SummaryBlock({ title, rows }) {
     return (_jsxs("div", { className: "rounded-md border border-gray-200 p-3", children: [_jsx("p", { className: "mb-2 text-xs font-bold uppercase text-gray-500", children: title }), _jsx("dl", { className: "space-y-1", children: rows.map(([label, value]) => (_jsxs("div", { className: "flex justify-between gap-4", children: [_jsx("dt", { className: "text-gray-500", children: label }), _jsx("dd", { className: "text-right font-medium text-gray-800", children: value || "N/A" })] }, label))) })] }));
 }
-function mapVehicle(vehicle) {
+function mapVehicle(vehicle, fallbackFuelType) {
     return {
         plateNo: vehicle.plateNo ?? vehicle.plateNumber,
         mvNo: vehicle.mvNo ?? "",
@@ -250,7 +284,7 @@ function mapVehicle(vehicle) {
         yearModel: vehicle.yearModel ?? vehicle.year ?? new Date().getFullYear(),
         color: vehicle.color ?? "",
         transmission: vehicle.transmission ?? "A/T",
-        fuelType: vehicle.fuelType ?? "GAS",
+        fuelType: vehicle.fuelType ?? fallbackFuelType,
         classification: vehicle.classification ?? "PRIVATE",
     };
 }

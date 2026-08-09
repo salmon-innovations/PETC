@@ -93,6 +93,17 @@ public class CenterKeyValidator {
         throw new AuthException("Invalid X-Center-Key");
     }
 
+    /**
+     * Rejects a desktop-supplied center ID that does not match its authenticated
+     * X-Center-Key.  Callers must persist {@link CenterContext#centerId()} —
+     * never the submitted value — after this check succeeds.
+     */
+    public void requireMatchingCenter(CenterContext authenticatedCenter, String submittedCenterId) {
+        if (submittedCenterId == null || !authenticatedCenter.centerId().equals(submittedCenterId)) {
+            throw new AuthException("Submitted centerId does not match X-Center-Key");
+        }
+    }
+
     private Instant toInstant(Object value) {
         if (value == null) {
             return null;

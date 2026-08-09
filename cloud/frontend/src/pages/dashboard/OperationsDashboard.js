@@ -6,10 +6,16 @@ import { api } from "../../api/webClient";
 import { formatCentavos, formatDateTime } from "../../utils/money";
 const STATE_STYLES = {
     ACCEPTED: "bg-green-100 text-green-700",
+    PASSED: "bg-green-100 text-green-700",
     PENDING: "bg-blue-100 text-blue-700",
     IN_FLIGHT: "bg-blue-100 text-blue-700",
+    RECONCILING: "bg-purple-100 text-purple-700",
+    DEFERRED: "bg-amber-100 text-amber-800",
     BLOCKED: "bg-amber-100 text-amber-800",
     REJECTED: "bg-red-100 text-red-700",
+    FAILED_EVALUATION: "bg-red-100 text-red-700",
+    ACTION_REQUIRED: "bg-red-100 text-red-700",
+    AUTH_BLOCKED: "bg-red-200 text-red-900",
     DEAD: "bg-gray-200 text-gray-700",
 };
 function Stat({ label, value, tone }) {

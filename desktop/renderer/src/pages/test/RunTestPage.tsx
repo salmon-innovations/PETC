@@ -10,20 +10,25 @@ import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import { sidecarClient, type TestResultResponse } from "../../api/sidecarClient";
 import { useAuthStore } from "../../store/authStore";
 import { CameraStream, type CameraStreamHandle } from "../../components/CameraStream";
+import { INSPECTION_PURPOSE_LABELS } from "../../types";
 
 const schema = z.object({
   plateNumber: z.string().min(3, "Enter plate number"),
   fuelType: z.enum(["GAS", "DIESEL"]),
+  inspectionPurpose: z.enum(["FOR_RENEWAL", "FOR_INIT_REG", "FOR_COMPLIANCE"]),
 });
 type FormValues = z.infer<typeof schema>;
 type Step = "idle" | "running" | "done" | "error";
 
 export default function RunTestPage() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const [result, setResult] = useState<TestResultResponse | null>(null);
   const [step, setStep] = useState<Step>("idle");
@@ -32,7 +37,10 @@ export default function RunTestPage() {
   const cameraRef = useRef<CameraStreamHandle>(null);
 
   const { register, handleSubmit, watch, formState: { errors } } =
-    useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { fuelType: "GAS" } });
+    useForm<FormValues>({
+      resolver: zodResolver(schema),
+      defaultValues: { fuelType: "GAS", inspectionPurpose: "FOR_RENEWAL" },
+    });
 
   const plate = watch("plateNumber");
 
@@ -51,6 +59,7 @@ export default function RunTestPage() {
         operatorId: user?.id ?? "unknown",
         plateNumber: values.plateNumber,
         fuelType: values.fuelType,
+        inspectionPurpose: values.inspectionPurpose,
       });
       setStep("running");
       const r = await sidecarClient.getResult(started.sessionToken);
@@ -68,7 +77,11 @@ export default function RunTestPage() {
       }
       return r;
     },
-    onSuccess: (data) => { setResult(data); setStep("done"); },
+    onSuccess: (data) => {
+      setResult(data);
+      setStep("done");
+      queryClient.invalidateQueries({ queryKey: ["tests", "pending-ltms"] });
+    },
     onError: (error) => {
       const detail = (error as { response?: { data?: { detail?: unknown } } })
         .response?.data?.detail;
@@ -122,6 +135,18 @@ export default function RunTestPage() {
               <option value="GAS">Gasoline</option>
               <option value="DIESEL">Diesel</option>
             </select>
+          </div>
+          <div className="col-span-2">
+            <label className="block text-sm font-medium text-gray-700">LTMS Transaction Purpose</label>
+            <select
+              {...register("inspectionPurpose")}
+              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {Object.entries(INSPECTION_PURPOSE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">Required by LTMS and locked to this test once started.</p>
           </div>
         </div>
 
@@ -199,6 +224,13 @@ export default function RunTestPage() {
             >
               New Test
             </button>
+            <button
+              type="button"
+              onClick={() => navigate(`/upload?testId=${encodeURIComponent(result.testId)}`)}
+              className="flex-1 rounded-lg bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+            >
+              Continue to LTMS Upload
+            </button>
           </div>
         </div>
       )}
@@ -218,4 +250,3 @@ export default function RunTestPage() {
     </div>
   );
 }
-

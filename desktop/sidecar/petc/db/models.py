@@ -77,6 +77,7 @@ class EmissionTest(Base):
     operator_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
     plate_number: Mapped[str] = mapped_column(String, nullable=False, index=True)
     fuel_type: Mapped[str] = mapped_column(String, nullable=False)  # GAS | DIESEL
+    inspection_purpose: Mapped[str] = mapped_column(String, nullable=False, default="FOR_RENEWAL")
     pass_fail: Mapped[Optional[bool]] = mapped_column(Boolean)
     session_token: Mapped[str] = mapped_column(String, nullable=False)
     analyzer_serial: Mapped[Optional[str]] = mapped_column(String)
@@ -143,7 +144,9 @@ class LtmsSubmission(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     test_id: Mapped[str] = mapped_column(String(36), ForeignKey("emission_tests.id"), nullable=False)
     payload_json: Mapped[Optional[str]] = mapped_column(Text)
-    # PENDING | IN_FLIGHT | ACCEPTED | REJECTED | DEAD | WAITING_FOR_LTMS
+    # PENDING | IN_FLIGHT | BLOCKED | DEFERRED | RECONCILING | PASSED |
+    # FAILED_EVALUATION | ACTION_REQUIRED | AUTH_BLOCKED | DEAD |
+    # legacy ACCEPTED | REJECTED | WAITING_FOR_LTMS
     state: Mapped[str] = mapped_column(String, nullable=False, default="PENDING")
     cloud_submission_id: Mapped[Optional[str]] = mapped_column(String)  # cloud UUID from POST /api/submissions
     certificate_no: Mapped[Optional[str]] = mapped_column(String)

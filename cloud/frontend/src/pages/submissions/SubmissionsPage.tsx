@@ -20,6 +20,8 @@ interface Submission {
   blocked_at: string | null;
   grace_released_at: string | null;
   acceptance_seq: number;
+  charge_snapshot_centavos: number;
+  price_snapshotted_at: string;
 }
 
 interface LedgerEntry {
@@ -39,19 +41,35 @@ interface SubmissionDetail extends Submission {
   dermalog_token: string | null;
   valid_from: string | null;
   valid_until: string | null;
+  cec_number: string | null;
+  ltms_inbox_id: string | null;
+  ltms_evaluation: string | null;
+  ltms_expiry_date: string | null;
+  ltms_error_code: number | null;
+  ltms_error_message: string | null;
   last_attempt_at: string | null;
   next_attempt_at: string | null;
   ledger: LedgerEntry[];
 }
 
-const STATES = ["", "PENDING", "IN_FLIGHT", "ACCEPTED", "REJECTED", "BLOCKED", "DEAD"];
+const STATES = [
+  "", "PENDING", "IN_FLIGHT", "RECONCILING", "DEFERRED", "BLOCKED",
+  "PASSED", "FAILED_EVALUATION", "ACTION_REQUIRED", "AUTH_BLOCKED",
+  "ACCEPTED", "REJECTED", "DEAD",
+];
 
 const STATE_STYLES: Record<string, string> = {
   ACCEPTED: "bg-green-100 text-green-700",
+  PASSED: "bg-green-100 text-green-700",
   PENDING: "bg-blue-100 text-blue-700",
   IN_FLIGHT: "bg-blue-100 text-blue-700",
+  RECONCILING: "bg-purple-100 text-purple-700",
+  DEFERRED: "bg-amber-100 text-amber-800",
   BLOCKED: "bg-amber-100 text-amber-800",
   REJECTED: "bg-red-100 text-red-700",
+  FAILED_EVALUATION: "bg-red-100 text-red-700",
+  ACTION_REQUIRED: "bg-red-100 text-red-700",
+  AUTH_BLOCKED: "bg-red-200 text-red-900",
   DEAD: "bg-gray-200 text-gray-700",
 };
 
@@ -95,8 +113,15 @@ function DetailPanel({ id, onClose }: { id: string; onClose: () => void }) {
               <Field label="OR No.">{data.or_no ?? "—"}</Field>
               <Field label="Created">{formatDateTime(data.created_at)}</Field>
               <Field label="Accepted">{formatDateTime(data.accepted_at)}</Field>
+              <Field label="Quoted CEC price">{formatCentavos(data.charge_snapshot_centavos)}</Field>
+              <Field label="Price quoted at">{formatDateTime(data.price_snapshotted_at)}</Field>
               <Field label="Valid from">{data.valid_from ?? "—"}</Field>
               <Field label="Valid until">{data.valid_until ?? "—"}</Field>
+              <Field label="CEC number">{data.cec_number ?? "—"}</Field>
+              <Field label="LTMS inbox ID">{data.ltms_inbox_id ?? "—"}</Field>
+              <Field label="LTMS evaluation">{data.ltms_evaluation ?? "—"}</Field>
+              <Field label="LTMS expiry">{data.ltms_expiry_date ?? "—"}</Field>
+              <Field label="LTMS error code">{data.ltms_error_code ?? "—"}</Field>
             </div>
 
             {data.state === "BLOCKED" && (
@@ -116,6 +141,12 @@ function DetailPanel({ id, onClose }: { id: string; onClose: () => void }) {
             {data.rejection_reason && (
               <div className="rounded-lg bg-red-50 border border-red-300 p-3 text-xs text-red-800">
                 <span className="font-semibold">Rejected:</span> {data.rejection_reason}
+              </div>
+            )}
+
+            {data.ltms_error_message && data.ltms_error_message !== data.rejection_reason && (
+              <div className="rounded-lg bg-red-50 border border-red-300 p-3 text-xs text-red-800">
+                <span className="font-semibold">LTMS:</span> {data.ltms_error_message}
               </div>
             )}
 

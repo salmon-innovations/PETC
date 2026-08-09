@@ -13,6 +13,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,11 +62,16 @@ public class SubmissionJobRunner {
      */
     @Scheduled(fixedDelay = 2000)
     public void processPending() {
+        int expired = service.moveExpiredClaimsToReconciling();
+        if (expired > 0) {
+            log.warn("Moved {} expired submission claim(s) to reconciliation", expired);
+        }
         List<SubmissionService.PendingSubmission> batch = service.claimPending(BATCH_SIZE);
-        long charge = settings.chargePerUploadCentavos();
         Map<String, Long> projected = new HashMap<>();
 
         for (var sub : batch) {
+            long charge = sub.chargeSnapshotCentavos();
+            Long remainingBefore = null;
             // Rows the grace sweep already released bypass the wallet entirely.
             // This is deliberately the only path that lets a balance go
             // negative: a billing shortfall must not become a DO 2023-008
@@ -74,14 +82,21 @@ public class SubmissionJobRunner {
                     service.markBlocked(sub.id(), sub.tenantId(), remaining);
                     continue;
                 }
-                projected.put(sub.tenantId(), remaining - charge);
+                remainingBefore = remaining;
             }
-            process(sub);
+            boolean accepted = process(sub, charge);
+            if (accepted && charge > 0) {
+                if (remainingBefore != null) {
+                    projected.put(sub.tenantId(), remainingBefore - charge);
+                } else {
+                    projected.computeIfPresent(
+                            sub.tenantId(), (ignored, value) -> value - charge);
+                }
+            }
         }
     }
 
-    private void process(SubmissionService.PendingSubmission sub) {
-        service.markInFlight(sub.id());
+    private boolean process(SubmissionService.PendingSubmission sub, long chargeCentavos) {
         try {
             EmissionPayload payload = toEmissionPayload(sub);
             SubmissionResult result = govClient.submitEmissionResult(payload);
@@ -96,16 +111,20 @@ public class SubmissionJobRunner {
                         result.orNo(),
                         result.dermalogToken(),
                         result.validFrom(),
-                        result.validUntil()
+                        result.validUntil(),
+                        chargeCentavos
                 );
+                return true;
             } else {
                 // Gov rejections are definitive — do not retry
                 service.markRejected(sub.id(), result.rejectionReason());
+                return false;
             }
         } catch (Exception e) {
             log.warn("Submission {} attempt {} failed: {}", sub.id(), sub.attempts(), e.getMessage());
             service.markRetry(sub.id(), sub.attempts(),
                     settings.maxAttempts(), settings.backoffSeconds());
+            return false;
         }
     }
 
@@ -117,6 +136,8 @@ public class SubmissionJobRunner {
 
             Map<String, Object> readings = (Map<String, Object>) payload.getOrDefault("readings", Map.of());
             List<Map<String, Object>> rawPhotos = (List<Map<String, Object>>) payload.getOrDefault("photos", List.of());
+            Map<String, Object> vehicle = objectMap(payload.get("vehicle"));
+            Map<String, Object> verdict = objectMap(payload.get("verdict"));
 
             List<EmissionPayload.PhotoRef> photos = rawPhotos.stream()
                     .map(p -> new EmissionPayload.PhotoRef(
@@ -129,18 +150,54 @@ public class SubmissionJobRunner {
 
             return new EmissionPayload(
                     sub.testId(),
-                    (String) payload.getOrDefault("plateNumber", ""),
-                    (String) payload.getOrDefault("licenseNo", ""),
-                    (String) payload.getOrDefault("fuelType", "GAS"),
-                    Boolean.TRUE.equals(payload.get("passFail")),
+                    firstNonBlank(stringValue(vehicle.get("plateNo")),
+                            stringValue(vehicle.get("plateNumber")), stringValue(payload.get("plateNumber"))),
+                    stringValue(payload.get("licenseNo")),
+                    firstNonBlank(stringValue(vehicle.get("fuelType")),
+                            stringValue(payload.get("fuelType")), "GAS"),
+                    verdict.get("pass") instanceof Boolean pass
+                            ? pass : Boolean.TRUE.equals(payload.get("passFail")),
                     readings,
                     photos,
-                    (String) payload.getOrDefault("operatorId", ""),
+                    stringValue(payload.get("operatorId")),
                     sub.tenantId(),
-                    Instant.now()
+                    capturedAt(payload)
             );
         } catch (Exception e) {
             throw new RuntimeException("Failed to deserialise submission payload for " + sub.id(), e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> objectMap(Object value) {
+        return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+    }
+
+    private static String stringValue(Object value) {
+        return value == null ? "" : value.toString();
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) return value;
+        }
+        return "";
+    }
+
+    /** Preserve the captured test time; dispatch time is only a legacy fallback. */
+    private static Instant capturedAt(Map<String, Object> payload) {
+        String raw = firstNonBlank(stringValue(payload.get("testDatetime")),
+                stringValue(payload.get("testedAt")));
+        if (raw.isBlank()) return Instant.now();
+        try {
+            return Instant.parse(raw);
+        } catch (java.time.format.DateTimeParseException ignored) {
+            try {
+                return OffsetDateTime.parse(raw).toInstant();
+            } catch (java.time.format.DateTimeParseException noOffset) {
+                // Existing SQLite rows store UTC timestamps without an offset.
+                return LocalDateTime.parse(raw).toInstant(ZoneOffset.UTC);
+            }
         }
     }
 }

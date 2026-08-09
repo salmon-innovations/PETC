@@ -73,6 +73,9 @@ def _additive_sqlite_migrations() -> None:
         "gas_test_results": {
             "no_ppm": "FLOAT",
         },
+        "emission_tests": {
+            "inspection_purpose": "VARCHAR DEFAULT 'FOR_RENEWAL' NOT NULL",
+        },
         "ltms_submissions": {
             "payload_json": "TEXT",
             "ltms_reference_no": "VARCHAR",

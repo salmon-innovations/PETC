@@ -12,7 +12,7 @@ import hashlib
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 import uvicorn
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
@@ -101,6 +101,38 @@ def _get_printer() -> Printer:
     return _printer
 
 
+def _canonical_submission_payload(caller_payload: dict) -> tuple[dict, str]:
+    """Attach the sidecar-commissioned center identity to a cloud payload.
+
+    The renderer is untrusted for tenant routing.  Production must have an
+    issued PETC_CENTER_ID and may not override it; development keeps the
+    previous fallback so local/mock workflows remain usable without
+    commissioning configuration.
+    """
+    configured_center_id = os.environ.get("PETC_CENTER_ID", "").strip()
+    caller_center_id = str(caller_payload.get("centerId") or "").strip()
+
+    if is_production():
+        if not configured_center_id:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "PETC_CENTER_ID is required for production submission",
+            )
+        if caller_center_id and caller_center_id != configured_center_id:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "payload.centerId conflicts with the commissioned PETC_CENTER_ID",
+            )
+        center_id = configured_center_id
+    else:
+        # A supplied development value remains supported when no sidecar
+        # configuration exists, but a configured local center wins.
+        center_id = configured_center_id or caller_center_id or "dev-center"
+
+    canonical_payload = {**caller_payload, "centerId": center_id}
+    return canonical_payload, center_id
+
+
 # ---------------------------------------------------------------------------
 # Schema
 # ---------------------------------------------------------------------------
@@ -108,6 +140,11 @@ class StartTestRequest(BaseModel):
     operator_id: str
     plate_number: str
     fuel_type: str  # "GAS" | "DIESEL"
+    inspection_purpose: Literal[
+        "FOR_RENEWAL",
+        "FOR_INIT_REG",
+        "FOR_COMPLIANCE",
+    ] = "FOR_RENEWAL"
 
 
 class StartTestResponse(BaseModel):
@@ -312,6 +349,7 @@ def start_test(
             operator_id=req.operator_id,
             plate_number=plate_number,
             fuel_type=req.fuel_type.upper(),
+            inspection_purpose=req.inspection_purpose,
             session_token=token,
             started_at=started_at,
             tested_at=started_at,
@@ -320,6 +358,7 @@ def start_test(
         _audit(session, "TEST_START", "emission_test", test_id, {
             "plateNumber": plate_number,
             "fuelType": req.fuel_type.upper(),
+            "inspectionPurpose": req.inspection_purpose,
             "operatorId": req.operator_id,
         }, req.operator_id)
         session.commit()
@@ -333,6 +372,7 @@ def start_test(
             "operator_id": req.operator_id,
             "plate_number": plate_number,
             "fuel_type": req.fuel_type.upper(),
+            "inspection_purpose": req.inspection_purpose,
             "started_at": started_at.isoformat(),
         },
     )
@@ -406,6 +446,7 @@ def get_result(
             session.merge(DieselTestResult(test_id=test.id, **readings))
         test_id = test.id
         plate_number = test.plate_number
+        inspection_purpose = test.inspection_purpose
         photo_count = len(test.photos)
         _audit(session, "RESULT_CAPTURE", "emission_test", test.id, {
             "fuelType": result.fuel_type.value,
@@ -423,6 +464,7 @@ def get_result(
             "session_token": session_token,
             "plate_number": plate_number,
             "fuel_type": result.fuel_type.value,
+            "inspection_purpose": inspection_purpose,
             "pass_fail": result.pass_fail,
             "serial_no": result.serial_no,
             "captured_at": captured_at.isoformat(),
@@ -888,14 +930,12 @@ def submit_upload_v1(
     from ..db.models import EmissionTest, GovOutbox, LtmsSubmission, TestPhoto
     from .. import cloud_client as cc
 
-    payload = req.payload
+    payload, center_id = _canonical_submission_payload(req.payload)
     test_id = payload.get("testId")
     if not test_id:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "payload.testId is required")
 
     now = datetime.now(timezone.utc)
-    center_id = payload.get("centerId") or os.environ.get("PETC_CENTER_ID", "dev-center")
-
     with SessionLocal() as session:
         test = session.get(EmissionTest, test_id)
         if test is None:
@@ -997,9 +1037,11 @@ def submit_upload_v1(
         import time
         deadline = time.monotonic() + 60.0
         final_status = None
+        latest_status = None
         while time.monotonic() < deadline:
             try:
                 st = cloud.get_submission(cloud_submission_id)
+                latest_status = st
                 if st.is_terminal:
                     final_status = st
                     break
@@ -1008,19 +1050,30 @@ def submit_upload_v1(
             time.sleep(1)
 
         if final_status is None:
-            # Timed out — leave in WAITING_FOR_LTMS; reconciler will pick it up
+            # Keep a known non-terminal cloud state (for example DEFERRED) so
+            # operators see why it is waiting.  If polling never succeeded,
+            # preserve the legacy local WAITING_FOR_LTMS marker.
+            waiting_state = (
+                latest_status.state if latest_status and latest_status.is_known_nonterminal
+                else "WAITING_FOR_LTMS"
+            )
             with SessionLocal() as session:
                 sub = session.get(LtmsSubmission, sub_id)
                 if sub:
-                    sub.state = "WAITING_FOR_LTMS"
-                    sub.last_error = "LTMS did not return a terminal status during realtime polling window"
+                    sub.state = waiting_state
+                    sub.last_error = (
+                        latest_status.rejection_reason if latest_status and latest_status.is_known_nonterminal
+                        else f"Unexpected non-terminal cloud state: {latest_status.state}"
+                        if latest_status
+                        else "LTMS did not return a terminal status during realtime polling window"
+                    )
                     _audit(session, "SUBMISSION_WAITING_FOR_LTMS", "ltms_submission", sub_id, {
                         "testId": test_id,
                         "incidentDueAt": (now + timedelta(hours=24)).isoformat(),
                     })
                 session.commit()
             return {
-                "state": "WAITING_FOR_LTMS",
+                "state": waiting_state,
                 "certificateNo": None,
                 "rejectionReason": None,
                 "queued": True,
@@ -1035,7 +1088,7 @@ def submit_upload_v1(
         ltms_ref_no = final_status.ltms_ref_no
 
         pdf_path: Optional[str] = None
-        if result_state == "ACCEPTED" and cert_no:
+        if final_status.is_success and cert_no:
             from ..cec.pdf import render_cec_pdf
             try:
                 pdf_path = str(render_cec_pdf(
@@ -1061,10 +1114,10 @@ def submit_upload_v1(
                 sub.dermalog_token = final_status.dermalog_token
                 sub.valid_from = final_status.valid_from
                 sub.valid_until = final_status.valid_until
-                sub.accepted_at = now if result_state == "ACCEPTED" else None
+                sub.accepted_at = now if final_status.is_success else None
                 sub.last_error = rejection_reason
                 sub.pdf_path = pdf_path
-                _audit(session, "SUBMISSION_ACCEPTED" if result_state == "ACCEPTED" else "SUBMISSION_REJECTED",
+                _audit(session, "SUBMISSION_ACCEPTED" if final_status.is_success else "SUBMISSION_REJECTED",
                        "ltms_submission", sub_id, {
                            "testId": test_id,
                            "state": result_state,
@@ -1073,7 +1126,7 @@ def submit_upload_v1(
                            "rejectionReason": rejection_reason,
                        })
             test_row = session.get(EmissionTest, test_id)
-            if test_row and result_state == "ACCEPTED":
+            if test_row and final_status.is_success:
                 test_row.uploaded_at = now
             session.commit()
 
@@ -1258,8 +1311,8 @@ def print_cec(
         sub = session.get(LtmsSubmission, submission_id)
         if sub is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "submission not found")
-        if sub.state != "ACCEPTED" or not sub.certificate_no:
-            raise HTTPException(status.HTTP_409_CONFLICT, "submission is not in ACCEPTED state")
+        if sub.state not in ("PASSED", "ACCEPTED") or not sub.certificate_no:
+            raise HTTPException(status.HTTP_409_CONFLICT, "submission is not in PASSED state")
 
         test = session.get(EmissionTest, sub.test_id)
         if test is None:
@@ -1397,6 +1450,7 @@ def list_tests(
                 "id": t.id,
                 "plateNumber": t.plate_number,
                 "fuelType": t.fuel_type,
+                "inspectionPurpose": t.inspection_purpose,
                 "passFail": t.pass_fail,
                 "startedAt": t.started_at.isoformat() if t.started_at else None,
                 "completedAt": t.completed_at.isoformat() if t.completed_at else None,
@@ -1893,8 +1947,22 @@ def _validate_submission_payload(payload: dict, test, readings: dict, photo_coun
     _require_nonblank(payload.get("centerName"), "centerName")
     _require_nonblank(payload.get("testId"), "testId")
     vehicle = payload.get("vehicle") or {}
+    inspection = payload.get("inspection") or {}
     owner = payload.get("owner") or {}
     technician = payload.get("technician") or {}
+    purpose = inspection.get("purpose")
+    _require_nonblank(purpose, "inspection.purpose")
+    purpose = str(purpose).strip()
+    if purpose not in {"FOR_RENEWAL", "FOR_INIT_REG", "FOR_COMPLIANCE"}:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "inspection.purpose must be FOR_RENEWAL, FOR_INIT_REG, or FOR_COMPLIANCE",
+        )
+    if purpose != test.inspection_purpose:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "inspection.purpose must match the purpose selected when the test started",
+        )
     _require_nonblank(vehicle.get("plateNo"), "vehicle.plateNo")
     _require_nonblank(vehicle.get("fuelType"), "vehicle.fuelType")
     _require_nonblank(test.analyzer_serial, "analyzer serial")
@@ -2074,6 +2142,7 @@ def _test_detail_to_response(test) -> dict:
         "id": test.id,
         "plateNumber": test.plate_number,
         "fuelType": test.fuel_type,
+        "inspectionPurpose": test.inspection_purpose,
         "passFail": test.pass_fail,
         "startedAt": test.started_at.isoformat() if test.started_at else None,
         "completedAt": test.completed_at.isoformat() if test.completed_at else None,

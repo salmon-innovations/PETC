@@ -46,6 +46,29 @@ variable "government_require_live" {
   default = false
 }
 
+variable "ltms_mode" {
+  type        = string
+  default     = "mock"
+  description = "LTMS client mode. This does not enable network traffic by itself."
+
+  validation {
+    condition     = contains(["mock", "qa_disabled", "qa_enabled", "production"], var.ltms_mode)
+    error_message = "ltms_mode must be mock, qa_disabled, qa_enabled, or production"
+  }
+}
+
+variable "ltms_outbound_enabled" {
+  type        = bool
+  default     = false
+  description = "Explicit gate for any outbound LTMS request."
+}
+
+variable "ltms_upload_enabled" {
+  type        = bool
+  default     = false
+  description = "Independent gate for mutating LTMS CEC upload and replacement calls."
+}
+
 variable "service_desired_count" {
   type    = number
   default = 1

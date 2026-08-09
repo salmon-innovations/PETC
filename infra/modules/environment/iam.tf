@@ -71,6 +71,22 @@ resource "aws_iam_role_policy" "ecs_task_s3" {
   })
 }
 
+resource "aws_iam_role_policy" "ecs_task_ltms_center_secrets" {
+  name = "read-ltms-center-secrets"
+  role = aws_iam_role.ecs_task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetSecretValue",
+      ]
+      Resource = "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${local.name}/ltms-centers/*"
+    }]
+  })
+}
+
 resource "aws_iam_role" "github_deploy" {
   name = "${local.name}-github-deploy"
   assume_role_policy = jsonencode({

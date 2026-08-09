@@ -17,10 +17,15 @@ module "petc" {
   spring_profile          = "production"
   government_mock         = true
   government_require_live = false
-  service_desired_count   = 2
-  bootstrap_mode          = true
-  log_retention_days      = 365
-  object_retention_days   = 1095
+  # The production NAT is allowlisted, but LTMS activity remains disabled
+  # until a separately approved UAT exercise is configured and deployed.
+  ltms_mode             = "qa_disabled"
+  ltms_outbound_enabled = false
+  ltms_upload_enabled   = false
+  service_desired_count = 2
+  bootstrap_mode        = true
+  log_retention_days    = 365
+  object_retention_days = 1095
 
   create_rds                  = true
   application_database_name   = "petc_prod"

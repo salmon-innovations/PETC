@@ -36,7 +36,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      DB_URL: jdbc:postgresql://host.docker.internal:5432/petc
+      DB_URL: ${PETC_DB_URL:-jdbc:postgresql://host.docker.internal:5432/petc}
       DB_USER: petc
       DB_PASS: petc
       S3_ENDPOINT: http://minio:9000

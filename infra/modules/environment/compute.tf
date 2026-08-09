@@ -162,6 +162,9 @@ resource "aws_ecs_task_definition" "api" {
       { name = "S3_REGION", value = var.aws_region },
       { name = "GOV_MOCK", value = tostring(var.government_mock) },
       { name = "GOV_REQUIRE_LIVE", value = tostring(var.government_require_live) },
+      { name = "LTMS_MODE", value = var.ltms_mode },
+      { name = "LTMS_OUTBOUND_ENABLED", value = tostring(var.ltms_outbound_enabled) },
+      { name = "LTMS_UPLOAD_ENABLED", value = tostring(var.ltms_upload_enabled) },
       { name = "DEV_CENTER_KEY_ENABLED", value = "false" },
       { name = "JAVA_TOOL_OPTIONS", value = "-XX:MaxRAMPercentage=75.0" },
     ]
