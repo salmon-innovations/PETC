@@ -1,4 +1,6 @@
-FROM eclipse-temurin:21-jdk-alpine AS build
+# The application JAR is architecture-neutral. Build it on the native CI
+# platform so an ARM64 runtime image does not force Gradle through QEMU.
+FROM --platform=$BUILDPLATFORM eclipse-temurin:21-jdk-alpine AS build
 WORKDIR /app
 COPY gradlew settings.gradle.kts build.gradle.kts ./
 COPY gradle ./gradle
