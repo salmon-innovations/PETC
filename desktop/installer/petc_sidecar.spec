@@ -33,7 +33,8 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', 'matplotlib', 'numpy', 'pywin32'],
+    # NumPy must remain bundled because OpenCV uses it for camera frames.
+    excludes=['tkinter', 'matplotlib', 'pywin32'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

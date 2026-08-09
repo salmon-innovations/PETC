@@ -56,6 +56,7 @@ class RuntimeConfig:
     camera: str
     printer: str
     gov_mock: bool
+    enforce_hardware: bool
     cloud_url: str
     center_id: str
     cloud_key: str
@@ -68,6 +69,7 @@ def validate_desktop_startup_config(config: dict) -> RuntimeConfig:
         camera=str(config.get("camera", "")),
         printer=str(config.get("printer", "")),
         gov_mock=bool(config.get("gov_mock")),
+        enforce_hardware=bool(config.get("enforce_hardware", True)),
         cloud_url=str(config.get("cloud_url", "")).strip(),
         center_id=str(config.get("center_id", "")).strip(),
         cloud_key=str(config.get("cloud_key", "")).strip(),
@@ -76,14 +78,15 @@ def validate_desktop_startup_config(config: dict) -> RuntimeConfig:
         return runtime
 
     errors: list[str] = []
-    if runtime.gov_mock:
-        errors.append("PETC_GOV_MOCK must be false")
-    if runtime.analyzer == "mock":
-        errors.append("PETC_ANALYZER must use a real analyzer adapter")
-    if runtime.camera == "mock":
-        errors.append("PETC_CAMERA must use a real camera adapter")
-    if runtime.printer == "mock":
-        errors.append("PETC_PRINTER must use a real printer adapter")
+    if runtime.enforce_hardware:
+        if runtime.gov_mock:
+            errors.append("PETC_GOV_MOCK must be false")
+        if runtime.analyzer == "mock":
+            errors.append("PETC_ANALYZER must use a real analyzer adapter")
+        if runtime.camera == "mock":
+            errors.append("PETC_CAMERA must use a real camera adapter")
+        if runtime.printer == "mock":
+            errors.append("PETC_PRINTER must use a real printer adapter")
     if not runtime.cloud_url or "localhost" in runtime.cloud_url or "127.0.0.1" in runtime.cloud_url:
         errors.append("PETC_CLOUD_URL must point to the authorized cloud endpoint")
     if runtime.center_id in {"", "dev-center", "mock-center"}:

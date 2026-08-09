@@ -3,7 +3,10 @@ package com.petc.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.util.StringUtils;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -28,22 +31,37 @@ public class S3Config {
 
     @Bean
     public S3Client s3Client() {
-        return S3Client.builder()
-                .endpointOverride(URI.create(endpoint))
+        var builder = S3Client.builder()
                 .region(Region.of(region))
-                .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(accessKey, secretKey)))
-                .forcePathStyle(true)   // required for MinIO
-                .build();
+                .credentialsProvider(credentialsProvider());
+
+        if (StringUtils.hasText(endpoint)) {
+            builder.endpointOverride(URI.create(endpoint)).forcePathStyle(true);
+        }
+        return builder.build();
     }
 
     @Bean
     public S3Presigner s3Presigner() {
-        return S3Presigner.builder()
-                .endpointOverride(URI.create(endpoint))
+        var builder = S3Presigner.builder()
                 .region(Region.of(region))
-                .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(accessKey, secretKey)))
-                .build();
+                .credentialsProvider(credentialsProvider());
+
+        if (StringUtils.hasText(endpoint)) {
+            builder.endpointOverride(URI.create(endpoint));
+        }
+        return builder.build();
+    }
+
+    private AwsCredentialsProvider credentialsProvider() {
+        boolean hasAccessKey = StringUtils.hasText(accessKey);
+        boolean hasSecretKey = StringUtils.hasText(secretKey);
+        if (hasAccessKey != hasSecretKey) {
+            throw new IllegalStateException("S3_ACCESS_KEY and S3_SECRET_KEY must be provided together");
+        }
+        if (hasAccessKey) {
+            return StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey));
+        }
+        return DefaultCredentialsProvider.create();
     }
 }

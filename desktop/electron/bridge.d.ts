@@ -3,6 +3,7 @@ interface PetcBridge {
   getSidecarUrl(): Promise<string>;
   getUserDataPath(): Promise<string>;
   openPath(filePath: string): Promise<string>;
+  importCommissioning(): Promise<{ imported: boolean; message: string }>;
   onUpdateAvailable(cb: () => void): () => void;
   onUpdateReady(cb: () => void): () => void;
   installUpdate(): void;

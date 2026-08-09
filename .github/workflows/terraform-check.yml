@@ -1,0 +1,31 @@
+name: Terraform checks
+
+on:
+  pull_request:
+    paths: ["infra/**"]
+  push:
+    branches: [release, main]
+    paths: ["infra/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        directory: [infra/bootstrap, infra/environments/uat, infra/environments/prod]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.4"
+      - name: Check formatting
+        run: terraform fmt -check -recursive infra
+      - name: Initialize without remote state
+        working-directory: ${{ matrix.directory }}
+        run: terraform init -backend=false
+      - name: Validate
+        working-directory: ${{ matrix.directory }}
+        run: terraform validate

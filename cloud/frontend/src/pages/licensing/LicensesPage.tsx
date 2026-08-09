@@ -15,6 +15,34 @@ interface License {
 interface NewLicenseResponse {
   id: string;
   rawKey: string;   // shown once, never stored in plain text again
+  tenantId: string;
+  centerId: string;
+}
+
+function downloadCommissioningFile(license: NewLicenseResponse) {
+  const uat = window.location.hostname === "localhost" || window.location.hostname.startsWith("uat-");
+  const cloudUrl = uat ? "https://uat-api.petc.siiportal.com" : "https://app.petc.siiportal.com";
+  const updateUrl = uat
+    ? "https://uat-app.petc.siiportal.com/downloads/desktop/uat"
+    : "https://petc.siiportal.com/downloads/desktop/stable";
+  const profile = uat ? "accreditation-demo" : "production";
+  const contents = [
+    "# Center-specific PETC commissioning file. Keep this file restricted.",
+    `petc.profile=${profile}`,
+    `petc.cloud.url=${cloudUrl}`,
+    `petc.cloud.key=${license.rawKey}`,
+    `petc.center.id=${license.centerId}`,
+    `petc.update.url=${updateUrl}`,
+    "petc.enforce.hardware=false",
+    "",
+  ].join("\n");
+
+  const url = URL.createObjectURL(new Blob([contents], { type: "text/plain;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `petc-${license.centerId}.properties`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 export default function LicensesPage() {
@@ -72,10 +100,19 @@ export default function LicensesPage() {
         </div>
 
         {newKey && (
-          <div className="rounded-lg bg-yellow-50 border border-yellow-300 p-4 space-y-1">
+          <div className="rounded-lg bg-yellow-50 border border-yellow-300 p-4 space-y-2">
             <p className="text-xs font-semibold text-yellow-800">Copy this key now — it won't be shown again:</p>
             <code className="block text-sm font-mono text-yellow-900 break-all">{newKey.rawKey}</code>
-            <button onClick={() => setNewKey(null)} className="text-xs text-yellow-700 underline mt-1">Dismiss</button>
+            <p className="text-xs text-yellow-800">Center ID: <code>{newKey.centerId}</code></p>
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => downloadCommissioningFile(newKey)}
+                className="rounded bg-yellow-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-yellow-800"
+              >
+                Download commissioning file
+              </button>
+              <button onClick={() => setNewKey(null)} className="text-xs text-yellow-700 underline">Dismiss</button>
+            </div>
           </div>
         )}
       </div>

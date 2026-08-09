@@ -1,0 +1,6 @@
+bucket       = "petc-terraform-state-016257615426"
+key          = "petc/prod/terraform.tfstate"
+region       = "ap-southeast-1"
+profile      = "salmon-innovations"
+encrypt      = true
+use_lockfile = true

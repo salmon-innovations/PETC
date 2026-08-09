@@ -3,8 +3,9 @@ productName: PETC Desktop
 copyright: "Copyright © 2025 Salmon Innovations"
 
 directories:
-  buildResources: installer/assets
   output: dist/installer
+
+artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
 
 # Renderer built bundle
 files:
@@ -32,14 +33,12 @@ asar: true
 
 mac:
   target:
-    - target: dmg
-      arch: [x64, arm64]
+    - dmg
+    - zip
   category: public.app-category.productivity
-  icon: installer/assets/icon.icns
-  hardenedRuntime: true
+  identity: null
+  hardenedRuntime: false
   gatekeeperAssess: false
-  entitlements: installer/assets/entitlements.mac.plist
-  entitlementsInherit: installer/assets/entitlements.mac.plist
 
 dmg:
   contents:
@@ -54,24 +53,15 @@ win:
   target:
     - target: nsis
       arch: [x64]
-  icon: installer/assets/icon.ico
 
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
-  installerIcon: installer/assets/icon.ico
-  uninstallerIcon: installer/assets/icon.ico
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: PETC Desktop
 
-linux:
-  target:
-    - target: AppImage
-      arch: [x64]
-  category: Office
-
 publish:
   provider: generic
-  url: https://releases.petc.example.com
+  url: https://petc.siiportal.com/downloads/desktop/stable
   channel: stable

@@ -10,7 +10,7 @@ help:
 
 # ── Infrastructure ────────────────────────────────────────────────────────────
 
-dev-infra: ## Start MinIO (Postgres + Redis from shared containers)
+dev-infra: ## Start MinIO (Postgres comes from the shared host container)
 	docker compose up -d minio
 
 dev: ## Start cloud backend + cloud frontend + MinIO
@@ -39,7 +39,7 @@ dev-cloud-frontend: ## Vite dev server for cloud operator portal (port 5174)
 	cd cloud/frontend && npm run dev
 
 dev-backend: ## Spring Boot dev (requires JAVA_HOME pointing to JDK 21)
-	cd cloud/backend && ./gradlew bootRun
+	cd cloud && ./gradlew bootRun
 
 dev-sidecar: ## Run Python sidecar directly without Electron
 	cd desktop/sidecar && python3 -m petc.service
@@ -53,7 +53,7 @@ build-cloud-frontend: ## Production build of cloud operator portal
 	cd cloud/frontend && npm run build
 
 build-backend: ## Build Spring Boot JAR
-	cd cloud/backend && ./gradlew bootJar
+	cd cloud && ./gradlew bootJar
 
 build-sidecar: ## PyInstaller: freeze sidecar → desktop/sidecar/dist/petc/
 	cd desktop/sidecar && pyinstaller ../installer/petc_sidecar.spec \
@@ -68,7 +68,7 @@ test-sidecar: ## Run Python sidecar tests
 	cd desktop/sidecar && python3 -m pytest -v
 
 test-backend: ## Run Spring Boot tests (uses Testcontainers)
-	cd cloud/backend && ./gradlew test
+	cd cloud && ./gradlew test
 
 test-renderer: ## Run Vitest for desktop renderer
 	cd desktop/renderer && npm test
