@@ -220,9 +220,12 @@ resource "aws_ecs_task_definition" "db_bootstrap" {
         SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'role', :'pass')
         WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'role') \gexec
         SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'role', :'pass') \gexec
-        SELECT format('CREATE DATABASE %I OWNER %I', :'db', :'role')
+        SELECT format('CREATE DATABASE %I', :'db')
         WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'db') \gexec
-        SELECT format('ALTER DATABASE %I OWNER TO %I', :'db', :'role') \gexec
+        SELECT format('GRANT CONNECT, TEMPORARY ON DATABASE %I TO %I', :'db', :'role') \gexec
+        SQL
+        psql -h "$DB_HOST" -p "$DB_PORT" -U "$MASTER_USERNAME" -d "$APP_DB" -v ON_ERROR_STOP=1 -v role="$APP_USERNAME" <<'SQL'
+        SELECT format('GRANT USAGE, CREATE ON SCHEMA public TO %I', :'role') \gexec
         SQL
       EOT
     ]
