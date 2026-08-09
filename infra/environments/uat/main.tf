@@ -18,7 +18,7 @@ module "petc" {
   government_mock         = true
   government_require_live = false
   service_desired_count   = 1
-  bootstrap_mode          = true
+  bootstrap_mode          = false
   log_retention_days      = 90
   object_retention_days   = 1095
 
