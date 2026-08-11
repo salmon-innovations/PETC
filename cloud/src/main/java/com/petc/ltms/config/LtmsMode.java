@@ -7,7 +7,5 @@ package com.petc.ltms.config;
  */
 public enum LtmsMode {
     MOCK,
-    QA_DISABLED,
-    QA_ENABLED,
     PRODUCTION
 }

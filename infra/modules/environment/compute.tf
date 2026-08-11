@@ -165,6 +165,11 @@ resource "aws_ecs_task_definition" "api" {
       { name = "LTMS_MODE", value = var.ltms_mode },
       { name = "LTMS_OUTBOUND_ENABLED", value = tostring(var.ltms_outbound_enabled) },
       { name = "LTMS_UPLOAD_ENABLED", value = tostring(var.ltms_upload_enabled) },
+      { name = "LTMS_PRODUCTION_UPLOAD_ENABLED", value = tostring(var.ltms_production_upload_enabled) },
+      { name = "LTMS_COMMISSIONING_APPROVED", value = tostring(var.ltms_commissioning_approved) },
+      { name = "LTMS_ALLOWED_HOSTS", value = join(",", var.ltms_allowed_hosts) },
+      { name = "LTMS_PETC_BASE_URL", value = var.ltms_petc_base_url },
+      { name = "LTMS_JWT_BASE_URL", value = var.ltms_jwt_base_url },
       { name = "DEV_CENTER_KEY_ENABLED", value = "false" },
       { name = "JAVA_TOOL_OPTIONS", value = "-XX:MaxRAMPercentage=75.0" },
     ]

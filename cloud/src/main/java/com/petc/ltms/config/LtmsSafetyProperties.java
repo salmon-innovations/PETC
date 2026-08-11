@@ -16,6 +16,7 @@ public class LtmsSafetyProperties {
     private LtmsMode mode = LtmsMode.MOCK;
     private boolean outboundEnabled;
     private boolean uploadEnabled;
+    private boolean productionUploadEnabled;
     private boolean commissioningApproved;
     private List<String> allowedHosts = new ArrayList<>();
 
@@ -41,6 +42,19 @@ public class LtmsSafetyProperties {
 
     public void setUploadEnabled(boolean uploadEnabled) {
         this.uploadEnabled = uploadEnabled;
+    }
+
+    /**
+     * Production mutations require this additional deployment-level opt-in.
+     * It deliberately defaults to false so a live client or generic upload setting
+     * cannot enable CEC upload/replacement in production.
+     */
+    public boolean isProductionUploadEnabled() {
+        return productionUploadEnabled;
+    }
+
+    public void setProductionUploadEnabled(boolean productionUploadEnabled) {
+        this.productionUploadEnabled = productionUploadEnabled;
     }
 
     public boolean isCommissioningApproved() {

@@ -62,6 +62,29 @@ class LtmsTokenManagerTest {
         assertEquals(1, calls.get());
     }
 
+    @Test void cacheLifetimeIsCappedAtTwentyFourHoursFromIssuedAt() {
+        ParsedLtmsJwt longLived = new ParsedLtmsJwt("raw", CLOCK.instant().minus(Duration.ofHours(2)), CLOCK.instant().plus(Duration.ofDays(7)));
+        LtmsTokenRecord record = new LtmsTokenRecord(credentials().key(), longLived);
+        assertEquals(longLived.issuedAt().plus(Duration.ofHours(24)), record.usableUntil());
+        assertTrue(record.usableAt(CLOCK.instant().plus(Duration.ofHours(21)), Duration.ZERO));
+        assertFalse(record.usableAt(CLOCK.instant().plus(Duration.ofHours(22)), Duration.ZERO));
+    }
+
+    @Test void error312ReusesCacheAndDoesNotTryToAuthenticateAgain() {
+        AtomicInteger calls = new AtomicInteger();
+        InMemoryLtmsTokenCache cache = new InMemoryLtmsTokenCache();
+        LtmsCredentials credentials = credentials();
+        ParsedLtmsJwt cached = new LtmsJwtParser(new ObjectMapper()).parseForScheduling(fixtureJwt());
+        cache.store(new LtmsTokenRecord(credentials.key(), cached));
+        LtmsTokenManager manager = new LtmsTokenManager(cache, new InMemoryLtmsTokenLock(), new InMemoryLtmsCenterAccessState(), ignored -> {
+            calls.incrementAndGet();
+            throw new LtmsRemoteException("already issued", 312, "inbox");
+        }, new LtmsJwtParser(new ObjectMapper()), CLOCK, Duration.ofHours(2));
+
+        assertEquals(cached.rawToken(), manager.refreshOnce(credentials).rawToken());
+        assertEquals(1, calls.get());
+    }
+
     private static LtmsTokenManager manager(LtmsJwtClient client) {
         return new LtmsTokenManager(new InMemoryLtmsTokenCache(), new InMemoryLtmsTokenLock(), new InMemoryLtmsCenterAccessState(), client,
                 new LtmsJwtParser(new ObjectMapper()), CLOCK, Duration.ZERO);

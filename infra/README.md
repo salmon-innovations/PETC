@@ -119,16 +119,19 @@ operation; production startup will then fail closed on mock adapters.
 
 ## LTMS deployment gates
 
-The ECS task receives three independent LTMS settings from Terraform:
+The ECS task receives production-only LTMS settings from Terraform:
 
 - `LTMS_MODE` selects the logical LTMS mode but never enables traffic by itself.
 - `LTMS_OUTBOUND_ENABLED` permits any LTMS network request only when explicitly true.
 - `LTMS_UPLOAD_ENABLED` separately permits mutating CEC upload/replacement calls.
+- `LTMS_PRODUCTION_UPLOAD_ENABLED` is an additional disabled-by-default gate for production CEC upload/replacement calls.
+- `LTMS_COMMISSIONING_APPROVED` records the separate approval required before production egress.
+- `LTMS_ALLOWED_HOSTS`, `LTMS_PETC_BASE_URL`, and `LTMS_JWT_BASE_URL` define the exact HTTPS destinations.
 
-Both UAT and production currently set the two enablement flags to `false` and
-use `qa_disabled`. The UAT portal therefore cannot contact LTMS. Although only
-the production NAT IP is allowlisted, using that network for a future controlled
-UAT exercise must not be treated as production go-live.
+Both UAT and production currently keep all enablement flags `false`. UAT uses
+mock mode and therefore cannot contact LTMS. Production selects the only LTMS
+environment that exists, but still cannot make a request until commissioning,
+egress, upload, and production-upload settings are all explicitly enabled.
 
 The current packages are unsigned. Windows displays an unknown-publisher
 warning. macOS requires the operator to approve the quarantined application,

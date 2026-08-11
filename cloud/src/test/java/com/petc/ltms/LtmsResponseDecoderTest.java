@@ -33,9 +33,11 @@ class LtmsResponseDecoderTest {
 
     @Test void extractsSupportFieldsFromHeadersWhenBodyIsEmpty() {
         var response = LtmsResponseDecoder.decode(mapper, LtmsOperation.UPLOAD, 503,
-                Map.of("X-Inbox-Id", List.of("HEADER-1"), "X-Error-Code", List.of("926")), "{}");
+                Map.of("X-Inbox-Id", List.of("HEADER-1"), "X-Error-Code", List.of("926"),
+                        "error_msg", List.of("LTMS is still processing the request")), "{}");
         assertEquals("HEADER-1", response.inboxId().orElseThrow());
         assertEquals(LtmsOutcome.DEFER, response.outcome());
+        assertEquals("LTMS is still processing the request", response.error().orElseThrow().message());
     }
 
     private void assertSuccess(String file, LtmsOperation operation) {

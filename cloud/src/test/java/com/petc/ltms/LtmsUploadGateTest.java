@@ -14,18 +14,19 @@ import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 class LtmsUploadGateTest {
 
     @Test
-    void uploadAndReplacementAreBlockedBeforeAnyHttpRequestWhenMutationGateIsFalse() {
+    void productionUploadAndReplacementAreBlockedBeforeAnyHttpRequestWithoutProductionGate() {
         var transport = new LtmsTransportProperties();
-        transport.setMode(LtmsTransportProperties.Mode.QA_ENABLED);
-        transport.setPetcBaseUrl(URI.create("https://qa.ltms.example.test"));
-        transport.setJwtBaseUrl(URI.create("https://qa.ltms.example.test"));
-        transport.setAllowedHosts(Set.of("qa.ltms.example.test"));
+        transport.setMode(LtmsTransportProperties.Mode.PRODUCTION);
+        transport.setPetcBaseUrl(URI.create("https://production.ltms.example.test"));
+        transport.setJwtBaseUrl(URI.create("https://production.ltms.example.test"));
+        transport.setAllowedHosts(Set.of("production.ltms.example.test"));
 
         var safety = new LtmsSafetyProperties();
-        safety.setMode(LtmsMode.QA_ENABLED);
+        safety.setMode(LtmsMode.PRODUCTION);
+        safety.setCommissioningApproved(true);
         safety.setOutboundEnabled(true);
-        safety.setUploadEnabled(false);
-        safety.setAllowedHosts(java.util.List.of("qa.ltms.example.test"));
+        safety.setUploadEnabled(true);
+        safety.setAllowedHosts(java.util.List.of("production.ltms.example.test"));
         var guard = new LtmsSafetyGuard(safety);
         guard.afterPropertiesSet();
 

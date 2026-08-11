@@ -56,8 +56,11 @@ petc:
     mode: ${LTMS_MODE:mock}
     outbound-enabled: ${LTMS_OUTBOUND_ENABLED:false}
     # Separate mutation gate: false permits no CEC upload or replacement even
-    # if read-only LTMS access is enabled later for an approved UAT exercise.
+    # if read-only production LTMS access is enabled later.
     upload-enabled: ${LTMS_UPLOAD_ENABLED:false}
+    # Production adds a separate, disabled-by-default deployment opt-in. A
+    # live LTMS client or the generic upload gate alone cannot mutate CECs.
+    production-upload-enabled: ${LTMS_PRODUCTION_UPLOAD_ENABLED:false}
     commissioning-approved: ${LTMS_COMMISSIONING_APPROVED:false}
     # Comma-separated exact HTTPS hosts. Empty is valid only while outbound is disabled.
     allowed-hosts: ${LTMS_ALLOWED_HOSTS:}
@@ -66,6 +69,9 @@ petc:
     connect-timeout: ${LTMS_CONNECT_TIMEOUT:5s}
     read-timeout: ${LTMS_READ_TIMEOUT:15s}
     total-timeout: ${LTMS_TOTAL_TIMEOUT:20s}
+    # CEC = Philippine year + five-digit PETC code + 0 + per-center OR sequence.
+    # Keep the sequence width configurable until LTMS confirms its conflicting examples.
+    cec-or-number-width: ${LTMS_CEC_OR_NUMBER_WIDTH:6}
   ingest:
     dev-key-enabled: ${DEV_CENTER_KEY_ENABLED:true}
     dev-key: ${DEV_CENTER_KEY:dev-insecure-key}

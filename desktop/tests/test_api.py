@@ -155,6 +155,7 @@ def test_upload_submit_accepts_full_wizard_payload(client):
         "inspection": {"purpose": detail["inspectionPurpose"]},
         "vehicle": {
             "plateNo": lookup["vehicle"]["plateNo"],
+            "mvNo": lookup["vehicle"]["mvNo"],
             "fuelType": lookup["vehicle"]["fuelType"],
             "make": lookup["vehicle"]["make"],
             "series": lookup["vehicle"]["series"],

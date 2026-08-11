@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { isLtmsNonterminalState, isLtmsSuccessState, sidecarClient, type LtmsSubmitResponse, type VehicleLookupResponse } from "../../api/sidecarClient";
 import { useAuthStore } from "../../store/authStore";
-import { INSPECTION_PURPOSE_LABELS, type Classification, type EmissionTest, type EmissionTestDetail, type FuelType, type InspectionPurpose, type OwnerInfo, type TestPhoto, type VehicleInfo } from "../../types";
+import { INSPECTION_PURPOSE_LABELS, type Classification, type DotrVehicleGroup, type EmissionTest, type EmissionTestDetail, type FuelType, type InspectionPurpose, type OwnerInfo, type TestPhoto, type VehicleInfo } from "../../types";
 import { evaluateEmission, type EngineFlags } from "../../utils/emissionLimits";
 import { CameraStream, type CameraStreamHandle } from "../../components/CameraStream";
 import { TestListFilters } from "../../components/TestListFilters";
@@ -30,6 +30,7 @@ type VehicleForm = {
   transmission: "M/T" | "A/T";
   fuelType: FuelType;
   classification: Classification;
+  dotrVehicleGroup: DotrVehicleGroup;
 };
 
 type OwnerForm = OwnerInfo;
@@ -57,6 +58,7 @@ const EMPTY_VEHICLE: VehicleForm = {
   transmission: "A/T",
   fuelType: "GAS",
   classification: "PRIVATE",
+  dotrVehicleGroup: "LIGHT",
 };
 
 const EMPTY_OWNER: OwnerForm = {
@@ -348,7 +350,8 @@ function VehicleStep({ vehicle, lookup, requiresManualEntry, onChange, onNext }:
   onNext: () => void;
 }) {
   const set = <K extends keyof VehicleForm>(key: K, value: VehicleForm[K]) => onChange({ ...vehicle, [key]: value });
-  const valid = vehicle.plateNo && vehicle.make && vehicle.series && vehicle.engineNo && vehicle.chassisNo;
+  const valid = vehicle.mvNo && vehicle.make && vehicle.series && vehicle.engineNo && vehicle.chassisNo
+    && (requiresManualEntry || vehicle.plateNo);
 
   return (
     <section className="bg-white rounded-lg shadow p-5 space-y-4">
@@ -374,8 +377,12 @@ function VehicleStep({ vehicle, lookup, requiresManualEntry, onChange, onNext }:
         <TextField label="Year Model" type="number" value={String(vehicle.yearModel)} onChange={(value) => set("yearModel", Number(value || 0))} badge={badgeFor("yearModel", String(vehicle.yearModel), lookup?.vehicle ? String(lookup.vehicle.yearModel) : undefined)} />
         <TextField label="Color" value={vehicle.color} onChange={(value) => set("color", value.toUpperCase())} badge={badgeFor("color", vehicle.color, lookup?.vehicle?.color)} />
         <Segment label="Transmission" value={vehicle.transmission} options={["M/T", "A/T"]} onChange={(value) => set("transmission", value as VehicleForm["transmission"])} />
-        <Segment label="Fuel Type" value={vehicle.fuelType} options={["GAS", "DIESEL", "MOTORCYCLE"]} onChange={(value) => set("fuelType", value as FuelType)} />
-        <Segment label="Classification" value={vehicle.classification} options={["PRIVATE", "PUBLIC", "GOVERNMENT", "DIPLOMATIC"]} onChange={(value) => set("classification", value as Classification)} />
+        <Segment label="Fuel Type" value={vehicle.fuelType} options={["GAS", "DIESEL"]} onChange={(value) => set("fuelType", value as FuelType)} />
+        <Segment label="DOTr Vehicle Group" value={vehicle.dotrVehicleGroup} options={["LIGHT", "HEAVY", "MOTORCYCLE"]} onChange={(value) => {
+          const group = value as DotrVehicleGroup;
+          onChange({ ...vehicle, dotrVehicleGroup: group, fuelType: group === "MOTORCYCLE" ? "GAS" : vehicle.fuelType });
+        }} />
+        <Segment label="Classification" value={vehicle.classification} options={["PRIVATE", "FOR_HIRE", "GOVERNMENT", "EXEMPT", "DIPLOMATIC"]} onChange={(value) => set("classification", value as Classification)} />
       </div>
       <FooterNav nextDisabled={!valid} onNext={onNext} />
     </section>
@@ -597,6 +604,8 @@ function ReviewStep({ payload, result, isPending, isError, onBack, onDone, onSub
           ["Plate", vehicle.plateNo],
           ["Vehicle", `${vehicle.yearModel} ${vehicle.make} ${vehicle.series}`],
           ["Fuel", vehicle.fuelType],
+          ["DOTr Group", vehicle.dotrVehicleGroup],
+          ["Classification", vehicle.classification],
           ["Engine / Chassis", `${vehicle.engineNo} / ${vehicle.chassisNo}`],
         ]} />
         <SummaryBlock title="Owner" rows={[
@@ -797,6 +806,10 @@ function SummaryBlock({ title, rows }: { title: string; rows: [string, string][]
 }
 
 function mapVehicle(vehicle: VehicleInfo, fallbackFuelType: FuelType): VehicleForm {
+  const motorcycle = vehicle.vehicleType === "MOTORCYCLE" || vehicle.fuelType === "MOTORCYCLE";
+  const fuelType = motorcycle ? "GAS" : vehicle.fuelType ?? fallbackFuelType;
+  const dotrVehicleGroup = vehicle.dotrVehicleGroup
+    ?? (motorcycle ? "MOTORCYCLE" : ["TRUCK", "BUS"].includes(vehicle.vehicleType) ? "HEAVY" : "LIGHT");
   return {
     plateNo: vehicle.plateNo ?? vehicle.plateNumber,
     mvNo: vehicle.mvNo ?? "",
@@ -812,8 +825,11 @@ function mapVehicle(vehicle: VehicleInfo, fallbackFuelType: FuelType): VehicleFo
     yearModel: vehicle.yearModel ?? vehicle.year ?? new Date().getFullYear(),
     color: vehicle.color ?? "",
     transmission: vehicle.transmission ?? "A/T",
-    fuelType: vehicle.fuelType ?? fallbackFuelType,
-    classification: vehicle.classification ?? "PRIVATE",
+    fuelType,
+    classification: vehicle.classification === "PUBLIC"
+      ? "FOR_HIRE"
+      : vehicle.classification ?? "PRIVATE",
+    dotrVehicleGroup,
   };
 }
 

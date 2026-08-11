@@ -17,11 +17,19 @@ module "petc" {
   spring_profile          = "production"
   government_mock         = true
   government_require_live = false
-  # The production NAT is allowlisted, but LTMS activity remains disabled
-  # until a separately approved UAT exercise is configured and deployed.
-  ltms_mode             = "qa_disabled"
+  # LTMS exposes production only. Selecting that target does not permit
+  # traffic: every egress and mutation gate below remains disabled.
+  ltms_mode             = "production"
   ltms_outbound_enabled = false
   ltms_upload_enabled   = false
+  # Keep production CEC mutations independently disabled until an approved
+  # production commissioning explicitly enables this deployment gate.
+  ltms_production_upload_enabled = false
+  ltms_commissioning_approved    = false
+  # Populate these only during approved production commissioning.
+  ltms_allowed_hosts    = []
+  ltms_petc_base_url    = ""
+  ltms_jwt_base_url     = ""
   service_desired_count = 2
   bootstrap_mode        = true
   log_retention_days    = 365

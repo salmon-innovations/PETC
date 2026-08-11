@@ -39,7 +39,10 @@ final class HttpLtmsJwtClient implements LtmsJwtClient {
                 return extractRawToken(mapper, response.body());
             }
             LtmsDtos.Response decoded = LtmsResponseDecoder.decode(mapper, LtmsOperation.AUTHENTICATE, response.statusCode(), response.headers().map(), response.body());
-            throw new LtmsRemoteException("LTMS JWT authentication failed", decoded.error().map(LtmsDtos.Error::code).orElse(null), decoded.inboxId().orElse(null));
+            String message = decoded.error().map(LtmsDtos.Error::message)
+                    .filter(value -> value != null && !value.isBlank())
+                    .orElse("LTMS JWT authentication failed");
+            throw new LtmsRemoteException(message, decoded.error().map(LtmsDtos.Error::code).orElse(null), decoded.inboxId().orElse(null));
         } catch (LtmsRemoteException exception) {
             throw exception;
         } catch (InterruptedException exception) {

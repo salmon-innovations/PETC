@@ -7,6 +7,8 @@ import com.petc.gov.MockGovRegistryClient;
 import com.petc.gov.SubmissionResult;
 import com.petc.settings.PlatformSettingsService;
 import com.petc.wallet.WalletService;
+import com.petc.ltms.LtmsSubmissionGateway;
+import com.petc.ltms.config.LtmsSafetyGuard;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -235,5 +237,26 @@ class SubmissionJobRunnerTest {
         verify(service, times(2)).markAcceptedAndCharge(
                 any(), eq("tenant-1"), any(), any(), any(), any(), any(), any(), eq(customCharge));
         verify(service).markBlocked("custom-3", "tenant-1", 0L);
+    }
+
+    @Test
+    void productionGateRoutesAcceptedSubmissionThroughLtmsAndChargesOnlyOnSuccess() throws Exception {
+        var ltmsGateway = mock(LtmsSubmissionGateway.class);
+        var ltmsSafety = mock(LtmsSafetyGuard.class);
+        when(ltmsSafety.uploadCallsPermitted()).thenReturn(true);
+        when(ltmsGateway.upload(any(), any(), any(), any())).thenReturn(
+                new LtmsSubmissionGateway.Result(true, "PASSED", "CEC-1", "000001",
+                        "INBOX-1", Instant.parse("2026-10-10T00:00:00Z"), null, null, "[]"));
+        runner = new SubmissionJobRunner(service, govClient, mapper, settings, wallet, ltmsGateway, ltmsSafety);
+        when(service.claimPending(anyInt()))
+                .thenReturn(List.of(pending("sub-live", "test-live", "ABC1234", 0, false)));
+
+        runner.processPending();
+
+        verify(ltmsGateway).upload(eq("sub-live"), eq("tenant-1"), eq("center-1"), anyString());
+        verify(service).markLtmsAcceptedAndCharge(eq("sub-live"), eq("tenant-1"), eq("CEC-1"),
+                eq("INBOX-1"), eq("PASSED"), any(Instant.class), eq("000001"), eq(CHARGE));
+        verify(service, never()).markAcceptedAndCharge(
+                any(), any(), any(), any(), any(), any(), any(), any(), anyLong());
     }
 }

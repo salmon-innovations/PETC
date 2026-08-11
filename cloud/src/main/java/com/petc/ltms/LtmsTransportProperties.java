@@ -20,15 +20,15 @@ import java.util.Set;
 public class LtmsTransportProperties {
 
     public enum Mode {
-        MOCK, QA_DISABLED, QA_ENABLED, PRODUCTION;
+        MOCK, PRODUCTION;
 
         public boolean permitsOutboundCalls() {
-            return this == QA_ENABLED || this == PRODUCTION;
+            return this == PRODUCTION;
         }
     }
 
     @NotNull
-    private Mode mode = Mode.QA_DISABLED;
+    private Mode mode = Mode.MOCK;
     private URI petcBaseUrl;
     private URI jwtBaseUrl;
     private Set<String> allowedHosts = new LinkedHashSet<>();
@@ -99,6 +99,12 @@ public class LtmsTransportProperties {
         if (path == null || !path.startsWith("/")) {
             throw new IllegalArgumentException("LTMS endpoint path must begin with '/'");
         }
-        return base.resolve(path);
+        // URI.resolve("/v2/...") discards /ords/dl_interfaces from the
+        // documented server URL. Append the operation path so a configured
+        // LTMS base path is preserved.
+        String baseValue = base.toString();
+        return URI.create((baseValue.endsWith("/")
+                ? baseValue.substring(0, baseValue.length() - 1)
+                : baseValue) + path);
     }
 }

@@ -1,6 +1,7 @@
 export type FuelType = "GAS" | "DIESEL" | "MOTORCYCLE";
 export type Role = "operator" | "cashier" | "manager" | "tenant_admin";
-export type Classification = "PRIVATE" | "PUBLIC" | "GOVERNMENT" | "DIPLOMATIC";
+export type Classification = "PRIVATE" | "FOR_HIRE" | "GOVERNMENT" | "EXEMPT" | "DIPLOMATIC";
+export type DotrVehicleGroup = "LIGHT" | "HEAVY" | "MOTORCYCLE";
 export type InspectionPurpose = "FOR_RENEWAL" | "FOR_INIT_REG" | "FOR_COMPLIANCE";
 
 export const INSPECTION_PURPOSE_LABELS: Record<InspectionPurpose, string> = {
@@ -40,7 +41,8 @@ export interface VehicleInfo {
   ownerName: string;
   // Optional: the registry does not always return it, so the wizard defaults
   // to PRIVATE. It is printed on the CEC (see sidecar cec/pdf.py).
-  classification?: Classification;
+  classification?: Classification | "PUBLIC";
+  dotrVehicleGroup?: DotrVehicleGroup;
 }
 
 export interface OwnerInfo {

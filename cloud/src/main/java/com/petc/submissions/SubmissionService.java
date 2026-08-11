@@ -238,6 +238,80 @@ public class SubmissionService {
     }
 
     /**
+     * Records an HTTP-successful LTMS CEC response and charges exactly once.
+     * A stored FAILED evaluation is accepted by LTMS but remains non-printable.
+     */
+    @Transactional
+    public void markLtmsAcceptedAndCharge(
+            String submissionId,
+            String tenantId,
+            String cecNumber,
+            String inboxId,
+            String evaluation,
+            Instant expiry,
+            String orNumber,
+            long chargeCentavos
+    ) {
+        String state = "PASSED".equalsIgnoreCase(evaluation) ? "PASSED" : "FAILED_EVALUATION";
+        Integer seq = jdbc.queryForObject("""
+                UPDATE submissions
+                   SET state = ?,
+                       certificate_no = ?,
+                       ltms_ref_no = ?,
+                       or_no = ?,
+                       valid_until = ?,
+                       cec_number = ?,
+                       ltms_inbox_id = ?,
+                       ltms_evaluation = ?,
+                       ltms_expiry_date = ?,
+                       accepted_at = now(),
+                       acceptance_seq = acceptance_seq + 1,
+                       claim_lease_until = NULL
+                 WHERE id = ?::uuid AND tenant_id = ?::uuid AND state = 'IN_FLIGHT'
+             RETURNING acceptance_seq
+                """, Integer.class,
+                state, cecNumber, inboxId, orNumber,
+                expiry != null ? Date.valueOf(expiry.atZone(java.time.ZoneId.of("Asia/Manila")).toLocalDate()) : null,
+                cecNumber, inboxId, evaluation,
+                expiry != null ? Timestamp.from(expiry) : null,
+                submissionId, tenantId);
+        if (seq == null) throw new IllegalStateException("LTMS response no longer owns the in-flight submission");
+        completeAttempt(submissionId, state, null);
+        wallet.chargeForAcceptance(tenantId, submissionId, seq, chargeCentavos);
+        log.info("Submission {} accepted by LTMS state={} inbox={}", submissionId, state,
+                com.petc.ltms.LtmsRedactor.identifier(inboxId));
+    }
+
+    /** Persist LTMS's actionable error details without charging the center. */
+    void markLtmsRejected(
+            String submissionId,
+            String state,
+            Integer errorCode,
+            String errorMessage,
+            String inboxId,
+            String reasonsJson
+    ) {
+        String terminalState = switch (state) {
+            case "AUTH_BLOCKED", "FAILED_EVALUATION", "DEFERRED", "RECONCILING" -> state;
+            default -> "ACTION_REQUIRED";
+        };
+        int updated = jdbc.update("""
+                UPDATE submissions
+                   SET state = ?,
+                       rejection_reason = ?,
+                       ltms_error_code = ?,
+                       ltms_error_message = ?,
+                       ltms_inbox_id = ?,
+                       ltms_reasons = COALESCE(?::jsonb, '[]'::jsonb),
+                       reconciliation_status = CASE WHEN ? = 'RECONCILING' THEN 'REQUIRED' ELSE reconciliation_status END,
+                       claim_lease_until = NULL
+                 WHERE id = ?::uuid AND state = 'IN_FLIGHT'
+                """, terminalState, errorMessage, errorCode, errorMessage, inboxId,
+                reasonsJson, terminalState, submissionId);
+        if (updated > 0) completeAttempt(submissionId, terminalState, errorMessage);
+    }
+
+    /**
      * Holds a submission that the center cannot currently afford to file.
      *
      * The upload was already accepted (202) and the record is safe in the

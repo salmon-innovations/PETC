@@ -43,7 +43,7 @@ public final class LtmsTokenManager {
         if (cached.isPresent()) return cached.get();
         return lock.withLock(key, () -> {
             ensureNotBlocked(key);
-            return usableCached(key, refreshLead).orElseGet(() -> authenticateAndStore(credentials));
+            return usableCached(key, refreshLead).orElseGet(() -> authenticateAndStoreOrReuse(credentials));
         });
     }
 
@@ -53,15 +53,20 @@ public final class LtmsTokenManager {
         ensureNotBlocked(key);
         return lock.withLock(key, () -> {
             ensureNotBlocked(key);
-            try {
-                return authenticateAndStore(credentials);
-            } catch (LtmsRemoteException error) {
-                if (error.outcome() == LtmsOutcome.REUSE_CACHED_TOKEN) {
-                    return usableCached(key, Duration.ZERO).orElseThrow(() -> error);
-                }
-                throw error;
-            }
+            return authenticateAndStoreOrReuse(credentials);
         });
+    }
+
+    /** Error 312 is not a reason to try authentication again; LTMS still has our existing token. */
+    private ParsedLtmsJwt authenticateAndStoreOrReuse(LtmsCredentials credentials) {
+        try {
+            return authenticateAndStore(credentials);
+        } catch (LtmsRemoteException error) {
+            if (error.outcome() == LtmsOutcome.REUSE_CACHED_TOKEN) {
+                return usableCached(credentials.key(), Duration.ZERO).orElseThrow(() -> error);
+            }
+            throw error;
+        }
     }
 
     private ParsedLtmsJwt authenticateAndStore(LtmsCredentials credentials) {

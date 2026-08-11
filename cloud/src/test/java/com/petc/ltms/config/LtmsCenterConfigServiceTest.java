@@ -28,7 +28,7 @@ class LtmsCenterConfigServiceTest {
         var service = new LtmsCenterConfigService(repository, audit);
         var provisioning = new LtmsCenterConfigRepository.Provisioning(
                 "ltms-user", "business-id", "petc-code", "arn:aws:secretsmanager:secret:ltms",
-                LtmsCenterConfigRepository.LtmsEnvironment.QA, true);
+                LtmsCenterConfigRepository.LtmsEnvironment.PRODUCTION, true);
         var config = config(tenantId, "center-from-license", true);
         when(repository.resolveCenterId(tenantId)).thenReturn(Optional.of("center-from-license"));
         when(repository.upsert(eq(tenantId), eq("center-from-license"), eq(provisioning))).thenReturn(config);
@@ -61,7 +61,7 @@ class LtmsCenterConfigServiceTest {
     ) {
         return new LtmsCenterConfigRepository.LtmsCenterConfig(
                 tenantId, centerId, "ltms-user", "business-id", "petc-code",
-                "arn:aws:secretsmanager:secret:ltms", LtmsCenterConfigRepository.LtmsEnvironment.QA,
+                "arn:aws:secretsmanager:secret:ltms", LtmsCenterConfigRepository.LtmsEnvironment.PRODUCTION,
                 enabled, LtmsCenterConfigRepository.CredentialVerificationState.UNVERIFIED,
                 null, OffsetDateTime.now());
     }
