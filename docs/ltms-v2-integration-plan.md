@@ -1,8 +1,8 @@
 # LTMS PETC v2 Integration Plan
 
-**Status:** Confirmed foundation implemented; clarification-dependent phases remain gated
+**Status:** Confirmed production upload path implemented; live traffic remains gated off
 **Prepared:** 2026-08-09
-**Implementation status:** The disabled integration foundation has been implemented and tested. Outbound LTMS access remains disabled by default, is not wired into the production submission path, and no LTMS endpoint was called during implementation or testing.
+**Implementation status:** The production upload path is implemented and tested with local fixtures. Outbound LTMS access and mutations remain disabled by default, and no LTMS endpoint was called during implementation or testing.
 
 ## 1. Purpose
 
@@ -19,26 +19,38 @@ The source material reviewed for this plan is:
 
 ### Implementation checkpoint
 
+### Confirmed implementation decisions (2026-08-11)
+
+- Treat the supplied `interface_PETC_v2_2.yml` as the authoritative contract; there is no LTMS QA/UAT environment.
+- Production LTMS mutations remain controlled by a separate disabled-by-default deployment property.
+- Cache each center JWT for no more than 24 hours. Error `311` permits one refresh; error `312` must reuse the shared cached token and must not generate another.
+- Support only LTMS fuel values `GAS` and `DIESEL`. A motorcycle uses `fuel_type=GAS` and `dotr_vehicle_group=MOTORCYCLE`; electric and `None` vehicles are outside PETC.
+- Use `LIGHT`, `HEAVY`, and `MOTORCYCLE` as DOTr vehicle groups. Use official LTO registration classifications and normalize the legacy desktop value `PUBLIC` to `FOR_HIRE`.
+- If lookup data is missing, an authorized encoder supplies the vehicle identifiers and owner information. Initial registration requires manually encoded engine and chassis numbers.
+- Send unavailable emission readings as JSON `null`, and send inspection timestamps in Philippine time.
+- The center generates the CEC number before upload using the current Philippine year, its assigned five-digit PETC code, the documented `0` separator, and an atomic per-center sequence. Sequence width remains configurable because the supplied examples conflict.
+- Only an HTTP-successful LTMS acceptance is counted and charged. Rejections retain the LTMS error message and `inbox_id` for correction/support.
+
 Implemented now:
 
 - Phase 0 safety controls: explicit mode and enablement gates, exact HTTPS host allowlisting, response redaction, and disabled defaults.
 - Phase 1 center identity/configuration foundation: tenant-scoped configuration, secret references rather than passwords, credential-verification state, audited admin operations, authenticated center derivation, and scoped ECS task-role permission for center secrets.
-- Phases 2 and 3 isolated client boundary: typed JWT/PETC clients, token lifecycle abstractions, response decoding, critical flow-control error classification, and fixture-based tests. These clients are not connected to live application workflows.
+- Phases 2 and 3 client boundary: typed JWT/PETC clients, encrypted shared 24-hour token caching, distributed generation lock, response decoding, critical flow-control error classification, and fixture-based tests.
+- Production upload serialization and dispatch: manual-data fallback, GAS/DIESEL and vehicle-group mapping, Philippine timestamps, explicit null readings, local CEC allocation, and acceptance-only billing.
 - Phase 6 durable submission foundation: explicit lifecycle states, immutable attempt history, leases, atomic multi-worker claims, retry scheduling, and reconciliation state.
 - Phase 8 state compatibility: desktop and portal understand the expanded lifecycle states, and the sidecar canonicalizes the configured center identity before upload.
 - LTMS schema changes use V9/V10 because V7/V8 are already assigned to center pricing and multi-lane support in the deployment history.
 
-Intentionally not completed until LTMS answers the blockers:
+Intentionally not enabled or deferred beyond this simple-upload scope:
 
-- Resolving center password values from Secrets Manager and durable encrypted/shared JWT storage with a distributed refresh lock.
-- Wiring vehicle lookup, limits, JWT generation, upload, replacement, or reconciliation into production services.
-- Final upload serialization, CEC/OR-number allocation, complete error catalog validation, eligibility rules, printing, and billing behavior.
-- Any real QA/UAT or production call. Only the production NAT IP is allowlisted; an approved UAT exercise must run through that network while remaining logically isolated from production processing.
+- Real vehicle lookup/limits, replacement, and automated reconciliation workflows.
+- Any real production call. The UAT application remains in mock mode and cannot contact LTMS; only the production NAT IP is allowlisted.
+- Printing stays restricted to LTMS-accepted `PASSED` submissions.
 
 ## 2. Confirmed architecture and constraints
 
 1. The PETC desktop never calls LTMS directly.
-2. LTMS has allowlisted only the production AWS NAT gateway IP. Any approved QA/UAT call must originate through that production network path without being treated as a production transaction.
+2. LTMS has allowlisted only the production AWS NAT gateway IP. The UAT application must never call LTMS.
 3. Every center has its own LTMS username and password and uses its assigned `business-id`.
 4. LTMS credentials and JWTs are never delivered to or stored by the desktop.
 5. The Digiflash center key determines the tenant, center, LTMS username, business ID, PETC code, and credential secret used for a request.
@@ -46,7 +58,7 @@ Intentionally not completed until LTMS answers the blockers:
 7. Analyzer frames, photos, hashes, and other evidence remain in Digiflash storage. Only the fields prescribed by the LTMS JSON contract are sent to LTMS.
 8. The supplied APIs can search LTMS vehicle/limit data and create, replace, search, and count CEC records. They do not update LTMS vehicle master data.
 9. Biometric JWT authentication is out of scope unless LTMS explicitly requires it. The confirmed center username/password method will be used.
-10. Development and automated tests must use local fixtures/mocks. The UAT portal has LTMS outbound and upload flags set to false. No real test may call LTMS unless a separately approved UAT exercise is deployed through the production NAT.
+10. Development, UAT, and automated tests use local fixtures/mocks. The UAT portal has LTMS outbound and upload flags set to false.
 
 ## 3. Target operational flow
 
@@ -73,7 +85,7 @@ Intentionally not completed until LTMS answers the blockers:
 
 **Code and configuration work**
 
-- Introduce explicit LTMS modes: `mock`, `qa-disabled`, `qa-enabled`, and `production` (exact names may follow existing profile conventions).
+- Use only `mock` and `production` LTMS modes because LTMS exposes no QA/UAT service.
 - Keep outbound LTMS calls disabled by default and use a separate disabled-by-default gate for CEC upload/replacement mutations.
 - Require an explicit deployment flag before any real LTMS client can be constructed.
 - Allow only configured HTTPS LTMS hosts; reject arbitrary base URLs.
@@ -98,7 +110,7 @@ Intentionally not completed until LTMS answers the blockers:
   - LTMS business ID
   - PETC code
   - AWS Secrets Manager secret reference for the LTMS password
-  - QA/production environment designation
+  - Production environment designation
   - Enabled/disabled status
   - Last credential verification state and timestamp
 - Do not store the LTMS password in PostgreSQL, SQLite, desktop properties, audit details, or source control.
@@ -185,7 +197,7 @@ Intentionally not completed until LTMS answers the blockers:
   - Vehicle-specific limits
   - Latest upload and next permissible inspection date
   - Inspection parameter concerns
-- Remove the live-flow assumption that an LTMS miss can be bypassed with manual vehicle entry.
+- When LTMS lookup is unavailable or incomplete, require the authorized encoder to supply the missing vehicle and owner fields before upload.
 - Block upload for documented vehicle/master-data/limit concerns.
 - Cache lookup data only for a short, explicitly configured period; always revalidate near submission if the business flow permits a delay.
 - Replace hardcoded desktop thresholds as the authoritative result source. LTMS limits may drive a preview; LTMS evaluation remains final.
@@ -234,12 +246,12 @@ Intentionally not completed until LTMS answers the blockers:
 - Photos/raw frames are retained but never accidentally included in the LTMS JSON.
 - No mock or placeholder center/technician values can pass production validation.
 
-**Blockers**
+**Confirmed defaults used for the simple upload**
 
-- Correct definitions for the request's missing `fuel_type`, `dotr_vehicle_group`, and `classification` properties.
-- Required reading matrix, units, scale, and decimal precision.
-- Final CEC number construction and inspection timestamp/timezone rules.
-- Mandatory accreditation fields.
+- `fuel_type` is `GAS` or `DIESEL`; motorcycles use `GAS` plus the `MOTORCYCLE` group.
+- Unavailable readings are explicit JSON `null`; available readings keep the analyzer values already captured.
+- CEC numbers are center-generated and timestamps use Philippine time.
+- Optional accreditation fields are included only when trusted values exist.
 
 ### Phase 6 - Durable submission state and worker safety
 
@@ -359,9 +371,9 @@ Intentionally not completed until LTMS answers the blockers:
 - Secrets are not present in Terraform state as plaintext values supplied by operators.
 - Each operational alert identifies the affected center without exposing its password or JWT.
 
-### Phase 10 - Test, QA, and controlled release
+### Phase 10 - Testing and controlled release
 
-**Readiness:** Local testing is ready; real QA is gated by authorization and clarified contracts.
+**Readiness:** Local/UAT mock testing is ready; the only real LTMS target is production and remains gated by commissioning approval.
 
 **Test work**
 

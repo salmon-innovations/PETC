@@ -30,7 +30,7 @@ public class LtmsCenterConfigService {
     public LtmsCenterConfigRepository.LtmsCenterConfig getEnabledFor(CenterKeyValidator.CenterContext center) {
         return repository.findEnabledFor(center)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
-                        "LTMS is not enabled and credential-verified for this center"));
+                        "LTMS is not enabled for this center or its account is blocked"));
     }
 
     @Transactional

@@ -7,6 +7,11 @@ import com.petc.gov.GovRegistryClient;
 import com.petc.gov.SubmissionResult;
 import com.petc.settings.PlatformSettingsService;
 import com.petc.wallet.WalletService;
+import com.petc.ltms.LtmsOutcome;
+import com.petc.ltms.LtmsRemoteException;
+import com.petc.ltms.LtmsSubmissionGateway;
+import com.petc.ltms.config.LtmsSafetyGuard;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -35,19 +40,37 @@ public class SubmissionJobRunner {
     private final ObjectMapper mapper;
     private final PlatformSettingsService settings;
     private final WalletService wallet;
+    private final LtmsSubmissionGateway ltmsGateway;
+    private final LtmsSafetyGuard ltmsSafety;
 
+    @Autowired
     public SubmissionJobRunner(
             SubmissionService service,
             GovRegistryClient govClient,
             ObjectMapper mapper,
             PlatformSettingsService settings,
-            WalletService wallet
+            WalletService wallet,
+            LtmsSubmissionGateway ltmsGateway,
+            LtmsSafetyGuard ltmsSafety
     ) {
         this.service = service;
         this.govClient = govClient;
         this.mapper = mapper;
         this.settings = settings;
         this.wallet = wallet;
+        this.ltmsGateway = ltmsGateway;
+        this.ltmsSafety = ltmsSafety;
+    }
+
+    /** Test/legacy constructor keeps fixture tests on the non-network adapter. */
+    SubmissionJobRunner(
+            SubmissionService service,
+            GovRegistryClient govClient,
+            ObjectMapper mapper,
+            PlatformSettingsService settings,
+            WalletService wallet
+    ) {
+        this(service, govClient, mapper, settings, wallet, null, null);
     }
 
     /**
@@ -84,7 +107,9 @@ public class SubmissionJobRunner {
                 }
                 remainingBefore = remaining;
             }
-            boolean accepted = process(sub, charge);
+            boolean accepted = ltmsSafety != null && ltmsSafety.uploadCallsPermitted()
+                    ? processLtms(sub, charge)
+                    : process(sub, charge);
             if (accepted && charge > 0) {
                 if (remainingBefore != null) {
                     projected.put(sub.tenantId(), remainingBefore - charge);
@@ -93,6 +118,40 @@ public class SubmissionJobRunner {
                             sub.tenantId(), (ignored, value) -> value - charge);
                 }
             }
+        }
+    }
+
+    private boolean processLtms(SubmissionService.PendingSubmission sub, long chargeCentavos) {
+        try {
+            LtmsSubmissionGateway.Result result = ltmsGateway.upload(
+                    sub.id(), sub.tenantId(), sub.centerId(), sub.payloadJson());
+            if (result.accepted()) {
+                service.markLtmsAcceptedAndCharge(
+                        sub.id(), sub.tenantId(), result.cecNumber(), result.inboxId(),
+                        result.evaluationOrState(), result.expiry(), result.orNumber(), chargeCentavos);
+                return true;
+            }
+            service.markLtmsRejected(
+                    sub.id(), result.evaluationOrState(), result.errorCode(),
+                    result.errorMessage(), result.inboxId(), result.reasonsJson());
+            return false;
+        } catch (IllegalArgumentException validation) {
+            service.markLtmsRejected(sub.id(), "ACTION_REQUIRED", null,
+                    validation.getMessage(), null, "[]");
+            return false;
+        } catch (LtmsRemoteException remote) {
+            String state = remote.outcome() == LtmsOutcome.AUTH_BLOCKED
+                    || remote.outcome() == LtmsOutcome.MISSING_PRIVILEGE
+                    ? "AUTH_BLOCKED" : "RECONCILING";
+            service.markLtmsRejected(sub.id(), state, remote.errorCode(),
+                    remote.getMessage(), remote.inboxId(), "[]");
+            return false;
+        } catch (Exception unexpected) {
+            // A request may have reached LTMS. Never replay it blindly.
+            service.markLtmsRejected(sub.id(), "RECONCILING", null,
+                    "LTMS outcome is uncertain; search the assigned CEC before retrying",
+                    null, "[]");
+            return false;
         }
     }
 

@@ -20,6 +20,9 @@ public final class LtmsResponseDecoder {
             Integer code = integer(body, "error_code", "errorCode");
             if (code == null) code = integerHeader(headers, "error_code", "x-error-code");
             String message = text(body, "error_msg", "error_message", "message");
+            if (message == null) {
+                message = header(headers, "error_msg", "error_message", "x-error-msg", "x-error-message");
+            }
             List<LtmsDtos.Reason> reasons = reasons(body.path("reasons"));
             Error error = code == null && message == null ? null : new Error(code, message, reasons);
             return new Response(operation, status, inboxId, error, body);

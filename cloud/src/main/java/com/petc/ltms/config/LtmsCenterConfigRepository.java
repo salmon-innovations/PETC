@@ -38,6 +38,11 @@ public class LtmsCenterConfigRepository {
      * after a center identity is changed or a query is incorrectly scoped.
      */
     public Optional<LtmsCenterConfig> findEnabledFor(CenterKeyValidator.CenterContext center) {
+        return findEnabledFor(center.tenantId(), center.centerId());
+    }
+
+    /** Worker-side equivalent after tenant/center ownership was fixed at enqueue time. */
+    public Optional<LtmsCenterConfig> findEnabledFor(String tenantId, String centerId) {
         List<LtmsCenterConfig> rows = jdbc.query("""
                 SELECT tenant_id::text, center_id, ltms_username, ltms_business_id,
                        petc_code, password_secret_ref, environment, enabled,
@@ -46,8 +51,8 @@ public class LtmsCenterConfigRepository {
                 WHERE tenant_id = ?::uuid
                   AND center_id = ?
                   AND enabled = true
-                  AND credential_verification_state = 'VERIFIED'
-                """, (rs, rowNum) -> map(rs), center.tenantId(), center.centerId());
+                  AND credential_verification_state IN ('UNVERIFIED', 'VERIFIED')
+                """, (rs, rowNum) -> map(rs), tenantId, centerId);
         return rows.stream().findFirst();
     }
 
@@ -156,7 +161,7 @@ public class LtmsCenterConfigRepository {
             OffsetDateTime updatedAt
     ) {}
 
-    public enum LtmsEnvironment { QA, PRODUCTION }
+    public enum LtmsEnvironment { PRODUCTION }
 
     public enum CredentialVerificationState {
         UNVERIFIED, VERIFIED, INVALID_CREDENTIALS, ACCOUNT_LOCKED, MISSING_PRIVILEGE

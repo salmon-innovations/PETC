@@ -39,6 +39,7 @@ dependencies {
     // AWS S3 (presigned URLs)
     implementation("software.amazon.awssdk:s3:2.28.0")
     implementation("software.amazon.awssdk:s3-transfer-manager:2.28.0")
+    implementation("software.amazon.awssdk:secretsmanager:2.28.0")
 
     // HTTP client for gov API adapter
     implementation("org.springframework.boot:spring-boot-starter-webflux")

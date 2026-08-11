@@ -52,8 +52,8 @@ variable "ltms_mode" {
   description = "LTMS client mode. This does not enable network traffic by itself."
 
   validation {
-    condition     = contains(["mock", "qa_disabled", "qa_enabled", "production"], var.ltms_mode)
-    error_message = "ltms_mode must be mock, qa_disabled, qa_enabled, or production"
+    condition     = contains(["mock", "production"], var.ltms_mode)
+    error_message = "ltms_mode must be mock or production"
   }
 }
 
@@ -67,6 +67,36 @@ variable "ltms_upload_enabled" {
   type        = bool
   default     = false
   description = "Independent gate for mutating LTMS CEC upload and replacement calls."
+}
+
+variable "ltms_production_upload_enabled" {
+  type        = bool
+  default     = false
+  description = "Additional disabled-by-default deployment gate for production LTMS CEC mutations."
+}
+
+variable "ltms_commissioning_approved" {
+  type        = bool
+  default     = false
+  description = "Explicit approval required before any production LTMS egress."
+}
+
+variable "ltms_allowed_hosts" {
+  type        = list(string)
+  default     = []
+  description = "Exact HTTPS LTMS hosts permitted for outbound requests."
+}
+
+variable "ltms_petc_base_url" {
+  type        = string
+  default     = ""
+  description = "Production PETC v2 base URL, including /ords/dl_interfaces when supplied by LTMS."
+}
+
+variable "ltms_jwt_base_url" {
+  type        = string
+  default     = ""
+  description = "Production JWT service origin/base URL supplied by LTMS."
 }
 
 variable "service_desired_count" {

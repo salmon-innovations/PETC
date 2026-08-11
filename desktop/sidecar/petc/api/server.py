@@ -1963,7 +1963,12 @@ def _validate_submission_payload(payload: dict, test, readings: dict, photo_coun
             status.HTTP_409_CONFLICT,
             "inspection.purpose must match the purpose selected when the test started",
         )
-    _require_nonblank(vehicle.get("plateNo"), "vehicle.plateNo")
+    if purpose != "FOR_INIT_REG":
+        _require_nonblank(vehicle.get("plateNo"), "vehicle.plateNo")
+    _require_nonblank(vehicle.get("mvNo"), "vehicle.mvNo")
+    if purpose == "FOR_INIT_REG":
+        _require_nonblank(vehicle.get("engineNo"), "vehicle.engineNo")
+        _require_nonblank(vehicle.get("chassisNo"), "vehicle.chassisNo")
     _require_nonblank(vehicle.get("fuelType"), "vehicle.fuelType")
     _require_nonblank(test.analyzer_serial, "analyzer serial")
     if owner.get("ownerType") == "ORGANIZATION":

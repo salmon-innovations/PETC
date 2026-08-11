@@ -29,14 +29,15 @@ public class LtmsSafetyGuard implements InitializingBean {
 
     void validateStartup() {
         LtmsMode mode = Objects.requireNonNull(properties.getMode(), "petc.ltms.mode is required");
-        if (mode == LtmsMode.PRODUCTION && !properties.isCommissioningApproved()) {
+        if (mode == LtmsMode.PRODUCTION
+                && properties.isOutboundEnabled()
+                && !properties.isCommissioningApproved()) {
             throw new IllegalStateException(
                     "LTMS production mode requires petc.ltms.commissioning-approved=true");
         }
-        if (properties.isOutboundEnabled()
-                && (mode == LtmsMode.MOCK || mode == LtmsMode.QA_DISABLED)) {
+        if (properties.isOutboundEnabled() && mode != LtmsMode.PRODUCTION) {
             throw new IllegalStateException(
-                    "LTMS outbound calls require mode QA_ENABLED or PRODUCTION");
+                    "LTMS outbound calls require PRODUCTION mode");
         }
         if (properties.isUploadEnabled() && !properties.isOutboundEnabled()) {
             throw new IllegalStateException(
@@ -51,12 +52,18 @@ public class LtmsSafetyGuard implements InitializingBean {
     /** True only when both the target and the explicit deployment gate allow egress. */
     public boolean outboundCallsPermitted() {
         return properties.isOutboundEnabled()
-                && (properties.getMode() == LtmsMode.QA_ENABLED || properties.getMode() == LtmsMode.PRODUCTION);
+                && properties.getMode() == LtmsMode.PRODUCTION;
     }
 
-    /** Mutating CEC calls need their own explicit gate in addition to egress. */
+    /**
+     * Mutating CEC calls need their own explicit gate in addition to egress.
+     * Production adds a deployment-only gate so enabling a live client or the
+     * generic upload setting cannot authorize a production mutation.
+     */
     public boolean uploadCallsPermitted() {
-        return outboundCallsPermitted() && properties.isUploadEnabled();
+        return outboundCallsPermitted()
+                && properties.isUploadEnabled()
+                && properties.isProductionUploadEnabled();
     }
 
     public void requireUploadPermitted() {

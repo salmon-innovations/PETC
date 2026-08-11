@@ -27,6 +27,7 @@ const EMPTY_VEHICLE = {
     transmission: "A/T",
     fuelType: "GAS",
     classification: "PRIVATE",
+    dotrVehicleGroup: "LIGHT",
 };
 const EMPTY_OWNER = {
     ownerType: "INDIVIDUAL",
@@ -148,8 +149,12 @@ function UploadWizard({ test, onDone, onCancel }) {
 }
 function VehicleStep({ vehicle, lookup, requiresManualEntry, onChange, onNext }) {
     const set = (key, value) => onChange({ ...vehicle, [key]: value });
-    const valid = vehicle.plateNo && vehicle.make && vehicle.series && vehicle.engineNo && vehicle.chassisNo;
-    return (_jsxs("section", { className: "bg-white rounded-lg shadow p-5 space-y-4", children: [_jsx(StepHeading, { title: requiresManualEntry ? "Step 1 - Manual Vehicle Details" : "Step 1 - Plate Lookup + Vehicle Details" }), requiresManualEntry && (_jsx("div", { className: "rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900", children: "Initial registration is treated as not yet available in LTMS or Stradcom. Enter the vehicle details manually. The fuel type remains the value selected when the emission test started." })), _jsxs("div", { className: "grid grid-cols-3 gap-4", children: [_jsx(TextField, { label: "Plate No", value: vehicle.plateNo, onChange: (value) => set("plateNo", value.toUpperCase()) }), _jsx(TextField, { label: "MV No", value: vehicle.mvNo, onChange: (value) => set("mvNo", value), badge: badgeFor("mvNo", vehicle.mvNo, lookup?.vehicle?.mvNo) }), _jsx(TextField, { label: "Engine No", value: vehicle.engineNo, onChange: (value) => set("engineNo", value), badge: badgeFor("engineNo", vehicle.engineNo, lookup?.vehicle?.engineNo) }), _jsx(TextField, { label: "Chassis No", value: vehicle.chassisNo, onChange: (value) => set("chassisNo", value), badge: badgeFor("chassisNo", vehicle.chassisNo, lookup?.vehicle?.chassisNo) }), _jsx(SelectField, { label: "OR Type", value: vehicle.orType, options: ["MVRR", "MVRS"], onChange: (value) => set("orType", value), badge: badgeFor("orType", vehicle.orType, lookup?.vehicle?.orType) }), _jsx(TextField, { label: "CR Date", type: "date", value: vehicle.crDate, onChange: (value) => set("crDate", value), badge: badgeFor("crDate", vehicle.crDate, lookup?.vehicle?.crDate) }), _jsx(TextField, { label: "CR No", value: vehicle.crNo, onChange: (value) => set("crNo", value), badge: badgeFor("crNo", vehicle.crNo, lookup?.vehicle?.crNo) }), _jsx(SelectField, { label: "District Office", value: vehicle.districtOffice, options: ["1368 - PASAY CITY DISTRICT OFFICE", "1301 - QUEZON CITY DISTRICT OFFICE", "1401 - MAKATI DISTRICT OFFICE"], onChange: (value) => set("districtOffice", value), badge: badgeFor("districtOffice", vehicle.districtOffice, lookup?.vehicle?.districtOffice) }), _jsx(TextField, { label: "Make", value: vehicle.make, onChange: (value) => set("make", value.toUpperCase()), badge: badgeFor("make", vehicle.make, lookup?.vehicle?.make) }), _jsx(TextField, { label: "Series", value: vehicle.series, onChange: (value) => set("series", value.toUpperCase()), badge: badgeFor("series", vehicle.series, lookup?.vehicle?.series) }), _jsx(SelectField, { label: "Vehicle Type", value: vehicle.vehicleType, options: ["CAR", "MOTORCYCLE", "TRUCK", "BUS", "JEEPNEY"], onChange: (value) => set("vehicleType", value), badge: badgeFor("vehicleType", vehicle.vehicleType, lookup?.vehicle?.vehicleType) }), _jsx(TextField, { label: "Year Model", type: "number", value: String(vehicle.yearModel), onChange: (value) => set("yearModel", Number(value || 0)), badge: badgeFor("yearModel", String(vehicle.yearModel), lookup?.vehicle ? String(lookup.vehicle.yearModel) : undefined) }), _jsx(TextField, { label: "Color", value: vehicle.color, onChange: (value) => set("color", value.toUpperCase()), badge: badgeFor("color", vehicle.color, lookup?.vehicle?.color) }), _jsx(Segment, { label: "Transmission", value: vehicle.transmission, options: ["M/T", "A/T"], onChange: (value) => set("transmission", value) }), _jsx(Segment, { label: "Fuel Type", value: vehicle.fuelType, options: ["GAS", "DIESEL", "MOTORCYCLE"], onChange: (value) => set("fuelType", value) }), _jsx(Segment, { label: "Classification", value: vehicle.classification, options: ["PRIVATE", "PUBLIC", "GOVERNMENT", "DIPLOMATIC"], onChange: (value) => set("classification", value) })] }), _jsx(FooterNav, { nextDisabled: !valid, onNext: onNext })] }));
+    const valid = vehicle.mvNo && vehicle.make && vehicle.series && vehicle.engineNo && vehicle.chassisNo
+        && (requiresManualEntry || vehicle.plateNo);
+    return (_jsxs("section", { className: "bg-white rounded-lg shadow p-5 space-y-4", children: [_jsx(StepHeading, { title: requiresManualEntry ? "Step 1 - Manual Vehicle Details" : "Step 1 - Plate Lookup + Vehicle Details" }), requiresManualEntry && (_jsx("div", { className: "rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900", children: "Initial registration is treated as not yet available in LTMS or Stradcom. Enter the vehicle details manually. The fuel type remains the value selected when the emission test started." })), _jsxs("div", { className: "grid grid-cols-3 gap-4", children: [_jsx(TextField, { label: "Plate No", value: vehicle.plateNo, onChange: (value) => set("plateNo", value.toUpperCase()) }), _jsx(TextField, { label: "MV No", value: vehicle.mvNo, onChange: (value) => set("mvNo", value), badge: badgeFor("mvNo", vehicle.mvNo, lookup?.vehicle?.mvNo) }), _jsx(TextField, { label: "Engine No", value: vehicle.engineNo, onChange: (value) => set("engineNo", value), badge: badgeFor("engineNo", vehicle.engineNo, lookup?.vehicle?.engineNo) }), _jsx(TextField, { label: "Chassis No", value: vehicle.chassisNo, onChange: (value) => set("chassisNo", value), badge: badgeFor("chassisNo", vehicle.chassisNo, lookup?.vehicle?.chassisNo) }), _jsx(SelectField, { label: "OR Type", value: vehicle.orType, options: ["MVRR", "MVRS"], onChange: (value) => set("orType", value), badge: badgeFor("orType", vehicle.orType, lookup?.vehicle?.orType) }), _jsx(TextField, { label: "CR Date", type: "date", value: vehicle.crDate, onChange: (value) => set("crDate", value), badge: badgeFor("crDate", vehicle.crDate, lookup?.vehicle?.crDate) }), _jsx(TextField, { label: "CR No", value: vehicle.crNo, onChange: (value) => set("crNo", value), badge: badgeFor("crNo", vehicle.crNo, lookup?.vehicle?.crNo) }), _jsx(SelectField, { label: "District Office", value: vehicle.districtOffice, options: ["1368 - PASAY CITY DISTRICT OFFICE", "1301 - QUEZON CITY DISTRICT OFFICE", "1401 - MAKATI DISTRICT OFFICE"], onChange: (value) => set("districtOffice", value), badge: badgeFor("districtOffice", vehicle.districtOffice, lookup?.vehicle?.districtOffice) }), _jsx(TextField, { label: "Make", value: vehicle.make, onChange: (value) => set("make", value.toUpperCase()), badge: badgeFor("make", vehicle.make, lookup?.vehicle?.make) }), _jsx(TextField, { label: "Series", value: vehicle.series, onChange: (value) => set("series", value.toUpperCase()), badge: badgeFor("series", vehicle.series, lookup?.vehicle?.series) }), _jsx(SelectField, { label: "Vehicle Type", value: vehicle.vehicleType, options: ["CAR", "MOTORCYCLE", "TRUCK", "BUS", "JEEPNEY"], onChange: (value) => set("vehicleType", value), badge: badgeFor("vehicleType", vehicle.vehicleType, lookup?.vehicle?.vehicleType) }), _jsx(TextField, { label: "Year Model", type: "number", value: String(vehicle.yearModel), onChange: (value) => set("yearModel", Number(value || 0)), badge: badgeFor("yearModel", String(vehicle.yearModel), lookup?.vehicle ? String(lookup.vehicle.yearModel) : undefined) }), _jsx(TextField, { label: "Color", value: vehicle.color, onChange: (value) => set("color", value.toUpperCase()), badge: badgeFor("color", vehicle.color, lookup?.vehicle?.color) }), _jsx(Segment, { label: "Transmission", value: vehicle.transmission, options: ["M/T", "A/T"], onChange: (value) => set("transmission", value) }), _jsx(Segment, { label: "Fuel Type", value: vehicle.fuelType, options: ["GAS", "DIESEL"], onChange: (value) => set("fuelType", value) }), _jsx(Segment, { label: "DOTr Vehicle Group", value: vehicle.dotrVehicleGroup, options: ["LIGHT", "HEAVY", "MOTORCYCLE"], onChange: (value) => {
+                            const group = value;
+                            onChange({ ...vehicle, dotrVehicleGroup: group, fuelType: group === "MOTORCYCLE" ? "GAS" : vehicle.fuelType });
+                        } }), _jsx(Segment, { label: "Classification", value: vehicle.classification, options: ["PRIVATE", "FOR_HIRE", "GOVERNMENT", "EXEMPT", "DIPLOMATIC"], onChange: (value) => set("classification", value) })] }), _jsx(FooterNav, { nextDisabled: !valid, onNext: onNext })] }));
 }
 function OwnerStep({ owner, onChange, onBack, onNext }) {
     const set = (key, value) => onChange({ ...owner, [key]: value });
@@ -216,6 +221,8 @@ function ReviewStep({ payload, result, isPending, isError, onBack, onDone, onSub
                             ["Plate", vehicle.plateNo],
                             ["Vehicle", `${vehicle.yearModel} ${vehicle.make} ${vehicle.series}`],
                             ["Fuel", vehicle.fuelType],
+                            ["DOTr Group", vehicle.dotrVehicleGroup],
+                            ["Classification", vehicle.classification],
                             ["Engine / Chassis", `${vehicle.engineNo} / ${vehicle.chassisNo}`],
                         ] }), _jsx(SummaryBlock, { title: "Owner", rows: [
                             ["Type", owner.ownerType],
@@ -269,6 +276,10 @@ function SummaryBlock({ title, rows }) {
     return (_jsxs("div", { className: "rounded-md border border-gray-200 p-3", children: [_jsx("p", { className: "mb-2 text-xs font-bold uppercase text-gray-500", children: title }), _jsx("dl", { className: "space-y-1", children: rows.map(([label, value]) => (_jsxs("div", { className: "flex justify-between gap-4", children: [_jsx("dt", { className: "text-gray-500", children: label }), _jsx("dd", { className: "text-right font-medium text-gray-800", children: value || "N/A" })] }, label))) })] }));
 }
 function mapVehicle(vehicle, fallbackFuelType) {
+    const motorcycle = vehicle.vehicleType === "MOTORCYCLE" || vehicle.fuelType === "MOTORCYCLE";
+    const fuelType = motorcycle ? "GAS" : vehicle.fuelType ?? fallbackFuelType;
+    const dotrVehicleGroup = vehicle.dotrVehicleGroup
+        ?? (motorcycle ? "MOTORCYCLE" : ["TRUCK", "BUS"].includes(vehicle.vehicleType) ? "HEAVY" : "LIGHT");
     return {
         plateNo: vehicle.plateNo ?? vehicle.plateNumber,
         mvNo: vehicle.mvNo ?? "",
@@ -284,8 +295,11 @@ function mapVehicle(vehicle, fallbackFuelType) {
         yearModel: vehicle.yearModel ?? vehicle.year ?? new Date().getFullYear(),
         color: vehicle.color ?? "",
         transmission: vehicle.transmission ?? "A/T",
-        fuelType: vehicle.fuelType ?? fallbackFuelType,
-        classification: vehicle.classification ?? "PRIVATE",
+        fuelType,
+        classification: vehicle.classification === "PUBLIC"
+            ? "FOR_HIRE"
+            : vehicle.classification ?? "PRIVATE",
+        dotrVehicleGroup,
     };
 }
 function badgeFor(_field, value, original) {
