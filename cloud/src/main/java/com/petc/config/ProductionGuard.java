@@ -1,6 +1,8 @@
 package com.petc.config;
 
 import com.petc.settings.PlatformSettingsService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -18,8 +20,11 @@ import java.util.List;
 @Component
 public class ProductionGuard implements ApplicationRunner {
 
+    private static final Logger log = LoggerFactory.getLogger(ProductionGuard.class);
+
     private final Environment environment;
     private final boolean govMock;
+    private final boolean requireLiveGovernment;
     private final boolean devKeyEnabled;
     private final String jwtSecret;
     private final String s3Endpoint;
@@ -30,6 +35,7 @@ public class ProductionGuard implements ApplicationRunner {
     public ProductionGuard(
             Environment environment,
             @Value("${petc.gov.mock:true}") boolean govMock,
+            @Value("${petc.gov.require-live:false}") boolean requireLiveGovernment,
             @Value("${petc.ingest.dev-key-enabled:true}") boolean devKeyEnabled,
             @Value("${petc.jwt.secret}") String jwtSecret,
             @Value("${petc.s3.endpoint}") String s3Endpoint,
@@ -39,6 +45,7 @@ public class ProductionGuard implements ApplicationRunner {
     ) {
         this.environment = environment;
         this.govMock = govMock;
+        this.requireLiveGovernment = requireLiveGovernment;
         this.devKeyEnabled = devKeyEnabled;
         this.jwtSecret = jwtSecret;
         this.s3Endpoint = s3Endpoint;
@@ -54,8 +61,10 @@ public class ProductionGuard implements ApplicationRunner {
             return;
         }
         List<String> errors = new ArrayList<>();
-        if (govMock) {
+        if (requireLiveGovernment && govMock) {
             errors.add("petc.gov.mock must be false");
+        } else if (govMock) {
+            log.warn("Production is running with the government mock adapter; set GOV_REQUIRE_LIVE=true when commissioning is complete");
         }
         if (devKeyEnabled) {
             errors.add("petc.ingest.dev-key-enabled must be false");
@@ -63,11 +72,15 @@ public class ProductionGuard implements ApplicationRunner {
         if (isPlaceholder(jwtSecret)) {
             errors.add("petc.jwt.secret must be a non-placeholder secret");
         }
-        if (isLocalEndpoint(s3Endpoint)) {
+        if (!s3Endpoint.isBlank() && isLocalEndpoint(s3Endpoint)) {
             errors.add("petc.s3.endpoint must point to the authorized object storage endpoint");
         }
-        if (isPlaceholder(s3AccessKey) || isPlaceholder(s3SecretKey)) {
-            errors.add("S3 credentials must be non-placeholder production credentials");
+        boolean hasAccessKey = s3AccessKey != null && !s3AccessKey.isBlank();
+        boolean hasSecretKey = s3SecretKey != null && !s3SecretKey.isBlank();
+        if (hasAccessKey != hasSecretKey) {
+            errors.add("S3 access key and secret key must be provided together");
+        } else if (hasAccessKey && (isPlaceholder(s3AccessKey) || isPlaceholder(s3SecretKey))) {
+            errors.add("Configured S3 credentials must not be placeholders");
         }
         // Billing settings live in platform_settings and are mutable at runtime,
         // so this can only confirm they are present and sane AT STARTUP. A bad

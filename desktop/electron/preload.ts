@@ -14,6 +14,9 @@ contextBridge.exposeInMainWorld("petcBridge", {
   openPath: (filePath: string): Promise<string> =>
     ipcRenderer.invoke("shell:openPath", filePath),
 
+  importCommissioning: (): Promise<{ imported: boolean; message: string }> =>
+    ipcRenderer.invoke("commissioning:import"),
+
   // ── auto-updater events (renderer listens, main pushes) ──────────────────
   onUpdateAvailable: (cb: () => void) => {
     ipcRenderer.on("update:available", cb);

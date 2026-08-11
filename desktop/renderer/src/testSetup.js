@@ -4,6 +4,7 @@ window.petcBridge = {
     getSidecarUrl: () => Promise.resolve("http://127.0.0.1:8765"),
     getUserDataPath: () => Promise.resolve("/tmp/petc-test"),
     openPath: () => Promise.resolve(""),
+    importCommissioning: () => Promise.resolve({ imported: false, message: "Import cancelled." }),
     onUpdateAvailable: () => () => { },
     onUpdateReady: () => () => { },
     installUpdate: () => { },

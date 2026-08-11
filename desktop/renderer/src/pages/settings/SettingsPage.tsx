@@ -42,7 +42,36 @@ export default function SettingsPage() {
         <h2 className="font-semibold text-sm text-gray-700">Data Location</h2>
         <DataPath />
       </section>
+
+      <CommissioningSection />
     </div>
+  );
+}
+
+function CommissioningSection() {
+  const [message, setMessage] = useState<string | null>(null);
+
+  return (
+    <section className="bg-white rounded-xl shadow p-5 space-y-3">
+      <div>
+        <h2 className="font-semibold text-sm text-gray-700">Center Commissioning</h2>
+        <p className="mt-1 text-xs text-gray-500">
+          Import a center-specific properties file downloaded from the PETC portal.
+          The app restarts after a successful import.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={async () => {
+          const result = await window.petcBridge.importCommissioning();
+          setMessage(result.message);
+        }}
+        className="rounded border border-gray-300 px-3 py-2 text-xs hover:bg-gray-50"
+      >
+        Import commissioning file
+      </button>
+      {message && <p className="text-xs text-gray-600">{message}</p>}
+    </section>
   );
 }
 

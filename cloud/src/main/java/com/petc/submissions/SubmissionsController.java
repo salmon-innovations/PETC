@@ -39,8 +39,12 @@ public class SubmissionsController {
             @RequestHeader("X-Center-Key") String centerKey,
             @Valid @RequestBody SubmitRequest req
     ) {
-        String tenantId = keyValidator.validateContext(centerKey).tenantId();
-        String submissionId = service.enqueue(tenantId, req.centerId(), req.testId(), req.payload());
+        var center = keyValidator.validateContext(centerKey);
+        // centerId is retained in the DTO for a compatibility-safe rollout,
+        // but the authenticated key is authoritative. A forged/mistaken ID is
+        // rejected and never reaches the queue or any future LTMS request.
+        keyValidator.requireMatchingCenter(center, req.centerId());
+        String submissionId = service.enqueue(center.tenantId(), center.centerId(), req.testId(), req.payload());
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(new SubmitResponse(submissionId, "PENDING"));
     }

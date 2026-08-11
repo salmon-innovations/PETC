@@ -37,3 +37,20 @@ def test_production_profile_accepts_issued_settings(monkeypatch):
         }
     )
     assert runtime.profile == "production"
+
+
+def test_production_commissioning_can_temporarily_defer_hardware_enforcement(monkeypatch):
+    monkeypatch.setenv("PETC_PROFILE", "production")
+    runtime = validate_desktop_startup_config(
+        {
+            "analyzer": "mock",
+            "camera": "mock",
+            "printer": "mock",
+            "gov_mock": True,
+            "enforce_hardware": False,
+            "cloud_url": "https://app.petc.siiportal.com",
+            "center_id": "makati-etc",
+            "cloud_key": "issued-center-key",
+        }
+    )
+    assert runtime.enforce_hardware is False

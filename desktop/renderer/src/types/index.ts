@@ -1,6 +1,13 @@
 export type FuelType = "GAS" | "DIESEL" | "MOTORCYCLE";
 export type Role = "operator" | "cashier" | "manager" | "tenant_admin";
 export type Classification = "PRIVATE" | "PUBLIC" | "GOVERNMENT" | "DIPLOMATIC";
+export type InspectionPurpose = "FOR_RENEWAL" | "FOR_INIT_REG" | "FOR_COMPLIANCE";
+
+export const INSPECTION_PURPOSE_LABELS: Record<InspectionPurpose, string> = {
+  FOR_RENEWAL: "Renewal",
+  FOR_INIT_REG: "Initial / New Registration",
+  FOR_COMPLIANCE: "Compliance / Violation Clearance",
+};
 
 export interface User {
   id: string;
@@ -75,6 +82,7 @@ export interface EmissionTest {
   id: string;
   plateNumber: string;
   fuelType: FuelType;
+  inspectionPurpose: InspectionPurpose;
   passFail: boolean | null;
   startedAt: string | null;
   completedAt: string | null;

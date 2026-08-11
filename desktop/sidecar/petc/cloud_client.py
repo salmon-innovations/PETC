@@ -21,6 +21,20 @@ from typing import Optional
 import httpx
 
 
+# Keep legacy states during the cloud migration.  An unknown state is
+# deliberately non-terminal: the sidecar must not print a CEC or stop polling
+# merely because the cloud has introduced a state it does not yet understand.
+SUBMISSION_SUCCESS_STATES = frozenset(("PASSED", "ACCEPTED"))
+SUBMISSION_TERMINAL_STATES = frozenset((
+    "PASSED", "ACCEPTED", "FAILED_EVALUATION", "ACTION_REQUIRED",
+    "AUTH_BLOCKED", "DEAD", "REJECTED",
+))
+SUBMISSION_NONTERMINAL_STATES = frozenset((
+    "PENDING", "IN_FLIGHT", "BLOCKED", "DEFERRED", "RECONCILING",
+    "WAITING_FOR_LTMS",
+))
+
+
 class CloudUnavailableError(Exception):
     """Raised when the cloud URL is not configured."""
 
@@ -39,7 +53,8 @@ class SubmissionCreated:
 
 @dataclass
 class SubmissionStatus:
-    # PENDING | IN_FLIGHT | BLOCKED | ACCEPTED | REJECTED | DEAD
+    # PASSED | FAILED_EVALUATION | ACTION_REQUIRED | DEFERRED |
+    # AUTH_BLOCKED | RECONCILING, plus legacy ACCEPTED | REJECTED.
     state: str
     certificate_no: Optional[str]
     ltms_ref_no: Optional[str]
@@ -51,10 +66,17 @@ class SubmissionStatus:
 
     @property
     def is_terminal(self) -> bool:
-        # BLOCKED is deliberately NOT terminal: the cloud is holding the filing
-        # for want of wallet funds and will dispatch it on top-up or on grace
-        # expiry, so the reconciler must keep polling it.
-        return self.state in ("ACCEPTED", "REJECTED", "DEAD")
+        return self.state in SUBMISSION_TERMINAL_STATES
+
+    @property
+    def is_success(self) -> bool:
+        """Only successful terminal outcomes may produce or print a CEC."""
+        return self.state in SUBMISSION_SUCCESS_STATES
+
+    @property
+    def is_known_nonterminal(self) -> bool:
+        """Whether this state can safely be persisted and polled locally."""
+        return self.state in SUBMISSION_NONTERMINAL_STATES
 
 
 @dataclass

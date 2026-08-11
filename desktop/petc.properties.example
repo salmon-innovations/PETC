@@ -1,0 +1,15 @@
+# Download a center-specific file from the operator portal. Never put an
+# issued petc.cloud.key in source control.
+petc.profile=accreditation-demo
+petc.cloud.url=https://uat-api.petc.siiportal.com
+petc.cloud.key=replace-with-issued-center-key
+petc.center.id=replace-with-issued-center-uuid
+petc.update.url=https://uat-app.petc.siiportal.com/downloads/desktop/uat
+petc.enforce.hardware=false
+
+# Hardware can be commissioned here or changed later in Settings.
+petc.analyzer=mock
+petc.analyzer.port=COM1
+petc.analyzer.baud=9600
+petc.camera=mock
+petc.printer=mock

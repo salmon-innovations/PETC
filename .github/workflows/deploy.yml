@@ -1,0 +1,229 @@
+name: Deploy PETC
+
+on:
+  push:
+    branches: [release, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            cloud/frontend/package-lock.json
+            desktop/package-lock.json
+            desktop/renderer/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: desktop/pyproject.toml
+      - name: Test cloud backend
+        working-directory: cloud
+        run: ./gradlew test --no-daemon
+      - name: Test cloud frontend
+        working-directory: cloud/frontend
+        run: npm ci && npm test
+      - name: Test desktop renderer
+        working-directory: desktop/renderer
+        run: npm ci && npm test
+      - name: Test desktop sidecar
+        run: |
+          python -m pip install -e "desktop[dev]"
+          python -m pytest desktop/tests
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'PROD' || 'UAT' }}
+    env:
+      AWS_REGION: ap-southeast-1
+      RELEASE_CHANNEL: ${{ github.ref_name == 'main' && 'stable' || 'uat' }}
+      DESIRED_COUNT: ${{ github.ref_name == 'main' && '2' || '1' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push immutable backend image
+        id: image
+        shell: bash
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          REGISTRY="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+          IMAGE="$REGISTRY/${{ vars.ECR_REPOSITORY }}:${GITHUB_SHA}"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$REGISTRY"
+          if ! aws ecr describe-images --repository-name "${{ vars.ECR_REPOSITORY }}" --image-ids "imageTag=$GITHUB_SHA" >/dev/null 2>&1; then
+            docker buildx build --platform linux/arm64 --tag "$IMAGE" --push cloud
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Bootstrap database role and database
+        shell: bash
+        run: |
+          NETWORK="awsvpcConfiguration={subnets=[${{ vars.ECS_PRIVATE_SUBNET_IDS }}],securityGroups=[${{ vars.ECS_SECURITY_GROUP_ID }}],assignPublicIp=DISABLED}"
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "${{ vars.ECS_CLUSTER }}" \
+            --task-definition "${{ vars.DB_BOOTSTRAP_TASK_FAMILY }}" \
+            --launch-type FARGATE \
+            --network-configuration "$NETWORK" \
+            --query 'tasks[0].taskArn' --output text)
+          test "$TASK_ARN" != "None"
+          aws ecs wait tasks-stopped --cluster "${{ vars.ECS_CLUSTER }}" --tasks "$TASK_ARN"
+          EXIT_CODE=$(aws ecs describe-tasks --cluster "${{ vars.ECS_CLUSTER }}" --tasks "$TASK_ARN" --query 'tasks[0].containers[0].exitCode' --output text)
+          test "$EXIT_CODE" = "0"
+
+      - name: Register and deploy backend task definition
+        shell: bash
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+        run: |
+          aws ecs describe-task-definition --task-definition "${{ vars.ECS_TASK_FAMILY }}" --query taskDefinition > task-definition.json
+          jq --arg image "$IMAGE" '
+            .containerDefinitions[0].image = $image
+            | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)
+          ' task-definition.json > task-definition-new.json
+          TASK_DEFINITION_ARN=$(aws ecs register-task-definition --cli-input-json file://task-definition-new.json --query 'taskDefinition.taskDefinitionArn' --output text)
+          aws ecs update-service \
+            --cluster "${{ vars.ECS_CLUSTER }}" \
+            --service "${{ vars.ECS_SERVICE }}" \
+            --task-definition "$TASK_DEFINITION_ARN" \
+            --desired-count "$DESIRED_COUNT" >/dev/null
+          aws ecs wait services-stable --cluster "${{ vars.ECS_CLUSTER }}" --services "${{ vars.ECS_SERVICE }}"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: cloud/frontend/package-lock.json
+      - name: Build and deploy cloud frontend
+        working-directory: cloud/frontend
+        run: |
+          npm ci
+          npm run build
+          aws s3 sync dist "s3://${{ vars.FRONTEND_BUCKET }}/" --delete
+          aws cloudfront create-invalidation --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" --paths '/*' >/dev/null
+      - name: Smoke test
+        run: curl --fail --retry 12 --retry-delay 10 "${{ vars.API_URL }}/actuator/health/readiness"
+
+  windows-installer:
+    needs: deploy
+    runs-on: windows-latest
+    environment: ${{ github.ref_name == 'main' && 'PROD' || 'UAT' }}
+    env:
+      AWS_REGION: ap-southeast-1
+      RELEASE_CHANNEL: ${{ github.ref_name == 'main' && 'stable' || 'uat' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            desktop/package-lock.json
+            desktop/renderer/package-lock.json
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Build Windows sidecar and installer
+        shell: pwsh
+        run: |
+          python -m pip install -e "desktop"
+          python -m pip install pyinstaller==6.10.0
+          Push-Location desktop/sidecar
+          pyinstaller ../installer/petc_sidecar.spec --distpath dist --workpath build/pyinstaller --noconfirm
+          $env:PETC_PROFILE = "dev"
+          $env:PETC_GOV_MOCK = "true"
+          $env:PETC_DATA_DIR = "$env:RUNNER_TEMP\petc-sidecar-smoke"
+          $sidecar = Start-Process -FilePath "dist/petc/petc.exe" -PassThru
+          Start-Sleep -Seconds 8
+          Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8765/health
+          Stop-Process -Id $sidecar.Id -Force
+          Pop-Location
+          Push-Location desktop/renderer
+          npm ci
+          Pop-Location
+          Push-Location desktop
+          npm ci
+          npm version "0.1.${{ github.run_number }}" --no-git-tag-version
+          npm run build
+          npx electron-builder --config installer/electron-builder.yml --win nsis --x64 --publish never
+          Pop-Location
+      - name: Upload Windows release
+        shell: pwsh
+        run: |
+          aws s3 cp desktop/dist/installer "s3://${{ vars.RELEASES_BUCKET }}/downloads/desktop/$env:RELEASE_CHANNEL/" --recursive
+          aws cloudfront create-invalidation --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" --paths "/downloads/desktop/$env:RELEASE_CHANNEL/*"
+
+  macos-installer:
+    needs: deploy
+    runs-on: macos-15
+    environment: ${{ github.ref_name == 'main' && 'PROD' || 'UAT' }}
+    env:
+      AWS_REGION: ap-southeast-1
+      RELEASE_CHANNEL: ${{ github.ref_name == 'main' && 'stable' || 'uat' }}
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            desktop/package-lock.json
+            desktop/renderer/package-lock.json
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Build Apple Silicon sidecar and installer
+        run: |
+          python -m pip install -e "desktop"
+          python -m pip install pyinstaller==6.10.0
+          cd desktop/sidecar
+          pyinstaller ../installer/petc_sidecar.spec --distpath dist --workpath build/pyinstaller --noconfirm
+          PETC_PROFILE=dev PETC_GOV_MOCK=true PETC_DATA_DIR="$RUNNER_TEMP/petc-sidecar-smoke" ./dist/petc/petc &
+          SIDECAR_PID=$!
+          trap 'kill $SIDECAR_PID 2>/dev/null || true' EXIT
+          curl --fail --retry 8 --retry-connrefused --retry-delay 2 http://127.0.0.1:8765/health
+          kill "$SIDECAR_PID"
+          trap - EXIT
+          cd ../renderer
+          npm ci
+          cd ..
+          npm ci
+          npm version "0.1.${{ github.run_number }}" --no-git-tag-version
+          npm run build
+          npx electron-builder --config installer/electron-builder.yml --mac dmg zip --arm64 --publish never
+      - name: Upload macOS release
+        run: |
+          aws s3 cp desktop/dist/installer "s3://${{ vars.RELEASES_BUCKET }}/downloads/desktop/$RELEASE_CHANNEL/" --recursive
+          aws cloudfront create-invalidation --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" --paths "/downloads/desktop/$RELEASE_CHANNEL/*"

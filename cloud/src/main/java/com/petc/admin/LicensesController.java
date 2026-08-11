@@ -107,7 +107,7 @@ public class LicensesController {
         );
 
         // rawKey is returned here and never persisted in plain text.
-        return new IssuedLicenseResponse(id, rawKey);
+        return new IssuedLicenseResponse(id, rawKey, tenantId.toString(), centerSlug);
     }
 
     @DeleteMapping("/{id}")
@@ -146,7 +146,7 @@ public class LicensesController {
     ) {}
 
     /** rawKey is shown once by the portal and cannot be retrieved again. */
-    public record IssuedLicenseResponse(String id, String rawKey) {}
+    public record IssuedLicenseResponse(String id, String rawKey, String tenantId, String centerId) {}
 
     public record IssueLicenseRequest(@NotBlank String tenantId) {}
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
 import clsx from "clsx";
@@ -14,6 +14,8 @@ interface WalletDetail {
   negative: boolean;
   blockedCount: number;
   chargePerUploadCentavos: number;
+  chargeOverrideCentavos: number | null;
+  defaultChargePerUploadCentavos: number;
 }
 
 interface LedgerEntry {
@@ -40,6 +42,10 @@ export default function CenterDetailPage() {
   const [amount, setAmount] = useState("");
   const [reference, setReference] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [useDefaultCharge, setUseDefaultCharge] = useState(true);
+  const [chargeAmount, setChargeAmount] = useState("");
+  const [chargeInitialized, setChargeInitialized] = useState(false);
+  const [chargeError, setChargeError] = useState<string | null>(null);
 
   const { data: wallet } = useQuery<WalletDetail>({
     queryKey: ["wallet", tenantId],
@@ -50,6 +56,37 @@ export default function CenterDetailPage() {
   const { data: ledger = [] } = useQuery<LedgerEntry[]>({
     queryKey: ["ledger", tenantId],
     queryFn: () => api.get<LedgerEntry[]>(`/wallet/centers/${tenantId}/ledger?limit=100`).then((r) => r.data),
+  });
+
+  useEffect(() => {
+    if (!wallet || chargeInitialized) return;
+    setUseDefaultCharge(wallet.chargeOverrideCentavos === null);
+    setChargeAmount(
+      wallet.chargeOverrideCentavos === null
+        ? ""
+        : String(wallet.chargeOverrideCentavos / 100),
+    );
+    setChargeInitialized(true);
+  }, [chargeInitialized, wallet]);
+
+  const updateCharge = useMutation({
+    mutationFn: (chargeOverrideCentavos: number | null) =>
+      api.put<WalletDetail>(`/wallet/centers/${tenantId}/cec-charge`, {
+        chargeOverrideCentavos,
+      }).then((response) => response.data),
+    onSuccess: (updated) => {
+      setUseDefaultCharge(updated.chargeOverrideCentavos === null);
+      setChargeAmount(
+        updated.chargeOverrideCentavos === null
+          ? ""
+          : String(updated.chargeOverrideCentavos / 100),
+      );
+      setChargeError(null);
+      qc.setQueryData(["wallet", tenantId], updated);
+      qc.invalidateQueries({ queryKey: ["wallet-centers"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
+    },
+    onError: () => setChargeError("Unable to update the center's CEC price."),
   });
 
   const topUp = useMutation({
@@ -76,6 +113,19 @@ export default function CenterDetailPage() {
     topUp.mutate({ amountCentavos: centavos, reference });
   };
 
+  const saveCharge = () => {
+    if (useDefaultCharge) {
+      updateCharge.mutate(null);
+      return;
+    }
+    const centavos = parsePesosToCentavos(chargeAmount);
+    if (centavos === null || centavos < 0) {
+      setChargeError("Enter a valid price of zero or greater.");
+      return;
+    }
+    updateCharge.mutate(centavos);
+  };
+
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
       <div className="flex items-center gap-2 text-sm">
@@ -96,6 +146,7 @@ export default function CenterDetailPage() {
         {wallet && (
           <p className="mt-1 text-xs text-gray-500">
             {formatCentavos(wallet.chargePerUploadCentavos)} per accepted CEC
+            {wallet.chargeOverrideCentavos === null ? " · platform default" : " · center override"}
             {wallet.blockedCount > 0 && (
               <span className="ml-2 text-amber-700 font-medium">
                 · {wallet.blockedCount} submission{wallet.blockedCount > 1 ? "s" : ""} held
@@ -112,6 +163,53 @@ export default function CenterDetailPage() {
             authoritative.
           </p>
         )}
+      </div>
+
+      {/* Per-center commercial rate */}
+      <div className="bg-white rounded-xl shadow p-5 space-y-3">
+        <div>
+          <h2 className="font-semibold text-sm text-gray-700">CEC upload price</h2>
+          <p className="mt-1 text-xs text-gray-500">
+            The platform default is {wallet
+              ? formatCentavos(wallet.defaultChargePerUploadCentavos)
+              : "…"} per accepted CEC. A center override applies only to submissions received after it is saved;
+            queued submissions keep their quoted price.
+          </p>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={useDefaultCharge}
+            onChange={(event) => {
+              setUseDefaultCharge(event.target.checked);
+              setChargeError(null);
+            }}
+          />
+          Use platform default
+        </label>
+        <div className="flex items-end gap-3">
+          <div className="w-48">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Center price per accepted CEC (₱)
+            </label>
+            <input
+              value={chargeAmount}
+              onChange={(event) => setChargeAmount(event.target.value)}
+              disabled={useDefaultCharge}
+              placeholder={wallet ? String(wallet.defaultChargePerUploadCentavos / 100) : "80.00"}
+              inputMode="decimal"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+            />
+          </div>
+          <button
+            onClick={saveCharge}
+            disabled={updateCharge.isPending || !wallet}
+            className="rounded-lg bg-blue-600 px-5 py-2 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+          >
+            {updateCharge.isPending ? "Saving…" : "Save CEC price"}
+          </button>
+        </div>
+        {chargeError && <p className="text-xs text-red-600">{chargeError}</p>}
       </div>
 
       {/* Top up */}

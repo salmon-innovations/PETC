@@ -4,7 +4,7 @@
  * and cached — it never changes for the lifetime of the window.
  */
 import axios, { type AxiosInstance } from "axios";
-import type { SidecarStatus, VehicleInfo, DriverInfo, OwnerInfo, EmissionTestDetail, TestPhoto } from "../types";
+import type { SidecarStatus, VehicleInfo, DriverInfo, OwnerInfo, EmissionTestDetail, TestPhoto, InspectionPurpose } from "../types";
 
 let _client: AxiosInstance | null = null;
 
@@ -65,8 +65,38 @@ export interface DriverLookupResponse {
   driver: DriverInfo | null;
 }
 
+export type LtmsSubmissionState =
+  | "PASSED"
+  | "FAILED_EVALUATION"
+  | "ACTION_REQUIRED"
+  | "DEFERRED"
+  | "AUTH_BLOCKED"
+  | "RECONCILING"
+  | "PENDING"
+  | "IN_FLIGHT"
+  | "BLOCKED"
+  | "DEAD"
+  | "ACCEPTED"
+  | "REJECTED"
+  | "WAITING_FOR_LTMS";
+
+export function isLtmsSuccessState(state: string | null | undefined): boolean {
+  return state === "PASSED" || state === "ACCEPTED";
+}
+
+export function isLtmsTerminalState(state: string | null | undefined): boolean {
+  return state === "PASSED" || state === "ACCEPTED"
+    || state === "FAILED_EVALUATION" || state === "ACTION_REQUIRED"
+    || state === "AUTH_BLOCKED" || state === "DEAD" || state === "REJECTED";
+}
+
+export function isLtmsNonterminalState(state: string | null | undefined): boolean {
+  return state === "PENDING" || state === "IN_FLIGHT" || state === "BLOCKED"
+    || state === "DEFERRED" || state === "RECONCILING" || state === "WAITING_FOR_LTMS";
+}
+
 export interface LtmsSubmitResponse {
-  state: "ACCEPTED" | "REJECTED" | "PENDING" | "WAITING_FOR_LTMS";
+  state: LtmsSubmissionState;
   certificateNo: string | null;
   rejectionReason: string | null;
   queued?: boolean;
@@ -130,12 +160,14 @@ export const sidecarClient = {
     operatorId: string;
     plateNumber: string;
     fuelType: string;
+    inspectionPurpose: InspectionPurpose;
   }): Promise<StartTestResponse> {
     const c = await client();
     const { data } = await c.post("/test/start", {
       operator_id: params.operatorId,
       plate_number: params.plateNumber,
       fuel_type: params.fuelType,
+      inspection_purpose: params.inspectionPurpose,
     });
     return {
       testId: data.test_id,

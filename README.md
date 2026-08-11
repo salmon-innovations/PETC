@@ -331,17 +331,23 @@ npm run build
 
 ## Cloud Development
 
-The production cloud app is `cloud/`. It runs on the host, not in Docker:
+The production cloud app is `cloud/`. Run the full local cloud stack with:
+
+```bash
+docker compose up --build
+```
+
+For faster backend iteration, run Spring Boot on the host instead:
 
 ```bash
 cd cloud
 ./gradlew bootRun
 ```
 
-Start the supporting services (MinIO, operator portal) separately:
+Then start MinIO and the portal with the portal pointed at the host:
 
 ```bash
-docker compose up --build minio cloud-frontend
+API_UPSTREAM=host.docker.internal:8080 docker compose up --build minio cloud-frontend
 ```
 
 Cloud ports:
@@ -353,17 +359,16 @@ Cloud ports:
 
 The desktop app does not run in Docker.
 
-> **Do not run the `backend` compose service.** It builds `cloud/backend`, the
-> deprecated spike (see [Project Layout](#project-layout)), which owns a rival set
-> of V1–V3 migrations against the same `petc` database. Running both apps in turn
-> is what produces the Flyway checksum errors below.
+> The `backend` compose service builds the production cloud application in
+> `cloud/`. The similarly named `cloud/backend/` directory is a deprecated spike
+> with rival V1–V3 migrations; do not build or run it against the `petc` database.
 
-The operator portal proxies `/api` to `API_UPSTREAM`, which defaults to
-`host.docker.internal:8080` so the containerised frontend reaches the backend
-running on your host. Override it if the backend lives elsewhere:
+The operator portal proxies `/api` to `API_UPSTREAM`, which defaults to the
+`backend:8080` service in Compose. Override it when the production cloud backend
+is running on your host or elsewhere:
 
 ```bash
-API_UPSTREAM=backend:8080 docker compose up cloud-frontend
+API_UPSTREAM=host.docker.internal:8080 docker compose up cloud-frontend
 ```
 
 ### Fix Flyway Checksum Errors in Local Dev
@@ -453,8 +458,10 @@ a yellow box:
 petc_EXAMPLEKEYdoNOTuseTHISvalue0000000000000
 ```
 
-Copy it immediately. Only its bcrypt hash is stored, so a lost key cannot be
-recovered — only re-issued.
+Download the commissioning file immediately (and store it securely). It
+contains the one-time raw key, center ID, cloud URL, and update channel. Only
+the key's bcrypt hash is stored by the cloud, so a lost key cannot be recovered
+— only re-issued.
 
 A center holds **at most one active key**. Issuing a new key automatically
 revokes the previous one, so re-issuing is how you rotate a key; the old key
@@ -462,8 +469,8 @@ starts returning `401` right away.
 
 ### 4. Point the center's sidecar at the cloud
 
-Copy the key into the center desktop app's sidecar environment. The key is never
-entered back into the portal.
+For a packaged app, select the downloaded commissioning file on first launch.
+For local sidecar development, the equivalent environment variables are:
 
 ```bash
 PETC_CLOUD_URL=http://localhost:8080 \
@@ -477,11 +484,11 @@ desktop/.venv/bin/python -m petc.service
 
 `PETC_CENTER_ID` must match the center's slug from step 2.
 
-Electron spawns its own sidecar and overrides only `PETC_PORT` and
-`PETC_DATA_DIR`, inheriting everything else from its environment. To run the
-desktop app against the cloud, export these vars in the shell you launch
-Electron from — otherwise the sidecar starts in local-mock mode and submits
-nothing to the cloud.
+Electron spawns its own sidecar and always supplies `PETC_PORT` and
+`PETC_DATA_DIR`. In development it can also load `desktop/petc.properties`. A
+packaged app requires a center-specific commissioning file on first launch and
+stores it as `petc.properties` in Electron's per-user app-data directory. The
+file can be replaced later from **Settings → Center Commissioning**.
 
 ### 5. Verify the connection
 
@@ -541,6 +548,13 @@ DEV_CENTER_NAME=Mock PETC Center
 
 `ProductionGuard` fails startup closed if the `production` profile is active
 while this dev key is still enabled.
+
+## AWS Deployment
+
+The Terraform stacks, initial bootstrap sequence, GitHub environment variables,
+retention policy, and desktop release flow are documented in
+[`infra/README.md`](infra/README.md). UAT deploys from `release`; production
+deploys from `main` through the protected GitHub `PROD` environment.
 
 ## Current Development Notes
 

@@ -28,6 +28,7 @@ _CONFIG = {
     "camera": os.environ.get("PETC_CAMERA", "mock"),
     "printer": os.environ.get("PETC_PRINTER", "mock"),
     "gov_mock": os.environ.get("PETC_GOV_MOCK", "true").lower() == "true",
+    "enforce_hardware": os.environ.get("PETC_ENFORCE_HARDWARE", "true").lower() == "true",
     "cloud_url": os.environ.get("PETC_CLOUD_URL", "http://localhost:8080"),
     "center_id": os.environ.get("PETC_CENTER_ID", "dev-center"),
     "cloud_key": os.environ.get("PETC_CLOUD_KEY", "dev-insecure-key"),
@@ -57,6 +58,12 @@ def run() -> None:
     except ProductionConfigError:
         logger.exception("Refusing to start sidecar with non-compliant production settings")
         raise
+
+    if runtime_config.profile == "production" and not runtime_config.enforce_hardware:
+        logger.warning(
+            "Production hardware enforcement is temporarily disabled for commissioning; "
+            "set petc.enforce.hardware=true before live accredited operation"
+        )
 
     init_db()
     logger.info("SQLite initialised (profile=%s)", runtime_config.profile)
