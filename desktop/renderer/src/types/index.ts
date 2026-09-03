@@ -123,4 +123,11 @@ export interface SidecarStatus {
   walletBlockedCount: number;
   /** ISO timestamp of the last successful wallet read, for staleness display. */
   walletFetchedAt: string | null;
+  billingMode: "PREPAID" | "POSTPAID" | null;
+  billingCurrentUsageCount: number | null;
+  billingCurrentEstimateCentavos: number | null;
+  billingNextCutoff: string | null;
+  billingOpenTotalCentavos: number | null;
+  billingPastDueTotalCentavos: number | null;
+  billingPastDueInvoiceCount: number | null;
 }

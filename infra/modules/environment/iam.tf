@@ -24,11 +24,15 @@ resource "aws_iam_role_policy" "ecs_execution_secrets" {
     Statement = [{
       Effect = "Allow"
       Action = ["secretsmanager:GetSecretValue"]
-      Resource = [
+      Resource = concat([
         local.master_secret_arn,
         aws_secretsmanager_secret.database_password.arn,
         aws_secretsmanager_secret.jwt.arn,
-      ]
+        ], var.paymongo_secret_key_secret_arn == null ? [] : [
+        var.paymongo_secret_key_secret_arn,
+        ], var.paymongo_webhook_secret_arn == null ? [] : [
+        var.paymongo_webhook_secret_arn,
+      ])
     }]
   })
 }

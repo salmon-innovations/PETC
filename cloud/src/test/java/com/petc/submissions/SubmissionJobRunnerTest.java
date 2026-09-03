@@ -5,6 +5,7 @@ import com.petc.gov.EmissionPayload;
 import com.petc.gov.GovRegistryClient;
 import com.petc.gov.MockGovRegistryClient;
 import com.petc.gov.SubmissionResult;
+import com.petc.billing.BillingMode;
 import com.petc.settings.PlatformSettingsService;
 import com.petc.wallet.WalletService;
 import com.petc.ltms.LtmsSubmissionGateway;
@@ -178,6 +179,25 @@ class SubmissionJobRunnerTest {
         // The submission must never reach LTMS when it cannot be paid for.
         verify(service, never()).markAcceptedAndCharge(
                 any(), any(), any(), any(), any(), any(), any(), any(), anyLong());
+    }
+
+    @Test
+    void processPending_postpaidBypassesWalletGate() throws Exception {
+        when(wallet.getBalance("tenant-1")).thenReturn(0L);
+        SubmissionService.PendingSubmission prepaidShape = pending(
+                "postpaid-1", "postpaid-test-1", "ABC1234", 0, false);
+        SubmissionService.PendingSubmission postpaid = new SubmissionService.PendingSubmission(
+                prepaidShape.id(), prepaidShape.tenantId(), prepaidShape.centerId(), prepaidShape.testId(),
+                prepaidShape.payloadJson(), prepaidShape.attempts(), prepaidShape.graceReleased(),
+                prepaidShape.chargeSnapshotCentavos(), BillingMode.POSTPAID);
+        when(service.claimPending(anyInt())).thenReturn(List.of(postpaid));
+
+        runner.processPending();
+
+        verify(service).markAcceptedAndCharge(eq("postpaid-1"), eq("tenant-1"),
+                anyString(), isNull(), anyString(), anyString(), any(), any(), eq(CHARGE));
+        verify(service, never()).markBlocked(any(), any(), anyLong());
+        verify(wallet, never()).getBalance("tenant-1");
     }
 
     /**

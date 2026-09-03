@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 import uvicorn
+import httpx
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -193,6 +194,13 @@ class StatusResponse(BaseModel):
     wallet_negative: bool = False
     wallet_blocked_count: int = 0
     wallet_fetched_at: Optional[datetime] = None
+    billing_mode: Optional[str] = None
+    billing_current_usage_count: Optional[int] = None
+    billing_current_estimate_centavos: Optional[int] = None
+    billing_next_cutoff: Optional[str] = None
+    billing_open_total_centavos: Optional[int] = None
+    billing_past_due_total_centavos: Optional[int] = None
+    billing_past_due_invoice_count: Optional[int] = None
 
 
 class VehicleLookupRequest(BaseModel):
@@ -201,6 +209,11 @@ class VehicleLookupRequest(BaseModel):
 
 class UploadSubmitRequest(BaseModel):
     payload: dict
+
+
+class BillingTopUpRequest(BaseModel):
+    amount_centavos: int
+    client_request_id: str
 
 
 # ---------------------------------------------------------------------------
@@ -289,7 +302,105 @@ def get_status(
         wallet_negative=wallet["negative"] if wallet else False,
         wallet_blocked_count=wallet["blocked_count"] if wallet else 0,
         wallet_fetched_at=wallet["fetched_at"] if wallet else None,
+        billing_mode=wallet["mode"] if wallet else None,
+        billing_current_usage_count=wallet["current_usage_count"] if wallet else None,
+        billing_current_estimate_centavos=wallet["current_estimate_centavos"] if wallet else None,
+        billing_next_cutoff=wallet["next_cutoff"] if wallet else None,
+        billing_open_total_centavos=wallet["open_total_centavos"] if wallet else None,
+        billing_past_due_total_centavos=wallet["past_due_total_centavos"] if wallet else None,
+        billing_past_due_invoice_count=wallet["past_due_invoice_count"] if wallet else None,
     )
+
+
+@app.get("/billing/summary")
+def billing_summary() -> dict:
+    from ..cloud_client import CloudUnavailableError, get_client
+    from ..submissions.reconciler import _store_wallet
+
+    try:
+        summary = get_client().get_wallet()
+        _store_wallet(summary)
+        return {
+            "mode": summary.mode,
+            "charge_per_upload_centavos": summary.charge_per_upload_centavos,
+            "balance_centavos": summary.balance_centavos,
+            "low": summary.low,
+            "negative": summary.negative,
+            "blocked_count": summary.blocked_count,
+            "current_usage_count": summary.current_usage_count,
+            "current_estimate_centavos": summary.current_estimate_centavos,
+            "period_start": summary.period_start,
+            "next_cutoff": summary.next_cutoff,
+            "open_total_centavos": summary.open_total_centavos,
+            "past_due_total_centavos": summary.past_due_total_centavos,
+            "past_due_invoice_count": summary.past_due_invoice_count,
+        }
+    except (CloudUnavailableError, httpx.HTTPError) as exc:
+        raise _billing_cloud_error(exc) from exc
+
+
+@app.post("/billing/topups")
+def create_billing_topup(req: BillingTopUpRequest) -> dict:
+    from ..cloud_client import CloudUnavailableError, get_client
+
+    try:
+        uuid.UUID(req.client_request_id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "client_request_id must be a UUID") from exc
+    if req.amount_centavos <= 0:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "amount_centavos must be positive")
+    try:
+        return get_client().create_topup(req.amount_centavos, req.client_request_id)
+    except (CloudUnavailableError, httpx.HTTPError) as exc:
+        raise _billing_cloud_error(exc) from exc
+
+
+@app.get("/billing/topups/{topup_id}")
+def get_billing_topup(topup_id: str) -> dict:
+    from ..cloud_client import CloudUnavailableError, get_client
+
+    try:
+        uuid.UUID(topup_id)
+        return get_client().get_topup(topup_id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "topup_id must be a UUID") from exc
+    except (CloudUnavailableError, httpx.HTTPError) as exc:
+        raise _billing_cloud_error(exc) from exc
+
+
+@app.get("/billing/invoices")
+def get_billing_invoices(limit: int = 20) -> list[dict]:
+    from ..cloud_client import CloudUnavailableError, get_client
+
+    try:
+        return get_client().get_invoices(limit)
+    except (CloudUnavailableError, httpx.HTTPError) as exc:
+        raise _billing_cloud_error(exc) from exc
+
+
+@app.get("/billing/invoices/{invoice_id}")
+def get_billing_invoice(invoice_id: str) -> dict:
+    from ..cloud_client import CloudUnavailableError, get_client
+
+    try:
+        uuid.UUID(invoice_id)
+        return get_client().get_invoice(invoice_id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "invoice_id must be a UUID") from exc
+    except (CloudUnavailableError, httpx.HTTPError) as exc:
+        raise _billing_cloud_error(exc) from exc
+
+
+def _billing_cloud_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        try:
+            body = exc.response.json()
+            detail = body.get("detail") or body.get("title") or "Cloud billing request failed"
+        except Exception:
+            detail = "Cloud billing request failed"
+        return HTTPException(code if code < 500 else status.HTTP_503_SERVICE_UNAVAILABLE, detail)
+    return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Cloud billing is unavailable")
 
 
 @app.post("/test/start", response_model=StartTestResponse)

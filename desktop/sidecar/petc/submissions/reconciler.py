@@ -47,11 +47,19 @@ def _store_wallet(wallet) -> None:
     global _wallet_cache
     with _wallet_lock:
         _wallet_cache = {
+            "mode": wallet.mode,
             "balance_centavos": wallet.balance_centavos,
             "low": wallet.low,
             "negative": wallet.negative,
             "blocked_count": wallet.blocked_count,
             "charge_per_upload_centavos": wallet.charge_per_upload_centavos,
+            "current_usage_count": wallet.current_usage_count,
+            "current_estimate_centavos": wallet.current_estimate_centavos,
+            "period_start": wallet.period_start,
+            "next_cutoff": wallet.next_cutoff,
+            "open_total_centavos": wallet.open_total_centavos,
+            "past_due_total_centavos": wallet.past_due_total_centavos,
+            "past_due_invoice_count": wallet.past_due_invoice_count,
             "fetched_at": datetime.now(timezone.utc),
         }
 

@@ -35,6 +35,12 @@ interface Summary {
   debtFloorCentavos: number;
   centersNeedingAttention: CenterAttention[];
   recentTopUps: TopUp[];
+  openReceivablesCentavos: number;
+  pastDueReceivablesCentavos: number;
+  pastDueInvoiceCount: number;
+  uninvoicedPostpaidCentavos: number;
+  pendingPayMongoTopups: number;
+  failedPaymentWebhooks: number;
 }
 
 const STATE_STYLES: Record<string, string> = {
@@ -117,6 +123,15 @@ export default function OperationsDashboard() {
         />
         <Stat label="Total float" value={formatCentavos(data.totalFloatCentavos)} />
       </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Stat label="Open receivables" value={formatCentavos(data.openReceivablesCentavos)} />
+        <Stat label="Uninvoiced postpaid" value={formatCentavos(data.uninvoicedPostpaidCentavos)} />
+        <Stat label="Past due" value={formatCentavos(data.pastDueReceivablesCentavos)} tone={data.pastDueInvoiceCount > 0 ? "bad" : undefined} />
+        <Stat label="Pending QR payments" value={String(data.pendingPayMongoTopups)} tone={data.failedPaymentWebhooks > 0 ? "warn" : undefined} />
+      </div>
+
+      {data.failedPaymentWebhooks > 0 && <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-800">{data.failedPaymentWebhooks} PayMongo webhook event(s) require reconciliation.</div>}
 
       {data.graceReleasedCount > 0 && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">

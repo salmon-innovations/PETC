@@ -136,6 +136,51 @@ export interface CameraInfo {
   resolution: string;
 }
 
+export interface BillingSummary {
+  mode: "PREPAID" | "POSTPAID";
+  chargePerUploadCentavos: number;
+  balanceCentavos: number | null;
+  low: boolean;
+  negative: boolean;
+  blockedCount: number;
+  currentUsageCount: number | null;
+  currentEstimateCentavos: number | null;
+  periodStart: string | null;
+  nextCutoff: string | null;
+  openTotalCentavos: number | null;
+  pastDueTotalCentavos: number | null;
+  pastDueInvoiceCount: number | null;
+}
+
+export interface BillingTopUp {
+  id: string;
+  clientRequestId: string;
+  amountCentavos: number;
+  currency: string;
+  status: "CREATING" | "AWAITING_PAYMENT" | "PAID" | "EXPIRED" | "FAILED" | "CANCELLED";
+  qrImage: string | null;
+  testUrl: string | null;
+  expiresAt: string | null;
+  paidAt: string | null;
+  failureMessage: string | null;
+}
+
+export interface BillingInvoice {
+  id: string;
+  invoice_number: string;
+  period_start: string;
+  period_end: string;
+  due_at: string;
+  total_centavos: number;
+  amount_paid_centavos: number;
+  status: string;
+}
+
+export interface BillingInvoiceDetail extends BillingInvoice {
+  usage: Array<{ submission_id: string; test_id: string; cec_number: string | null; amount_centavos: number; accepted_at: string }>;
+  payments: Array<{ id: string; amount_centavos: number; method: string; external_reference: string; paid_at: string }>;
+}
+
 // ── API calls ──────────────────────────────────────────────────────────────
 export const sidecarClient = {
   async getStatus(): Promise<SidecarStatus> {
@@ -153,7 +198,58 @@ export const sidecarClient = {
       walletNegative: data.wallet_negative ?? false,
       walletBlockedCount: data.wallet_blocked_count ?? 0,
       walletFetchedAt: data.wallet_fetched_at ?? null,
+      billingMode: data.billing_mode ?? null,
+      billingCurrentUsageCount: data.billing_current_usage_count ?? null,
+      billingCurrentEstimateCentavos: data.billing_current_estimate_centavos ?? null,
+      billingNextCutoff: data.billing_next_cutoff ?? null,
+      billingOpenTotalCentavos: data.billing_open_total_centavos ?? null,
+      billingPastDueTotalCentavos: data.billing_past_due_total_centavos ?? null,
+      billingPastDueInvoiceCount: data.billing_past_due_invoice_count ?? null,
     };
+  },
+
+  async getBillingSummary(): Promise<BillingSummary> {
+    const c = await client();
+    const { data } = await c.get("/billing/summary");
+    return {
+      mode: data.mode,
+      chargePerUploadCentavos: data.charge_per_upload_centavos,
+      balanceCentavos: data.balance_centavos ?? null,
+      low: data.low ?? false,
+      negative: data.negative ?? false,
+      blockedCount: data.blocked_count ?? 0,
+      currentUsageCount: data.current_usage_count ?? null,
+      currentEstimateCentavos: data.current_estimate_centavos ?? null,
+      periodStart: data.period_start ?? null,
+      nextCutoff: data.next_cutoff ?? null,
+      openTotalCentavos: data.open_total_centavos ?? null,
+      pastDueTotalCentavos: data.past_due_total_centavos ?? null,
+      pastDueInvoiceCount: data.past_due_invoice_count ?? null,
+    };
+  },
+
+  async createBillingTopUp(amountCentavos: number, clientRequestId: string): Promise<BillingTopUp> {
+    const c = await client();
+    const { data } = await c.post("/billing/topups", {
+      amount_centavos: amountCentavos,
+      client_request_id: clientRequestId,
+    });
+    return data;
+  },
+
+  async getBillingTopUp(id: string): Promise<BillingTopUp> {
+    const c = await client();
+    return (await c.get(`/billing/topups/${id}`)).data;
+  },
+
+  async getBillingInvoices(): Promise<BillingInvoice[]> {
+    const c = await client();
+    return (await c.get("/billing/invoices?limit=20")).data;
+  },
+
+  async getBillingInvoice(id: string): Promise<BillingInvoiceDetail> {
+    const c = await client();
+    return (await c.get(`/billing/invoices/${id}`)).data;
   },
 
   async startTest(params: {

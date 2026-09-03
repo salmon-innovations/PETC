@@ -33,6 +33,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/submissions/**").permitAll()
                 .requestMatchers("/api/registry/**").permitAll()
                 .requestMatchers("/api/photos/**").permitAll()
+                .requestMatchers("/api/payments/paymongo/webhook").permitAll()
+                .requestMatchers("/api/billing/me", "/api/billing/me/**").permitAll()
                 // EXACT path, never /api/wallet/**: the rest of /api/wallet is
                 // super-admin-only, and a wildcard here would expose every
                 // center's balance and the top-up endpoint to an unauthenticated

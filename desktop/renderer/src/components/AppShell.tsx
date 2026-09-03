@@ -10,6 +10,7 @@ const NAV = [
   { to: "/upload",   label: "LTMS Upload" },
   { to: "/history",  label: "History" },
   { to: "/analytics",label: "Analytics" },
+  { to: "/billing",   label: "Billing" },
   { to: "/settings", label: "Settings" },
 ];
 
@@ -107,6 +108,23 @@ const WALLET_STALE_MS = 2 * 60 * 1000;
  * presented as current.
  */
 function WalletIndicator({ status }: { status?: SidecarStatus }) {
+  if (status?.billingMode === "POSTPAID") {
+    const estimate = ((status.billingCurrentEstimateCentavos ?? 0) / 100).toLocaleString("en-PH", {
+      style: "currency",
+      currency: "PHP",
+    });
+    return (
+      <div className="pt-1.5 border-t border-gray-700/60 space-y-0.5">
+        <div className="flex justify-between gap-2">
+          <span className="text-gray-400">Postpaid</span><span>{estimate}</span>
+        </div>
+        <p className="text-gray-400">{status.billingCurrentUsageCount ?? 0} accepted this cycle</p>
+        {(status.billingPastDueInvoiceCount ?? 0) > 0 && (
+          <p className="text-red-400">{status.billingPastDueInvoiceCount} invoice(s) past due</p>
+        )}
+      </div>
+    );
+  }
   // No cloud configured (local-mock mode) — there is no balance to speak of.
   if (!status || status.walletBalanceCentavos === null) return null;
 

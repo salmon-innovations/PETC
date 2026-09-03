@@ -8,6 +8,7 @@ import LtmsUploadPage from "./pages/upload/LtmsUploadPage";
 import HistoryPage from "./pages/history/HistoryPage";
 import AnalyticsPage from "./pages/analytics/AnalyticsPage";
 import SettingsPage from "./pages/settings/SettingsPage";
+import BillingPage from "./pages/billing/BillingPage";
 
 // HashRouter avoids file:// routing issues when Electron loads the built bundle
 const queryClient = new QueryClient({
@@ -37,6 +38,7 @@ export default function App() {
             <Route path="/history"   element={<HistoryPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/settings"  element={<SettingsPage />} />
+            <Route path="/billing"   element={<BillingPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/test" replace />} />
         </Routes>

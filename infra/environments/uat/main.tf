@@ -27,6 +27,9 @@ module "petc" {
   ltms_allowed_hosts             = []
   ltms_petc_base_url             = ""
   ltms_jwt_base_url              = ""
+  paymongo_enabled               = false
+  paymongo_live_mode             = false
+  paymongo_expose_test_url       = true
   service_desired_count          = 1
   bootstrap_mode                 = false
   log_retention_days             = 90

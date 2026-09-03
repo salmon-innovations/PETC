@@ -8,6 +8,7 @@ import LicensesPage from "./pages/licensing/LicensesPage";
 import OperationsDashboard from "./pages/dashboard/OperationsDashboard";
 import SubmissionsPage from "./pages/submissions/SubmissionsPage";
 import SettingsPage from "./pages/settings/SettingsPage";
+import InvoiceDetailPage from "./pages/centers/InvoiceDetailPage";
 import { useAuthStore } from "./store/authStore";
 import clsx from "clsx";
 const queryClient = new QueryClient({
@@ -39,5 +40,5 @@ function Protected({ children }) {
     return (_jsx(RequireAuth, { children: _jsx(AppShell, { children: children }) }));
 }
 export default function App() {
-    return (_jsx(QueryClientProvider, { client: queryClient, children: _jsx(BrowserRouter, { children: _jsxs(Routes, { children: [_jsx(Route, { path: "/login", element: _jsx(LoginPage, {}) }), _jsx(Route, { path: "/dashboard", element: _jsx(Protected, { children: _jsx(OperationsDashboard, {}) }) }), _jsx(Route, { path: "/submissions", element: _jsx(Protected, { children: _jsx(SubmissionsPage, {}) }) }), _jsx(Route, { path: "/centers", element: _jsx(Protected, { children: _jsx(CentersPage, {}) }) }), _jsx(Route, { path: "/centers/:tenantId", element: _jsx(Protected, { children: _jsx(CenterDetailPage, {}) }) }), _jsx(Route, { path: "/licenses", element: _jsx(Protected, { children: _jsx(LicensesPage, {}) }) }), _jsx(Route, { path: "/settings", element: _jsx(Protected, { children: _jsx(SettingsPage, {}) }) }), _jsx(Route, { path: "/analytics", element: _jsx(Navigate, { to: "/dashboard", replace: true }) }), _jsx(Route, { path: "*", element: _jsx(Navigate, { to: "/dashboard", replace: true }) })] }) }) }));
+    return (_jsx(QueryClientProvider, { client: queryClient, children: _jsx(BrowserRouter, { children: _jsxs(Routes, { children: [_jsx(Route, { path: "/login", element: _jsx(LoginPage, {}) }), _jsx(Route, { path: "/dashboard", element: _jsx(Protected, { children: _jsx(OperationsDashboard, {}) }) }), _jsx(Route, { path: "/submissions", element: _jsx(Protected, { children: _jsx(SubmissionsPage, {}) }) }), _jsx(Route, { path: "/centers", element: _jsx(Protected, { children: _jsx(CentersPage, {}) }) }), _jsx(Route, { path: "/centers/:tenantId", element: _jsx(Protected, { children: _jsx(CenterDetailPage, {}) }) }), _jsx(Route, { path: "/centers/:tenantId/invoices/:invoiceId", element: _jsx(Protected, { children: _jsx(InvoiceDetailPage, {}) }) }), _jsx(Route, { path: "/licenses", element: _jsx(Protected, { children: _jsx(LicensesPage, {}) }) }), _jsx(Route, { path: "/settings", element: _jsx(Protected, { children: _jsx(SettingsPage, {}) }) }), _jsx(Route, { path: "/analytics", element: _jsx(Navigate, { to: "/dashboard", replace: true }) }), _jsx(Route, { path: "*", element: _jsx(Navigate, { to: "/dashboard", replace: true }) })] }) }) }));
 }

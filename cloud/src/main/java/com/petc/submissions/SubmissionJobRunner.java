@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.petc.gov.EmissionPayload;
 import com.petc.gov.GovRegistryClient;
 import com.petc.gov.SubmissionResult;
+import com.petc.billing.BillingMode;
 import com.petc.settings.PlatformSettingsService;
 import com.petc.wallet.WalletService;
 import com.petc.ltms.LtmsOutcome;
@@ -99,7 +100,7 @@ public class SubmissionJobRunner {
             // This is deliberately the only path that lets a balance go
             // negative: a billing shortfall must not become a DO 2023-008
             // compliance breach.
-            if (!sub.graceReleased() && charge > 0) {
+            if (sub.billingMode() == BillingMode.PREPAID && !sub.graceReleased() && charge > 0) {
                 long remaining = projected.computeIfAbsent(sub.tenantId(), wallet::getBalance);
                 if (remaining < charge) {
                     service.markBlocked(sub.id(), sub.tenantId(), remaining);
@@ -110,7 +111,7 @@ public class SubmissionJobRunner {
             boolean accepted = ltmsSafety != null && ltmsSafety.uploadCallsPermitted()
                     ? processLtms(sub, charge)
                     : process(sub, charge);
-            if (accepted && charge > 0) {
+            if (accepted && sub.billingMode() == BillingMode.PREPAID && charge > 0) {
                 if (remainingBefore != null) {
                     projected.put(sub.tenantId(), remainingBefore - charge);
                 } else {

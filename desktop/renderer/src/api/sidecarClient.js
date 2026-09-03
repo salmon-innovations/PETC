@@ -46,7 +46,53 @@ export const sidecarClient = {
             walletNegative: data.wallet_negative ?? false,
             walletBlockedCount: data.wallet_blocked_count ?? 0,
             walletFetchedAt: data.wallet_fetched_at ?? null,
+            billingMode: data.billing_mode ?? null,
+            billingCurrentUsageCount: data.billing_current_usage_count ?? null,
+            billingCurrentEstimateCentavos: data.billing_current_estimate_centavos ?? null,
+            billingNextCutoff: data.billing_next_cutoff ?? null,
+            billingOpenTotalCentavos: data.billing_open_total_centavos ?? null,
+            billingPastDueTotalCentavos: data.billing_past_due_total_centavos ?? null,
+            billingPastDueInvoiceCount: data.billing_past_due_invoice_count ?? null,
         };
+    },
+    async getBillingSummary() {
+        const c = await client();
+        const { data } = await c.get("/billing/summary");
+        return {
+            mode: data.mode,
+            chargePerUploadCentavos: data.charge_per_upload_centavos,
+            balanceCentavos: data.balance_centavos ?? null,
+            low: data.low ?? false,
+            negative: data.negative ?? false,
+            blockedCount: data.blocked_count ?? 0,
+            currentUsageCount: data.current_usage_count ?? null,
+            currentEstimateCentavos: data.current_estimate_centavos ?? null,
+            periodStart: data.period_start ?? null,
+            nextCutoff: data.next_cutoff ?? null,
+            openTotalCentavos: data.open_total_centavos ?? null,
+            pastDueTotalCentavos: data.past_due_total_centavos ?? null,
+            pastDueInvoiceCount: data.past_due_invoice_count ?? null,
+        };
+    },
+    async createBillingTopUp(amountCentavos, clientRequestId) {
+        const c = await client();
+        const { data } = await c.post("/billing/topups", {
+            amount_centavos: amountCentavos,
+            client_request_id: clientRequestId,
+        });
+        return data;
+    },
+    async getBillingTopUp(id) {
+        const c = await client();
+        return (await c.get(`/billing/topups/${id}`)).data;
+    },
+    async getBillingInvoices() {
+        const c = await client();
+        return (await c.get("/billing/invoices?limit=20")).data;
+    },
+    async getBillingInvoice(id) {
+        const c = await client();
+        return (await c.get(`/billing/invoices/${id}`)).data;
     },
     async startTest(params) {
         const c = await client();

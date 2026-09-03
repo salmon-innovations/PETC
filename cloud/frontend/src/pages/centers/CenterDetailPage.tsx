@@ -27,7 +27,36 @@ interface LedgerEntry {
   acceptance_seq: number | null;
   created_by: string | null;
   note: string | null;
+  provider: string | null;
+  external_reference: string | null;
   created_at: string;
+}
+
+interface BillingProfile {
+  mode: "PREPAID" | "POSTPAID";
+  revision: number;
+  timezone: string;
+  paymentTermsDays: number;
+  creditLimitCentavos: number | null;
+}
+
+interface BillingInvoice {
+  id: string;
+  invoice_number: string;
+  period_start: string;
+  period_end: string;
+  due_at: string;
+  total_centavos: number;
+  amount_paid_centavos: number;
+  status: string;
+}
+
+interface UnbilledUsage {
+  id: string;
+  test_id: string;
+  cec_number: string | null;
+  amount_centavos: number;
+  accepted_at: string;
 }
 
 const TYPE_STYLES: Record<string, string> = {
@@ -46,6 +75,9 @@ export default function CenterDetailPage() {
   const [chargeAmount, setChargeAmount] = useState("");
   const [chargeInitialized, setChargeInitialized] = useState(false);
   const [chargeError, setChargeError] = useState<string | null>(null);
+  const [billingMode, setBillingMode] = useState<"PREPAID" | "POSTPAID">("PREPAID");
+  const [paymentTermsDays, setPaymentTermsDays] = useState("7");
+  const [billingError, setBillingError] = useState<string | null>(null);
 
   const { data: wallet } = useQuery<WalletDetail>({
     queryKey: ["wallet", tenantId],
@@ -56,6 +88,43 @@ export default function CenterDetailPage() {
   const { data: ledger = [] } = useQuery<LedgerEntry[]>({
     queryKey: ["ledger", tenantId],
     queryFn: () => api.get<LedgerEntry[]>(`/wallet/centers/${tenantId}/ledger?limit=100`).then((r) => r.data),
+  });
+
+  const { data: profile } = useQuery<BillingProfile>({
+    queryKey: ["billing-profile", tenantId],
+    queryFn: () => api.get<BillingProfile>(`/admin/billing/centers/${tenantId}/profile`).then((r) => r.data),
+  });
+
+  const { data: invoices = [] } = useQuery<BillingInvoice[]>({
+    queryKey: ["billing-invoices", tenantId],
+    queryFn: () => api.get<BillingInvoice[]>(`/admin/billing/centers/${tenantId}/invoices`).then((r) => r.data),
+    enabled: profile?.mode === "POSTPAID",
+  });
+
+  const { data: unbilledUsage = [] } = useQuery<UnbilledUsage[]>({
+    queryKey: ["billing-usage", tenantId],
+    queryFn: () => api.get<UnbilledUsage[]>(`/admin/billing/centers/${tenantId}/usage`).then((r) => r.data),
+    enabled: profile?.mode === "POSTPAID",
+  });
+
+  useEffect(() => {
+    if (!profile) return;
+    setBillingMode(profile.mode);
+    setPaymentTermsDays(String(profile.paymentTermsDays));
+  }, [profile]);
+
+  const updateBilling = useMutation({
+    mutationFn: () => api.put<BillingProfile>(`/admin/billing/centers/${tenantId}/profile`, {
+      mode: billingMode,
+      paymentTermsDays: Number(paymentTermsDays),
+      creditLimitCentavos: profile?.creditLimitCentavos ?? null,
+    }).then((r) => r.data),
+    onSuccess: (updated) => {
+      qc.setQueryData(["billing-profile", tenantId], updated);
+      setBillingError(null);
+      qc.invalidateQueries({ queryKey: ["billing-invoices", tenantId] });
+    },
+    onError: () => setBillingError("Could not change the billing plan. Resolve blocked prepaid submissions first."),
   });
 
   useEffect(() => {
@@ -131,12 +200,22 @@ export default function CenterDetailPage() {
       <div className="flex items-center gap-2 text-sm">
         <Link to="/centers" className="text-blue-600 hover:underline">Centers</Link>
         <span className="text-gray-400">/</span>
-        <span className="text-gray-700">Wallet</span>
+        <span className="text-gray-700">Billing</span>
+      </div>
+
+      <div className="bg-white rounded-xl shadow p-5 space-y-3">
+        <div><h2 className="font-semibold text-sm text-gray-700">Billing plan</h2><p className="text-xs text-gray-500 mt-1">Prepaid uses the wallet and QR reloads. Postpaid accrues accepted CECs into semi-monthly statements.</p></div>
+        <div className="flex items-end gap-3">
+          <label className="text-xs text-gray-600">Plan<select value={billingMode} onChange={(e) => setBillingMode(e.target.value as "PREPAID" | "POSTPAID")} className="block mt-1 border rounded-lg px-3 py-2 text-sm"><option value="PREPAID">Prepaid</option><option value="POSTPAID">Postpaid</option></select></label>
+          <label className="text-xs text-gray-600">Payment terms (days)<input value={paymentTermsDays} onChange={(e) => setPaymentTermsDays(e.target.value)} type="number" min="0" max="365" className="block mt-1 border rounded-lg px-3 py-2 text-sm w-32" /></label>
+          <button onClick={() => updateBilling.mutate()} disabled={updateBilling.isPending || !profile} className="rounded-lg bg-blue-600 px-5 py-2 text-white text-sm disabled:opacity-50">{updateBilling.isPending ? "Saving…" : "Save plan"}</button>
+        </div>
+        {billingError && <p className="text-xs text-red-600">{billingError}</p>}
       </div>
 
       {/* Balance */}
       <div className="bg-white rounded-xl shadow p-5">
-        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Balance</p>
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{profile?.mode === "POSTPAID" ? "Legacy prepaid balance" : "Balance"}</p>
         <p className={clsx(
           "mt-1 text-3xl font-semibold",
           wallet?.negative ? "text-red-600" : wallet?.low ? "text-amber-600" : "text-gray-800"
@@ -212,7 +291,8 @@ export default function CenterDetailPage() {
         {chargeError && <p className="text-xs text-red-600">{chargeError}</p>}
       </div>
 
-      {/* Top up */}
+      {/* Manual administrative adjustment remains prepaid-only. */}
+      {profile?.mode !== "POSTPAID" && (
       <div className="bg-white rounded-xl shadow p-5 space-y-3">
         <h2 className="font-semibold text-sm text-gray-700">Record a top-up</h2>
         <p className="text-xs text-gray-500">
@@ -249,6 +329,25 @@ export default function CenterDetailPage() {
         </div>
         {error && <p className="text-xs text-red-600">{error}</p>}
       </div>
+      )}
+
+      {profile?.mode === "POSTPAID" && (
+        <div className="bg-white rounded-xl shadow overflow-hidden">
+          <h2 className="font-semibold text-sm text-gray-700 px-5 py-3 border-b">Current uninvoiced usage</h2>
+          <table className="w-full text-sm"><tbody className="divide-y">{unbilledUsage.map((usage) => (
+            <tr key={usage.id}><td className="px-5 py-3">{usage.test_id}</td><td>{usage.cec_number ?? "—"}</td><td>{formatDateTime(usage.accepted_at)}</td><td className="px-5 text-right">{formatCentavos(usage.amount_centavos)}</td></tr>
+          ))}{unbilledUsage.length === 0 && <tr><td className="px-5 py-8 text-center text-gray-400">No uninvoiced accepted CECs.</td></tr>}</tbody></table>
+        </div>
+      )}
+
+      {profile?.mode === "POSTPAID" && (
+        <div className="bg-white rounded-xl shadow overflow-hidden">
+          <h2 className="font-semibold text-sm text-gray-700 px-5 py-3 border-b">Postpaid statements</h2>
+          <table className="w-full text-sm"><tbody className="divide-y">{invoices.map((invoice) => (
+            <tr key={invoice.id}><td className="px-5 py-3 font-medium"><Link className="text-blue-600 hover:underline" to={`/centers/${tenantId}/invoices/${invoice.id}`}>{invoice.invoice_number}</Link></td><td>{invoice.status}</td><td>{formatDateTime(invoice.due_at)}</td><td className="px-5 text-right">{formatCentavos(invoice.total_centavos)}</td></tr>
+          ))}{invoices.length === 0 && <tr><td className="px-5 py-10 text-center text-gray-400">No finalized statements yet.</td></tr>}</tbody></table>
+        </div>
+      )}
 
       {/* Ledger */}
       <div className="bg-white rounded-xl shadow overflow-hidden">
@@ -272,6 +371,7 @@ export default function CenterDetailPage() {
                 <td className="px-5 py-3 text-xs text-gray-500">
                   {l.note ?? "—"}
                   {l.created_by && <span className="block text-gray-400">{l.created_by}</span>}
+                  {l.provider && <span className="block text-gray-400">{l.provider} · {l.external_reference}</span>}
                 </td>
                 <td className={clsx("px-5 py-3 font-medium", TYPE_STYLES[l.entry_type])}>
                   {l.amount_centavos > 0 ? "+" : ""}{formatCentavos(l.amount_centavos)}

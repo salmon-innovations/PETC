@@ -95,6 +95,29 @@ public class DashboardController {
                  LIMIT 10
                 """));
 
+        Map<String, Object> billing = jdbc.queryForMap("""
+                SELECT COALESCE(sum(total_centavos - amount_paid_centavos)
+                           FILTER (WHERE status IN ('OPEN','PARTIALLY_PAID','PAST_DUE')), 0) AS open_receivables,
+                       COALESCE(sum(total_centavos - amount_paid_centavos)
+                           FILTER (WHERE status = 'PAST_DUE'), 0) AS past_due_receivables,
+                       count(*) FILTER (WHERE status = 'PAST_DUE') AS past_due_invoices
+                  FROM billing_invoices
+                """);
+        out.put("openReceivablesCentavos", billing.get("open_receivables"));
+        out.put("pastDueReceivablesCentavos", billing.get("past_due_receivables"));
+        out.put("pastDueInvoiceCount", billing.get("past_due_invoices"));
+        out.put("uninvoicedPostpaidCentavos", jdbc.queryForObject("""
+                SELECT COALESCE(sum(amount_centavos), 0) FROM billing_usage
+                 WHERE billing_mode = 'POSTPAID' AND invoice_id IS NULL
+                """, Long.class));
+        out.put("pendingPayMongoTopups", jdbc.queryForObject("""
+                SELECT count(*) FROM payment_topups
+                 WHERE status IN ('CREATING','AWAITING_PAYMENT')
+                """, Integer.class));
+        out.put("failedPaymentWebhooks", jdbc.queryForObject("""
+                SELECT count(*) FROM payment_webhook_events WHERE processing_status = 'FAILED'
+                """, Integer.class));
+
         return out;
     }
 }

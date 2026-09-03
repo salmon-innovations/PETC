@@ -7,6 +7,7 @@ import LicensesPage from "./pages/licensing/LicensesPage";
 import OperationsDashboard from "./pages/dashboard/OperationsDashboard";
 import SubmissionsPage from "./pages/submissions/SubmissionsPage";
 import SettingsPage from "./pages/settings/SettingsPage";
+import InvoiceDetailPage from "./pages/centers/InvoiceDetailPage";
 import { useAuthStore } from "./store/authStore";
 import clsx from "clsx";
 
@@ -88,6 +89,7 @@ export default function App() {
           <Route path="/submissions" element={<Protected><SubmissionsPage /></Protected>} />
           <Route path="/centers" element={<Protected><CentersPage /></Protected>} />
           <Route path="/centers/:tenantId" element={<Protected><CenterDetailPage /></Protected>} />
+          <Route path="/centers/:tenantId/invoices/:invoiceId" element={<Protected><InvoiceDetailPage /></Protected>} />
           <Route path="/licenses" element={<Protected><LicensesPage /></Protected>} />
           <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />
           {/* /analytics was the old landing page. Its endpoints were never

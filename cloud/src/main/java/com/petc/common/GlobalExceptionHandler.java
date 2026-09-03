@@ -1,6 +1,7 @@
 package com.petc.common;
 
 import com.petc.auth.AuthException;
+import com.petc.payments.PayMongoException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.security.authorization.AuthorizationDeniedException;
@@ -54,6 +55,14 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleMissingHeader(MissingRequestHeaderException ex) {
         return ProblemDetail.forStatusAndDetail(
                 HttpStatus.BAD_REQUEST, "Missing required header: " + ex.getHeaderName());
+    }
+
+    @ExceptionHandler(PayMongoException.class)
+    public ProblemDetail handlePayMongo(PayMongoException ex) {
+        HttpStatus status = "payments_disabled".equals(ex.code())
+                || "provider_unavailable".equals(ex.code())
+                ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.BAD_GATEWAY;
+        return ProblemDetail.forStatusAndDetail(status, ex.getMessage());
     }
 
     @ExceptionHandler(Exception.class)

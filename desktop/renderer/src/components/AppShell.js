@@ -9,6 +9,7 @@ const NAV = [
     { to: "/upload", label: "LTMS Upload" },
     { to: "/history", label: "History" },
     { to: "/analytics", label: "Analytics" },
+    { to: "/billing", label: "Billing" },
     { to: "/settings", label: "Settings" },
 ];
 export default function AppShell() {
@@ -38,6 +39,13 @@ const WALLET_STALE_MS = 2 * 60 * 1000;
  * presented as current.
  */
 function WalletIndicator({ status }) {
+    if (status?.billingMode === "POSTPAID") {
+        const estimate = ((status.billingCurrentEstimateCentavos ?? 0) / 100).toLocaleString("en-PH", {
+            style: "currency",
+            currency: "PHP",
+        });
+        return (_jsxs("div", { className: "pt-1.5 border-t border-gray-700/60 space-y-0.5", children: [_jsxs("div", { className: "flex justify-between gap-2", children: [_jsx("span", { className: "text-gray-400", children: "Postpaid" }), _jsx("span", { children: estimate })] }), _jsxs("p", { className: "text-gray-400", children: [status.billingCurrentUsageCount ?? 0, " accepted this cycle"] }), (status.billingPastDueInvoiceCount ?? 0) > 0 && (_jsxs("p", { className: "text-red-400", children: [status.billingPastDueInvoiceCount, " invoice(s) past due"] }))] }));
+    }
     // No cloud configured (local-mock mode) — there is no balance to speak of.
     if (!status || status.walletBalanceCentavos === null)
         return null;

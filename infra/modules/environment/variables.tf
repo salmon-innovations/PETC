@@ -99,6 +99,40 @@ variable "ltms_jwt_base_url" {
   description = "Production JWT service origin/base URL supplied by LTMS."
 }
 
+variable "paymongo_enabled" {
+  type        = bool
+  default     = false
+  description = "Enables cloud-side PayMongo QR creation and webhook processing."
+}
+
+variable "paymongo_live_mode" {
+  type        = bool
+  default     = false
+  description = "Requires sk_live credentials and rejects test-mode webhook events when true."
+}
+
+variable "paymongo_expose_test_url" {
+  type        = bool
+  default     = false
+  description = "Exposes PayMongo's QR simulator URL to UAT desktop clients; must remain false in production."
+}
+
+variable "paymongo_secret_key_secret_arn" {
+  type        = string
+  default     = null
+  nullable    = true
+  sensitive   = true
+  description = "ARN of a manually populated Secrets Manager secret containing the PayMongo API secret key."
+}
+
+variable "paymongo_webhook_secret_arn" {
+  type        = string
+  default     = null
+  nullable    = true
+  sensitive   = true
+  description = "ARN of the environment-specific PayMongo webhook signing secret."
+}
+
 variable "service_desired_count" {
   type    = number
   default = 1

@@ -170,13 +170,20 @@ resource "aws_ecs_task_definition" "api" {
       { name = "LTMS_ALLOWED_HOSTS", value = join(",", var.ltms_allowed_hosts) },
       { name = "LTMS_PETC_BASE_URL", value = var.ltms_petc_base_url },
       { name = "LTMS_JWT_BASE_URL", value = var.ltms_jwt_base_url },
+      { name = "PAYMONGO_ENABLED", value = tostring(var.paymongo_enabled) },
+      { name = "PAYMONGO_LIVE_MODE", value = tostring(var.paymongo_live_mode) },
+      { name = "PAYMONGO_EXPOSE_TEST_URL", value = tostring(var.paymongo_expose_test_url) },
       { name = "DEV_CENTER_KEY_ENABLED", value = "false" },
       { name = "JAVA_TOOL_OPTIONS", value = "-XX:MaxRAMPercentage=75.0" },
     ]
-    secrets = [
+    secrets = concat([
       { name = "DB_PASS", valueFrom = aws_secretsmanager_secret.database_password.arn },
       { name = "JWT_SECRET", valueFrom = aws_secretsmanager_secret.jwt.arn },
-    ]
+      ], var.paymongo_secret_key_secret_arn == null ? [] : [
+      { name = "PAYMONGO_SECRET_KEY", valueFrom = var.paymongo_secret_key_secret_arn },
+      ], var.paymongo_webhook_secret_arn == null ? [] : [
+      { name = "PAYMONGO_WEBHOOK_SECRET", valueFrom = var.paymongo_webhook_secret_arn },
+    ])
     logConfiguration = {
       logDriver = "awslogs"
       options = {
