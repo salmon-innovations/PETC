@@ -19,7 +19,7 @@ logger = logging.getLogger("petc.service")
 
 # ── configuration (env vars set by Electron main process) ─────────────────
 _CONFIG = {
-    # PETC_ANALYZER: "mock" | "serial_gas" | "serial_diesel"
+    # PETC_ANALYZER includes "cartesykj_diesel" for the MQY-200 workflow.
     "analyzer": os.environ.get("PETC_ANALYZER", "mock"),
     # PETC_ANALYZER_PORT: COM port for serial adapters, e.g. "COM3" or "/dev/ttyUSB0"
     "analyzer_port": os.environ.get("PETC_ANALYZER_PORT", "COM1"),

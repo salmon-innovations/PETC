@@ -12,6 +12,7 @@ const ANALYZER_TYPES: { value: AnalyzerType; label: string }[] = [
   { value: "koeng_gas", label: "KOENG KEG-500 CE Gas Analyzer" },
   { value: "koeng_diesel", label: "KOENG Diesel Analyzer" },
   { value: "cartesykj_gas", label: "CARTESYKJ MQ-550 Gas Analyzer" },
+  { value: "cartesykj_diesel", label: "CARTESYKJ MQY-200 Diesel Analyzer" },
 ];
 
 const BAUD_OPTIONS = [9600, 19200, 38400, 57600, 115200];
@@ -162,7 +163,7 @@ function AnalyzerHardwareSection() {
           onChange={(e) => {
             const type = e.target.value as AnalyzerType;
             const typeChanged = type !== form.type;
-            setForm(type === "koeng_gas" || type === "koeng_diesel" || type === "cartesykj_gas"
+            setForm(type === "koeng_gas" || type === "koeng_diesel" || type === "cartesykj_gas" || type === "cartesykj_diesel"
               ? {
                   ...form,
                   type,
@@ -222,7 +223,7 @@ function AnalyzerHardwareSection() {
             </select>
           </Field>
 
-          {(form.type === "koeng_gas" || form.type === "koeng_diesel" || form.type === "cartesykj_gas") && (
+          {(form.type === "koeng_gas" || form.type === "koeng_diesel" || form.type === "cartesykj_gas" || form.type === "cartesykj_diesel") && (
             <>
               <Field label="Analyzer serial number">
                 <input
@@ -237,6 +238,15 @@ function AnalyzerHardwareSection() {
                   CARTESYKJ MQ-550 communication is fixed at 9600 baud, 8N1 and
                   uses a polled current-analysis request. Close other serial tools
                   before connecting because COM ports are exclusive.
+                </p>
+              ) : form.type === "cartesykj_diesel" ? (
+                <p className="text-xs text-gray-500">
+                  CARTESYKJ MQY-200 communication is fixed at 9600 baud, 8N1. A test
+                  calibrates the machine, samples six acceleration cycles, and reports
+                  the average of the six maximum K readings. Close other serial tools
+                  before connecting because COM ports are exclusive. Its documented
+                  frame does not provide opacity or RPM, so LTMS upload remains blocked
+                  until those fields have a verified machine source.
                 </p>
               ) : (
                 <p className="text-xs text-gray-500">

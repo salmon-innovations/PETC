@@ -37,6 +37,7 @@ export interface TestResultResponse {
   fuelType: string;
   readings: Record<string, number | null>;
   capturedAt: string;
+  revolutionKValues: number[];
 }
 
 export interface PrintReceiptRequest {
@@ -103,7 +104,7 @@ export interface LtmsSubmitResponse {
   submissionId?: string;
 }
 
-export type AnalyzerType = "mock" | "serial_gas" | "serial_diesel" | "fty_opacimeter" | "fofen_gas" | "fofen_ascii" | "koeng_gas" | "koeng_diesel" | "cartesykj_gas";
+export type AnalyzerType = "mock" | "serial_gas" | "serial_diesel" | "fty_opacimeter" | "fofen_gas" | "fofen_ascii" | "koeng_gas" | "koeng_diesel" | "cartesykj_gas" | "cartesykj_diesel";
 
 export interface AnalyzerSettings {
   type: AnalyzerType;
@@ -274,7 +275,9 @@ export const sidecarClient = {
 
   async getResult(sessionToken: string): Promise<TestResultResponse> {
     const c = await client();
-    const { data } = await c.get(`/test/${sessionToken}/result`);
+    // Multi-stage analyzers such as the MQY-200 include calibration and six
+    // operator acceleration/release cycles before the final frame is ready.
+    const { data } = await c.get(`/test/${sessionToken}/result`, { timeout: 180_000 });
     return {
       testId: data.test_id,
       sessionToken: data.session_token,
@@ -282,6 +285,7 @@ export const sidecarClient = {
       fuelType: data.fuel_type,
       readings: data.readings,
       capturedAt: data.captured_at,
+      revolutionKValues: data.revolution_k_values ?? [],
     };
   },
 

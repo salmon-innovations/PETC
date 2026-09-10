@@ -18,7 +18,7 @@ import uvicorn
 import httpx
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..analyzer.base import Analyzer, AnalyzerConnectionError, AnalyzerTimeoutError, FuelType
 from ..camera.capture import CameraCapture, CaptureError
@@ -161,6 +161,7 @@ class TestResultResponse(BaseModel):
     fuel_type: str
     readings: dict
     captured_at: str
+    revolution_k_values: list[float] = Field(default_factory=list)
 
 
 class CapturePhotoRequest(BaseModel):
@@ -509,19 +510,26 @@ def get_result(
         result = analyzer.read_result(session_token)
     except AnalyzerTimeoutError as exc:
         raise HTTPException(status.HTTP_408_REQUEST_TIMEOUT, str(exc)) from exc
+    except AnalyzerConnectionError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
     elapsed = time.monotonic() - started_capture
-    if elapsed > READING_CAPTURE_TIMEOUT_SECONDS:
+    if elapsed > READING_CAPTURE_TIMEOUT_SECONDS and not analyzer.result_wait_includes_test_cycle:
         raise HTTPException(
             status.HTTP_408_REQUEST_TIMEOUT,
             "Analyzer reading exceeded the DO 2023-008 five-second automatic capture requirement",
         )
 
     readings = _reading_to_dict(result)
+    revolution_k_values = list(getattr(result, "revolution_k_values", ()))
     # A captured analyzer frame may legitimately contain zero pollutant values,
     # and some gas benches (including the KOENG KEG-500 CE) do not carry RPM in
     # their gas-data frame.  Preserve and display that machine result here; the
     # stricter DO/LTMS completeness check still runs before submission.
-    _validate_machine_readings(result.fuel_type.value, readings)
+    _validate_machine_readings(
+        result.fuel_type.value,
+        readings,
+        unavailable_fields=result.unavailable_reading_fields,
+    )
     captured_at = result.captured_at
     raw_bytes_hex = result.raw_bytes.hex()
 
@@ -592,6 +600,7 @@ def get_result(
         fuel_type=result.fuel_type.value,
         readings=readings,
         captured_at=captured_at.isoformat(),
+        revolution_k_values=revolution_k_values,
     )
 
 
@@ -1728,6 +1737,7 @@ _ANALYZER_TYPES = {
     "koeng_gas",
     "koeng_diesel",
     "cartesykj_gas",
+    "cartesykj_diesel",
 }
 _PARITY_VALUES = {"N", "E", "O"}
 
@@ -2015,7 +2025,11 @@ def _require_nonblank(value, label: str) -> None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{label} is required")
 
 
-def _validate_machine_readings(fuel_type: str, readings: dict) -> None:
+def _validate_machine_readings(
+    fuel_type: str,
+    readings: dict,
+    unavailable_fields: tuple[str, ...] = (),
+) -> None:
     if not readings:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "machine readings are required")
     gas_fields = ("co_pct", "hc_ppm", "co2_pct", "o2_pct", "lambda_value")
@@ -2023,6 +2037,8 @@ def _validate_machine_readings(fuel_type: str, readings: dict) -> None:
     fields = gas_fields if fuel_type.upper() == "GAS" else diesel_fields
     for field in fields:
         value = readings.get(field)
+        if field in unavailable_fields and value is None:
+            continue
         if value is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"reading {field} is required")
         try:

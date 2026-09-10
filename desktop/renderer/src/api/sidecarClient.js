@@ -110,7 +110,9 @@ export const sidecarClient = {
     },
     async getResult(sessionToken) {
         const c = await client();
-        const { data } = await c.get(`/test/${sessionToken}/result`);
+        // Multi-stage analyzers such as the MQY-200 include calibration and six
+        // operator acceleration/release cycles before the final frame is ready.
+        const { data } = await c.get(`/test/${sessionToken}/result`, { timeout: 180_000 });
         return {
             testId: data.test_id,
             sessionToken: data.session_token,
@@ -118,6 +120,7 @@ export const sidecarClient = {
             fuelType: data.fuel_type,
             readings: data.readings,
             capturedAt: data.captured_at,
+            revolutionKValues: data.revolution_k_values ?? [],
         };
     },
     async abortTest(sessionToken) {

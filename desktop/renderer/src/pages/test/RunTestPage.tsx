@@ -35,6 +35,8 @@ export default function RunTestPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [photoCaptured, setPhotoCaptured] = useState(false);
   const cameraRef = useRef<CameraStreamHandle>(null);
+  const activeSessionToken = useRef<string | null>(null);
+  const cancelledByOperator = useRef(false);
 
   const { register, handleSubmit, watch, formState: { errors } } =
     useForm<FormValues>({
@@ -55,14 +57,17 @@ export default function RunTestPage() {
 
   const startMutation = useMutation({
     mutationFn: async (values: FormValues) => {
+      cancelledByOperator.current = false;
       const started = await sidecarClient.startTest({
         operatorId: user?.id ?? "unknown",
         plateNumber: values.plateNumber,
         fuelType: values.fuelType,
         inspectionPurpose: values.inspectionPurpose,
       });
+      activeSessionToken.current = started.sessionToken;
       setStep("running");
       const r = await sidecarClient.getResult(started.sessionToken);
+      activeSessionToken.current = null;
       // Grab the current frame from the live preview and upload it
       try {
         const blob = await cameraRef.current?.captureBlob();
@@ -78,11 +83,18 @@ export default function RunTestPage() {
       return r;
     },
     onSuccess: (data) => {
+      activeSessionToken.current = null;
       setResult(data);
       setStep("done");
       queryClient.invalidateQueries({ queryKey: ["tests", "pending-ltms"] });
     },
     onError: (error) => {
+      activeSessionToken.current = null;
+      if (cancelledByOperator.current) {
+        cancelledByOperator.current = false;
+        setStep("idle");
+        return;
+      }
       const detail = (error as { response?: { data?: { detail?: unknown } } })
         .response?.data?.detail;
       setErrorMessage(
@@ -95,11 +107,30 @@ export default function RunTestPage() {
   });
 
   const reset = () => {
+    activeSessionToken.current = null;
+    cancelledByOperator.current = false;
     setStep("idle");
     setResult(null);
     setErrorMessage("");
     setPhotoCaptured(false);
     startMutation.reset();
+  };
+
+  const cancelRunningTest = async () => {
+    cancelledByOperator.current = true;
+    const sessionToken = activeSessionToken.current;
+    activeSessionToken.current = null;
+    if (sessionToken) {
+      try {
+        await sidecarClient.abortTest(sessionToken);
+      } catch (error) {
+        console.warn("Analyzer abort failed", error);
+      }
+    }
+    setStep("idle");
+    setResult(null);
+    setErrorMessage("");
+    setPhotoCaptured(false);
   };
 
   return (
@@ -176,11 +207,11 @@ export default function RunTestPage() {
         <div className="flex items-center justify-between gap-3 bg-white rounded-xl shadow px-5 py-4 text-gray-600">
           <div className="flex items-center gap-3">
             <div className="h-5 w-5 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
-            <span className="text-sm">Waiting for analyzer result… press PRINT on the analyzer.</span>
+            <span className="text-sm">Waiting for analyzer result… follow the analyzer's test procedure.</span>
           </div>
           <button
             type="button"
-            onClick={reset}
+            onClick={() => void cancelRunningTest()}
             className="text-xs text-gray-500 hover:text-red-600 underline"
           >
             Cancel
@@ -208,6 +239,22 @@ export default function RunTestPage() {
               </div>
             ))}
           </div>
+
+          {result.revolutionKValues.length === 6 && (
+            <div>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Six-revolution K maxima
+              </h3>
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                {result.revolutionKValues.map((value, index) => (
+                  <div key={index} className="rounded border border-gray-200 bg-gray-50 p-2 text-center">
+                    <div className="text-[10px] text-gray-500">REV {index + 1}</div>
+                    <div className="font-mono text-sm font-semibold">{value.toFixed(2)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {photoCaptured && (
             <div className="text-xs text-green-700">Photo captured ✓</div>

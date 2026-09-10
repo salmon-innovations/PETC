@@ -87,6 +87,20 @@ def test_do_submission_still_requires_positive_rpm():
     _validate_readings_for_do("GAS", readings)
 
 
+def test_machine_capture_can_preserve_documented_unavailable_fields():
+    _validate_machine_readings(
+        "DIESEL",
+        {"opacity_pct": None, "k_value": 1.23, "rpm": None},
+        unavailable_fields=("opacity_pct", "rpm"),
+    )
+
+    with pytest.raises(HTTPException, match="reading opacity_pct is required"):
+        _validate_readings_for_do(
+            "DIESEL",
+            {"opacity_pct": None, "k_value": 1.23, "rpm": None},
+        )
+
+
 def test_start_and_get_result(client):
     start = client.post(
         "/test/start",

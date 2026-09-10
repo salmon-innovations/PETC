@@ -27,7 +27,7 @@ class GasReading:
 
 @dataclass
 class DieselReading:
-    opacity_pct: float
+    opacity_pct: Optional[float]
     k_value: float
     rpm: Optional[int] = None
     boost_kpa: Optional[float] = None
@@ -41,6 +41,7 @@ class AnalyzerResult:
     captured_at: datetime = field(default_factory=datetime.utcnow)
     serial_no: str = ""
     pass_fail: Optional[bool] = None
+    unavailable_reading_fields: tuple[str, ...] = ()
 
 
 class Analyzer(abc.ABC):
@@ -81,6 +82,16 @@ class Analyzer(abc.ABC):
     @abc.abstractmethod
     def firmware_version(self) -> str:
         """Return the analyzer's firmware version string."""
+
+    @property
+    def result_wait_includes_test_cycle(self) -> bool:
+        """Whether read_result waits for a multi-stage operator test cycle.
+
+        The default adapters return a single analyzer frame, so their result
+        wait is subject to the automatic-capture timeout. Stateful analyzers
+        may opt out when that wait includes calibration and operator actions.
+        """
+        return False
 
 
 class AnalyzerError(Exception):

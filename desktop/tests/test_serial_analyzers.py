@@ -18,7 +18,13 @@ import pytest
 
 from petc.analyzer.ascii_gas import AsciiGasAnalyzer, _parse_kv_line
 from petc.analyzer.binary_diesel import BinaryDieselAnalyzer, _crc16_modbus
-from petc.analyzer.base import FuelType, GasReading, DieselReading
+from petc.analyzer.base import (
+    AnalyzerConnectionError,
+    AnalyzerTimeoutError,
+    DieselReading,
+    FuelType,
+    GasReading,
+)
 from petc.analyzer.koeng_gas import (
     CURRENT_ANALYSIS_REQUEST,
     MEASURE_REQUEST,
@@ -36,6 +42,16 @@ from petc.analyzer.cartesykj_gas import (
     CartesykjGasAnalyzer,
     measurement_checksum as cartesykj_checksum,
     parse_measurement_frame as parse_cartesykj_frame,
+)
+from petc.analyzer.cartesykj_diesel import (
+    GET_DATA as MQY200_GET_DATA,
+    SET_REALTIME as MQY200_SET_REALTIME,
+    START_CALIBRATION as MQY200_START_CALIBRATION,
+    CartesykjDieselAnalyzer,
+    Mqy200AnalyzerResult,
+    compute_six_revolution_average,
+    iter_k_frames as iter_mqy200_k_frames,
+    parse_k_frame as parse_mqy200_k_frame,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -410,6 +426,155 @@ def test_cartesykj_builder_selection(monkeypatch):
     assert isinstance(analyzer, CartesykjGasAnalyzer)
     assert analyzer._port == "COM3"
     assert analyzer._configured_serial_no == "MQ550-BUILDER-001"
+
+
+# ---------------------------------------------------------------------------
+# CARTESYKJ MQY-200 — six-revolution diesel K-value workflow
+# ---------------------------------------------------------------------------
+
+def _mqy200_frame(k_value: float) -> bytes:
+    raw = round(k_value * 100)
+    return b"\xA6\x00\x00" + raw.to_bytes(2, "big") + b"\x00" * 5
+
+
+def test_mqy200_parses_documented_k_frame_and_leading_noise():
+    frame = bytes.fromhex("A6 00 00 05 8C 00 00 00 00 00")
+    reading = parse_mqy200_k_frame(frame)
+    assert reading is not None
+    assert reading.k_value == pytest.approx(14.20)
+    assert list(iter_mqy200_k_frames(b"\x00\x15" + frame)) == [frame]
+
+
+def test_mqy200_rejects_incomplete_or_wrong_response():
+    assert parse_mqy200_k_frame(b"\xA6" * 9) is None
+    assert parse_mqy200_k_frame(b"\xA5" + b"\x00" * 9) is None
+
+
+def test_mqy200_computes_exactly_six_revolution_average():
+    maxima = [14.29, 13.85, 14.10, 13.72, 14.25, 13.95]
+    assert compute_six_revolution_average(maxima) == pytest.approx(14.03)
+    with pytest.raises(ValueError, match="Expected 6"):
+        compute_six_revolution_average(maxima[:5])
+
+
+def test_mqy200_runs_six_revolutions_and_keeps_raw_frames():
+    per_revolution = [
+        (1.10, 1.25),
+        (1.30, 1.20),
+        (1.45, 1.40),
+        (1.50, 1.60),
+        (1.70, 1.65),
+        (1.80, 1.90),
+    ]
+
+    class _FakeSerial:
+        is_open = True
+
+        def __init__(self, **_kwargs):
+            self.writes = []
+            self.buffer = bytearray()
+            self.sample = 0
+
+        @property
+        def in_waiting(self):
+            return len(self.buffer)
+
+        def write(self, value):
+            self.writes.append(value)
+            if value == MQY200_GET_DATA:
+                revolution, sample = divmod(self.sample, 2)
+                self.buffer.extend(_mqy200_frame(per_revolution[revolution][sample]))
+                self.sample += 1
+
+        def read(self, size):
+            chunk = bytes(self.buffer[:size])
+            del self.buffer[:size]
+            return chunk
+
+        def flush(self):
+            pass
+
+        def reset_input_buffer(self):
+            self.buffer.clear()
+
+        def close(self):
+            self.is_open = False
+
+    fake = _FakeSerial()
+    analyzer = CartesykjDieselAnalyzer(
+        port="STUB",
+        serial_no="MQY200-TEST-001",
+        realtime_delay=0,
+        calibration_delay=0,
+        sample_interval=0,
+        samples_per_revolution=2,
+        release_delay=0,
+        response_timeout=0.01,
+        result_timeout=1,
+        serial_factory=lambda **_kwargs: fake,
+    )
+    analyzer.connect()
+    token = analyzer.start_test(FuelType.DIESEL)
+    result = analyzer.read_result(token)
+
+    assert isinstance(result, Mqy200AnalyzerResult)
+    assert result.fuel_type is FuelType.DIESEL
+    assert result.revolution_k_values == pytest.approx((1.25, 1.30, 1.45, 1.60, 1.70, 1.90))
+    assert result.reading.k_value == pytest.approx(1.53)
+    assert result.reading.opacity_pct is None
+    assert result.reading.rpm is None
+    assert result.unavailable_reading_fields == ("opacity_pct", "rpm")
+    assert result.serial_no == "MQY200-TEST-001"
+    assert result.raw_bytes == b"".join(
+        _mqy200_frame(value)
+        for revolution in per_revolution
+        for value in revolution
+    )
+    assert fake.writes == [
+        MQY200_SET_REALTIME,
+        MQY200_START_CALIBRATION,
+        *([MQY200_GET_DATA] * 12),
+    ]
+    assert analyzer.result_wait_includes_test_cycle is True
+
+
+def test_mqy200_rejects_overlapping_or_wrong_fuel_tests():
+    class _ConnectedSerial:
+        is_open = True
+
+        def write(self, _value):
+            pass
+
+        def flush(self):
+            pass
+
+        def close(self):
+            self.is_open = False
+
+    analyzer = CartesykjDieselAnalyzer(port="STUB", realtime_delay=10)
+    analyzer._serial = _ConnectedSerial()
+    with pytest.raises(ValueError, match="DIESEL"):
+        analyzer.start_test(FuelType.GAS)
+    token = analyzer.start_test(FuelType.DIESEL)
+    with pytest.raises(AnalyzerConnectionError, match="already running"):
+        analyzer.start_test(FuelType.DIESEL)
+    analyzer.abort_test(token)
+    with pytest.raises(AnalyzerTimeoutError, match="aborted"):
+        analyzer.read_result(token)
+
+
+def test_mqy200_builder_selection(monkeypatch):
+    from petc.analyzer import builder
+
+    monkeypatch.setattr(builder, "_read_settings", lambda: {
+        "analyzer.type": "cartesykj_diesel",
+        "analyzer.port": "COM4",
+        "analyzer.serial_no": "MQY200-BUILDER-001",
+    })
+    analyzer = builder.build_analyzer_from_settings()
+    assert isinstance(analyzer, CartesykjDieselAnalyzer)
+    assert analyzer._port == "COM4"
+    assert analyzer._configured_serial_no == "MQY200-BUILDER-001"
 
 
 # ---------------------------------------------------------------------------
