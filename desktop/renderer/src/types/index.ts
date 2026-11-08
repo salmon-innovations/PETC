@@ -1,6 +1,14 @@
 export type FuelType = "GAS" | "DIESEL" | "MOTORCYCLE";
 export type Role = "operator" | "cashier" | "manager" | "tenant_admin";
-export type Classification = "PRIVATE" | "PUBLIC" | "GOVERNMENT" | "DIPLOMATIC";
+export type Classification = "PRIVATE" | "FOR_HIRE" | "GOVERNMENT" | "EXEMPT" | "DIPLOMATIC";
+export type DotrVehicleGroup = "LIGHT" | "HEAVY" | "MOTORCYCLE";
+export type InspectionPurpose = "FOR_RENEWAL" | "FOR_INIT_REG" | "FOR_COMPLIANCE";
+
+export const INSPECTION_PURPOSE_LABELS: Record<InspectionPurpose, string> = {
+  FOR_RENEWAL: "Renewal",
+  FOR_INIT_REG: "Initial / New Registration",
+  FOR_COMPLIANCE: "Compliance / Violation Clearance",
+};
 
 export interface User {
   id: string;
@@ -33,7 +41,8 @@ export interface VehicleInfo {
   ownerName: string;
   // Optional: the registry does not always return it, so the wizard defaults
   // to PRIVATE. It is printed on the CEC (see sidecar cec/pdf.py).
-  classification?: Classification;
+  classification?: Classification | "PUBLIC";
+  dotrVehicleGroup?: DotrVehicleGroup;
 }
 
 export interface OwnerInfo {
@@ -59,6 +68,7 @@ export interface GasReadings {
   co2_pct: number;
   o2_pct: number;
   lambda_value: number;
+  no_ppm?: number;
   rpm?: number;
   oil_temp_c?: number;
 }
@@ -74,6 +84,7 @@ export interface EmissionTest {
   id: string;
   plateNumber: string;
   fuelType: FuelType;
+  inspectionPurpose: InspectionPurpose;
   passFail: boolean | null;
   startedAt: string | null;
   completedAt: string | null;

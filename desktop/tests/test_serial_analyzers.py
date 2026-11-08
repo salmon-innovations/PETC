@@ -19,6 +19,24 @@ import pytest
 from petc.analyzer.ascii_gas import AsciiGasAnalyzer, _parse_kv_line
 from petc.analyzer.binary_diesel import BinaryDieselAnalyzer, _crc16_modbus
 from petc.analyzer.base import FuelType, GasReading, DieselReading
+from petc.analyzer.koeng_gas import (
+    CURRENT_ANALYSIS_REQUEST,
+    MEASURE_REQUEST,
+    STANDBY_REQUEST,
+    STATUS_REQUEST,
+    KoengGasAnalyzer,
+    parse_measurement_frame,
+)
+from petc.analyzer.koeng_diesel import (
+    KoengDieselAnalyzer,
+    parse_measurement_frame as parse_koeng_diesel_frame,
+)
+from petc.analyzer.cartesykj_gas import (
+    CURRENT_ANALYSIS_REQUEST as CARTESYKJ_CURRENT_ANALYSIS_REQUEST,
+    CartesykjGasAnalyzer,
+    measurement_checksum as cartesykj_checksum,
+    parse_measurement_frame as parse_cartesykj_frame,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -206,6 +224,235 @@ def test_binary_diesel_leading_garbage_before_soh():
 def test_crc16_modbus_known_value():
     # MODBUS CRC of b"\x01\x03\x00\x00\x00\x02" == 0xC40B
     assert _crc16_modbus(b"\x01\x03\x00\x00\x00\x02") == 0x0BC4
+
+
+# ---------------------------------------------------------------------------
+# KOENG KEG-500 CE — recovered 9600/8N1 command/response protocol
+# ---------------------------------------------------------------------------
+
+def test_koeng_parses_27_byte_afr_frame():
+    frame = b"\x1bC00120085014200401001A147\r"
+    reading = parse_measurement_frame(frame)
+    assert reading is not None
+    assert reading.co_pct == pytest.approx(0.12)
+    assert reading.hc_ppm == pytest.approx(85)
+    assert reading.co2_pct == pytest.approx(14.2)
+    assert reading.o2_pct == pytest.approx(0.4)
+    assert reading.lambda_value == pytest.approx(1.001)
+    assert reading.rpm is None
+
+
+def test_koeng_parses_28_byte_five_digit_hc_frame():
+    frame = b"\x1bC0123123450135005009980123\r"
+    reading = parse_measurement_frame(frame)
+    assert reading is not None
+    assert reading.co_pct == pytest.approx(1.23)
+    assert reading.hc_ppm == pytest.approx(12345)
+    assert reading.co2_pct == pytest.approx(13.5)
+    assert reading.o2_pct == pytest.approx(0.5)
+    assert reading.lambda_value == pytest.approx(0.998)
+
+
+def test_koeng_rejects_incomplete_or_nonnumeric_frame():
+    assert parse_measurement_frame(b"\x1bC0012\r") is None
+    assert parse_measurement_frame(b"\x1bCXXXX0085014200401001A147\r") is None
+
+
+def test_koeng_command_flow_and_configured_serial_number():
+    analyzer = KoengGasAnalyzer(port="STUB", serial_no="PGA-TEST-001")
+    assert analyzer._baud_rate == 9600
+    assert analyzer._data_bits == 8
+    assert analyzer._parity == "N"
+    assert analyzer._stop_bits == 1
+    assert analyzer.poll_command() is None
+    assert analyzer.start_command() == MEASURE_REQUEST
+    assert analyzer.poll_command() == STATUS_REQUEST
+
+    assert analyzer.parse_frame(b"\x1bS030\r") is None
+    assert analyzer.poll_command() == CURRENT_ANALYSIS_REQUEST
+
+    frame = b"\x1bC00120085014200401001A147\r"
+    result = analyzer.parse_frame(b"\x1bS030\r\n" + frame)
+    assert result is not None
+    assert result.fuel_type is FuelType.GAS
+    assert result.serial_no == "PGA-TEST-001"
+    assert result.raw_bytes == frame
+    assert analyzer.poll_command() is None
+
+
+def test_koeng_restore_standby_is_sent_once():
+    class _FakeSerial:
+        is_open = True
+
+        def __init__(self):
+            self.writes = []
+
+        def write(self, value):
+            self.writes.append(value)
+
+        def flush(self):
+            pass
+
+    analyzer = KoengGasAnalyzer(port="STUB")
+    fake = _FakeSerial()
+    analyzer._serial = fake
+    analyzer.start_command()
+    analyzer._restore_standby()
+    analyzer._restore_standby()
+    assert fake.writes == [STANDBY_REQUEST]
+
+
+# ---------------------------------------------------------------------------
+# CARTESYKJ MQ-550 — recovered 9600/8N1 polled binary protocol
+# ---------------------------------------------------------------------------
+
+MQ550_CAPTURE = bytes.fromhex(
+    "06 00 FC 00 0E 02 6A 00 02 00 00 00 00 00 60 03 DC"
+)
+
+
+def test_cartesykj_parses_verified_live_capture():
+    reading = parse_cartesykj_frame(MQ550_CAPTURE)
+    assert reading is not None
+    assert reading.hc_ppm == pytest.approx(252)
+    assert reading.co_pct == pytest.approx(0.14)
+    assert reading.co2_pct == pytest.approx(6.18)
+    assert reading.o2_pct == pytest.approx(0.02)
+    assert reading.no_ppm == pytest.approx(0)
+    assert reading.rpm == 0
+    assert reading.lambda_value == pytest.approx(0.96)
+    assert reading.oil_temp_c is None
+
+
+def test_cartesykj_checksum_matches_verified_capture():
+    values = (252, 14, 618, 2, 0, 0, 96)
+    assert cartesykj_checksum(values) == 0x03DC
+
+
+def test_cartesykj_rejects_bad_checksum_or_incomplete_frame():
+    corrupt = MQ550_CAPTURE[:-1] + bytes([MQ550_CAPTURE[-1] ^ 0x01])
+    assert parse_cartesykj_frame(corrupt) is None
+    assert parse_cartesykj_frame(MQ550_CAPTURE[:-1]) is None
+
+
+def test_cartesykj_command_flow_recovers_after_busy_byte():
+    analyzer = CartesykjGasAnalyzer(port="STUB", serial_no="MQ550-TEST-001")
+    assert analyzer._baud_rate == 9600
+    assert analyzer._data_bits == 8
+    assert analyzer._parity == "N"
+    assert analyzer._stop_bits == 1
+    assert analyzer.poll_command() is None
+    assert analyzer.start_command() == CARTESYKJ_CURRENT_ANALYSIS_REQUEST
+    assert analyzer.poll_command() is None
+
+    result = analyzer.parse_frame(b"\x15" + MQ550_CAPTURE)
+    assert result is not None
+    assert result.fuel_type is FuelType.GAS
+    assert result.serial_no == "MQ550-TEST-001"
+    assert result.raw_bytes == MQ550_CAPTURE
+    assert result.reading.hc_ppm == pytest.approx(252)
+    assert analyzer.poll_command() is None
+
+
+def test_cartesykj_reopens_port_and_sends_one_request_per_test(monkeypatch):
+    class _FakeSerial:
+        is_open = True
+
+        def __init__(self):
+            self.writes = []
+            self.input_resets = 0
+
+        def write(self, value):
+            self.writes.append(value)
+
+        def reset_input_buffer(self):
+            self.input_resets += 1
+
+    analyzer = CartesykjGasAnalyzer(port="STUB", serial_no="MQ550-TEST-001")
+    fake = _FakeSerial()
+    analyzer._serial = fake
+    connection_events = []
+    monkeypatch.setattr(analyzer, "disconnect", lambda: connection_events.append("disconnect"))
+    monkeypatch.setattr(analyzer, "connect", lambda: connection_events.append("connect"))
+    monkeypatch.setattr(
+        "petc.analyzer.cartesykj_gas.time.sleep",
+        lambda delay: connection_events.append(("sleep", delay)),
+    )
+
+    token = analyzer.start_test(FuelType.GAS)
+
+    assert connection_events == ["disconnect", ("sleep", 0.25), "connect"]
+    assert fake.input_resets == 1
+    assert fake.writes == [CARTESYKJ_CURRENT_ANALYSIS_REQUEST]
+    assert token in analyzer._pending
+    assert analyzer.poll_command() is None
+
+
+def test_cartesykj_accepts_valid_all_zero_measurement():
+    zero_values = (0, 0, 0, 0, 0, 0, 0)
+    frame = b"\x06" + (b"\x00\x00" * 7) + cartesykj_checksum(zero_values).to_bytes(2, "big")
+    reading = parse_cartesykj_frame(frame)
+    assert reading is not None
+    assert reading.co_pct == 0
+    assert reading.hc_ppm == 0
+    assert reading.rpm == 0
+
+
+def test_cartesykj_builder_selection(monkeypatch):
+    from petc.analyzer import builder
+
+    monkeypatch.setattr(builder, "_read_settings", lambda: {
+        "analyzer.type": "cartesykj_gas",
+        "analyzer.port": "COM3",
+        "analyzer.serial_no": "MQ550-BUILDER-001",
+    })
+    analyzer = builder.build_analyzer_from_settings()
+    assert isinstance(analyzer, CartesykjGasAnalyzer)
+    assert analyzer._port == "COM3"
+    assert analyzer._configured_serial_no == "MQ550-BUILDER-001"
+
+
+# ---------------------------------------------------------------------------
+# KOENG diesel opacity analyzer — verified 9600/8N1 passive ASCII stream
+# ---------------------------------------------------------------------------
+
+def test_koeng_diesel_parses_live_idle_frame():
+    reading = parse_koeng_diesel_frame(b"\x1b000.0 00.00 ----- --- ---\r")
+    assert reading is not None
+    assert reading.opacity_pct == pytest.approx(0.0)
+    assert reading.k_value == pytest.approx(0.0)
+    assert reading.rpm is None
+
+
+def test_koeng_diesel_parses_measurement_frame():
+    reading = parse_koeng_diesel_frame(b"\x1b012.3 01.45 02500 --- 085\r")
+    assert reading is not None
+    assert reading.opacity_pct == pytest.approx(12.3)
+    assert reading.k_value == pytest.approx(1.45)
+    assert reading.rpm == 2500
+
+
+def test_koeng_diesel_rejects_bad_width_or_fields():
+    assert parse_koeng_diesel_frame(b"\x1b000.0 00.00 ----- --- --\r") is None
+    assert parse_koeng_diesel_frame(b"\x1bBAD.0 00.00 ----- --- ---\r") is None
+    assert parse_koeng_diesel_frame(b"\x1b000.0 00.00 ----- --- XXY\r") is None
+
+
+def test_koeng_diesel_adapter_config_and_serial_number():
+    analyzer = KoengDieselAnalyzer(port="STUB", serial_no="KOENG-D-001")
+    assert analyzer._baud_rate == 9600
+    assert analyzer._data_bits == 8
+    assert analyzer._parity == "N"
+    assert analyzer._stop_bits == 1
+    assert analyzer.poll_command() is None
+
+    frame = b"\x1b012.3 01.45 02500 --- 085\r"
+    result = analyzer.parse_frame(b"garbage" + frame)
+    assert result is not None
+    assert result.fuel_type is FuelType.DIESEL
+    assert result.serial_no == "KOENG-D-001"
+    assert result.raw_bytes == frame
+    assert result.reading.rpm == 2500
 
 
 # ---------------------------------------------------------------------------

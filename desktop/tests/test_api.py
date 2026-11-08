@@ -3,7 +3,15 @@ from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 from petc.analyzer.mock import MockAnalyzer
-from petc.api.server import app, init
+from fastapi import HTTPException
+
+from petc.api.server import (
+    _canonical_submission_payload,
+    _validate_machine_readings,
+    _validate_readings_for_do,
+    app,
+    init,
+)
 from petc.camera.capture import MockCameraCapture
 from petc.db import models  # noqa: F401
 from petc.db.session import Base, engine
@@ -167,10 +175,42 @@ def test_status(client):
     assert data["printer_status"]["online"] is True
 
 
+def test_machine_capture_accepts_zero_gas_values_without_rpm():
+    _validate_machine_readings("GAS", {
+        "co_pct": 0.0,
+        "hc_ppm": 44.0,
+        "co2_pct": 0.0,
+        "o2_pct": 20.72,
+        "lambda_value": 2.0,
+        "rpm": None,
+    })
+
+
+def test_do_submission_still_requires_positive_rpm():
+    readings = {
+        "co_pct": 0.0,
+        "hc_ppm": 44.0,
+        "co2_pct": 0.0,
+        "o2_pct": 20.72,
+        "lambda_value": 2.0,
+        "rpm": None,
+    }
+    with pytest.raises(HTTPException, match="reading rpm is required"):
+        _validate_readings_for_do("GAS", readings)
+
+    readings["rpm"] = 900
+    _validate_readings_for_do("GAS", readings)
+
+
 def test_start_and_get_result(client):
     start = client.post(
         "/test/start",
-        json={"operator_id": "op1", "plate_number": "ABC123", "fuel_type": "GAS"},
+        json={
+            "operator_id": "op1",
+            "plate_number": "ABC123",
+            "fuel_type": "GAS",
+            "inspection_purpose": "FOR_COMPLIANCE",
+        },
     )
     assert start.status_code == 200
     token = start.json()["session_token"]
@@ -180,6 +220,21 @@ def test_start_and_get_result(client):
     assert result.json()["pass_fail"] is True
     assert result.json()["fuel_type"] == "GAS"
     assert result.json()["test_id"]
+    detail = client.get(f"/tests/{result.json()['test_id']}")
+    assert detail.json()["inspectionPurpose"] == "FOR_COMPLIANCE"
+
+
+def test_start_rejects_unknown_inspection_purpose(client):
+    start = client.post(
+        "/test/start",
+        json={
+            "operator_id": "op1",
+            "plate_number": "ABC123",
+            "fuel_type": "GAS",
+            "inspection_purpose": "OTHER",
+        },
+    )
+    assert start.status_code == 422
 
 
 def test_start_is_blocked_when_current_lane_has_no_remaining_capacity(client, monkeypatch):
@@ -312,12 +367,13 @@ def test_upload_submit_accepts_full_wizard_payload(client):
 
     lookup = client.post("/api/v1/vehicle/lookup", json={"plate": "ABC1234"}).json()
     payload = {
-        "centerId": "dev-center",
         "centerName": "PETC Center",
         "testId": test_id,
         "testDatetime": detail["testedAt"],
+        "inspection": {"purpose": detail["inspectionPurpose"]},
         "vehicle": {
             "plateNo": lookup["vehicle"]["plateNo"],
+            "mvNo": lookup["vehicle"]["mvNo"],
             "fuelType": lookup["vehicle"]["fuelType"],
             "make": lookup["vehicle"]["make"],
             "series": lookup["vehicle"]["series"],
@@ -334,6 +390,13 @@ def test_upload_submit_accepts_full_wizard_payload(client):
         },
         "photos": detail["photos"],
     }
+
+    wrong_purpose = {
+        **payload,
+        "inspection": {"purpose": "FOR_COMPLIANCE"},
+    }
+    rejected = client.post("/api/v1/upload/submit", json={"payload": wrong_purpose})
+    assert rejected.status_code == 409
 
     submitted = client.post("/api/v1/upload/submit", json={"payload": payload})
     assert submitted.status_code == 200
@@ -363,8 +426,10 @@ def test_cloud_upload_waits_for_acceptance_and_makes_cec_available(client, monke
         "centerName": "PETC Center",
         "testId": test_id,
         "testDatetime": detail["testedAt"],
+        "inspection": {"purpose": "FOR_RENEWAL"},
         "vehicle": {
             "plateNo": lookup["vehicle"]["plateNo"],
+            "mvNo": lookup["vehicle"]["mvNo"],
             "fuelType": lookup["vehicle"]["fuelType"],
             "make": lookup["vehicle"]["make"],
             "series": lookup["vehicle"]["series"],

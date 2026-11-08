@@ -13,7 +13,7 @@ import secrets
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 from zoneinfo import ZoneInfo
 
 import uvicorn
@@ -109,6 +109,38 @@ def _get_printer() -> Printer:
     return _printer
 
 
+def _canonical_submission_payload(caller_payload: dict) -> tuple[dict, str]:
+    """Attach the sidecar-commissioned center identity to a cloud payload.
+
+    The renderer is untrusted for tenant routing.  Production must have an
+    issued PETC_CENTER_ID and may not override it; development keeps the
+    previous fallback so local/mock workflows remain usable without
+    commissioning configuration.
+    """
+    configured_center_id = os.environ.get("PETC_CENTER_ID", "").strip()
+    caller_center_id = str(caller_payload.get("centerId") or "").strip()
+
+    if is_production():
+        if not configured_center_id:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "PETC_CENTER_ID is required for production submission",
+            )
+        if caller_center_id and caller_center_id != configured_center_id:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "payload.centerId conflicts with the commissioned PETC_CENTER_ID",
+            )
+        center_id = configured_center_id
+    else:
+        # A supplied development value remains supported when no sidecar
+        # configuration exists, but a configured local center wins.
+        center_id = configured_center_id or caller_center_id or "dev-center"
+
+    canonical_payload = {**caller_payload, "centerId": center_id}
+    return canonical_payload, center_id
+
+
 # ---------------------------------------------------------------------------
 # Schema
 # ---------------------------------------------------------------------------
@@ -116,6 +148,11 @@ class StartTestRequest(BaseModel):
     operator_id: str
     plate_number: str
     fuel_type: str  # "GAS" | "DIESEL"
+    inspection_purpose: Literal[
+        "FOR_RENEWAL",
+        "FOR_INIT_REG",
+        "FOR_COMPLIANCE",
+    ] = "FOR_RENEWAL"
 
 
 class StartTestResponse(BaseModel):
@@ -523,6 +560,7 @@ def start_test(
             operator_id=req.operator_id,
             plate_number=plate_number,
             fuel_type=req.fuel_type.upper(),
+            inspection_purpose=req.inspection_purpose,
             session_token=token,
             started_at=started_at,
             tested_at=started_at,
@@ -531,6 +569,7 @@ def start_test(
         _audit(session, "TEST_START", "emission_test", test_id, {
             "plateNumber": plate_number,
             "fuelType": req.fuel_type.upper(),
+            "inspectionPurpose": req.inspection_purpose,
             "operatorId": req.operator_id,
         }, req.operator_id)
         session.commit()
@@ -544,6 +583,7 @@ def start_test(
             "operator_id": req.operator_id,
             "plate_number": plate_number,
             "fuel_type": req.fuel_type.upper(),
+            "inspection_purpose": req.inspection_purpose,
             "started_at": started_at.isoformat(),
             "center_id": _trusted_center_id(lane),
             "lane_id": lane.get("lane_id") if lane else None,
@@ -580,7 +620,11 @@ def get_result(
         )
 
     readings = _reading_to_dict(result)
-    _validate_readings_for_do(result.fuel_type.value, readings)
+    # A captured analyzer frame may legitimately contain zero pollutant values,
+    # and some gas benches (including the KOENG KEG-500 CE) do not carry RPM in
+    # their gas-data frame.  Preserve and display that machine result here; the
+    # stricter DO/LTMS completeness check still runs before submission.
+    _validate_machine_readings(result.fuel_type.value, readings)
     captured_at = result.captured_at
     raw_bytes_hex = result.raw_bytes.hex()
 
@@ -616,6 +660,7 @@ def get_result(
             session.merge(DieselTestResult(test_id=test.id, **readings))
         test_id = test.id
         plate_number = test.plate_number
+        inspection_purpose = test.inspection_purpose
         photo_count = len(test.photos)
         _audit(session, "RESULT_CAPTURE", "emission_test", test.id, {
             "fuelType": result.fuel_type.value,
@@ -633,6 +678,7 @@ def get_result(
             "session_token": session_token,
             "plate_number": plate_number,
             "fuel_type": result.fuel_type.value,
+            "inspection_purpose": inspection_purpose,
             "pass_fail": result.pass_fail,
             "serial_no": result.serial_no,
             "captured_at": captured_at.isoformat(),
@@ -1034,7 +1080,8 @@ def submit_ltms(
         if test.gas_result:
             r = test.gas_result
             readings = {"co_pct": r.co_pct, "hc_ppm": r.hc_ppm, "co2_pct": r.co2_pct,
-                        "o2_pct": r.o2_pct, "lambda_value": r.lambda_value}
+                        "o2_pct": r.o2_pct, "lambda_value": r.lambda_value,
+                        "no_ppm": r.no_ppm}
         elif test.diesel_result:
             r = test.diesel_result
             readings = {"opacity_pct": r.opacity_pct, "k_value": r.k_value}
@@ -1100,7 +1147,7 @@ def submit_upload_v1(
     from .. import cloud_client as cc
     from ..submissions.reconciler import get_cached_lane_status
 
-    payload = req.payload
+    payload, center_id = _canonical_submission_payload(req.payload)
     test_id = payload.get("testId")
     if not test_id:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "payload.testId is required")
@@ -1294,7 +1341,10 @@ def _local_submission_response(
         if sub is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "submission not found")
         state = state_override or sub.state
-        queued = state not in ("ACCEPTED", "REJECTED", "DEAD", "EXPIRED")
+        queued = state not in (
+            "PASSED", "ACCEPTED", "FAILED_EVALUATION", "ACTION_REQUIRED",
+            "AUTH_BLOCKED", "DEAD", "REJECTED", "EXPIRED",
+        )
         return {
             "state": state,
             "certificateNo": sub.certificate_no,
@@ -1324,7 +1374,10 @@ def _dispatch_and_wait_for_cloud(submission_id: str, cloud) -> dict:
         row = session.get(LtmsSubmission, submission_id)
         if row is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "submission not found")
-        if row.state in ("ACCEPTED", "REJECTED", "DEAD", "EXPIRED"):
+        if row.state in (
+            "PASSED", "ACCEPTED", "FAILED_EVALUATION", "ACTION_REQUIRED",
+            "AUTH_BLOCKED", "DEAD", "REJECTED", "EXPIRED",
+        ):
             return _local_submission_response(submission_id)
         if not row.cloud_submission_id:
             # The immediate photo/cloud call failed. _dispatch_pending has
@@ -1347,7 +1400,10 @@ def _dispatch_and_wait_for_cloud(submission_id: str, cloud) -> dict:
                 message_override="LTMS status is temporarily unavailable; automatic recovery will continue.",
             )
 
-        if cloud_state in ("ACCEPTED", "REJECTED", "DEAD", "EXPIRED"):
+        if cloud_state in (
+            "PASSED", "ACCEPTED", "FAILED_EVALUATION", "ACTION_REQUIRED",
+            "AUTH_BLOCKED", "DEAD", "REJECTED", "EXPIRED",
+        ):
             return _local_submission_response(submission_id)
         if cloud_state == "BLOCKED":
             return _local_submission_response(
@@ -1358,9 +1414,16 @@ def _dispatch_and_wait_for_cloud(submission_id: str, cloud) -> dict:
 
         remaining = deadline - time.monotonic()
         if remaining <= 0:
+            with SessionLocal() as session:
+                row = session.get(LtmsSubmission, submission_id)
+                if row and row.state not in (
+                    "PASSED", "ACCEPTED", "FAILED_EVALUATION", "ACTION_REQUIRED",
+                    "AUTH_BLOCKED", "DEAD", "REJECTED", "EXPIRED",
+                ):
+                    row.state = "WAITING_FOR_LTMS"
+                    session.commit()
             return _local_submission_response(
                 submission_id,
-                state_override="WAITING_FOR_LTMS",
                 message_override="LTMS is still processing. The result will continue updating in History.",
             )
         time.sleep(min(_FOREGROUND_SUBMISSION_POLL_S, remaining))
@@ -1410,8 +1473,8 @@ def print_cec(
         sub = session.get(LtmsSubmission, submission_id)
         if sub is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "submission not found")
-        if sub.state != "ACCEPTED" or not sub.certificate_no:
-            raise HTTPException(status.HTTP_409_CONFLICT, "submission is not in ACCEPTED state")
+        if sub.state not in ("PASSED", "ACCEPTED") or not sub.certificate_no:
+            raise HTTPException(status.HTTP_409_CONFLICT, "submission is not in PASSED state")
 
         test = session.get(EmissionTest, sub.test_id)
         if test is None:
@@ -1549,6 +1612,7 @@ def list_tests(
                 "id": t.id,
                 "plateNumber": t.plate_number,
                 "fuelType": t.fuel_type,
+                "inspectionPurpose": t.inspection_purpose,
                 "passFail": t.pass_fail,
                 "startedAt": _utc_iso(t.started_at),
                 "completedAt": _utc_iso(t.completed_at),
@@ -1705,9 +1769,20 @@ _ANALYZER_SETTING_KEYS = (
     "analyzer.parity",
     "analyzer.stop_bits",
     "analyzer.address",
+    "analyzer.serial_no",
 )
 
-_ANALYZER_TYPES = {"mock", "serial_gas", "serial_diesel", "fty_opacimeter", "fofen_gas", "fofen_ascii"}
+_ANALYZER_TYPES = {
+    "mock",
+    "serial_gas",
+    "serial_diesel",
+    "fty_opacimeter",
+    "fofen_gas",
+    "fofen_ascii",
+    "koeng_gas",
+    "koeng_diesel",
+    "cartesykj_gas",
+}
 _PARITY_VALUES = {"N", "E", "O"}
 
 
@@ -1719,6 +1794,7 @@ class AnalyzerSettings(BaseModel):
     parity: str
     stopBits: int
     address: str
+    serialNo: str = ""
 
 
 def _load_analyzer_settings() -> AnalyzerSettings:
@@ -1738,6 +1814,7 @@ def _load_analyzer_settings() -> AnalyzerSettings:
         parity=rows.get("analyzer.parity", "N"),
         stopBits=int(rows.get("analyzer.stop_bits", "1")),
         address=rows.get("analyzer.address", "01"),
+        serialNo=rows.get("analyzer.serial_no", ""),
     )
 
 
@@ -1770,6 +1847,16 @@ def update_analyzer_settings(req: AnalyzerSettings) -> dict:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "baud must be positive")
 
     previous = _load_analyzer_settings()
+    normalized_req = req.model_copy(update={
+        "parity": req.parity.upper(),
+        "serialNo": req.serialNo.strip(),
+    })
+    if normalized_req == previous and _analyzer is not None and _analyzer.is_connected:
+        # The selected adapter already owns the serial port.  Re-saving an
+        # unchanged form must not construct a second adapter for the same COM
+        # port, which Windows correctly rejects as "Access is denied".
+        return {"applied": True, "connected": True}
+
     new_values = {
         "analyzer.type": req.type,
         "analyzer.port": req.port,
@@ -1778,6 +1865,7 @@ def update_analyzer_settings(req: AnalyzerSettings) -> dict:
         "analyzer.parity": req.parity.upper(),
         "analyzer.stop_bits": str(req.stopBits),
         "analyzer.address": req.address,
+        "analyzer.serial_no": req.serialNo.strip(),
     }
 
     def _persist(values: dict[str, str]) -> None:
@@ -1793,8 +1881,20 @@ def update_analyzer_settings(req: AnalyzerSettings) -> dict:
     _persist(new_values)
 
     old_analyzer = _analyzer
+    old_disconnected = False
     try:
         new_analyzer = build_analyzer_from_settings()
+        # Serial ports are exclusive on Windows.  When changing settings for
+        # the same physical port, release the old handle before connecting the
+        # replacement.  For a different port we retain the zero-downtime order.
+        if (
+            old_analyzer is not None
+            and old_analyzer.is_connected
+            and previous.type != "mock"
+            and previous.port.casefold() == req.port.casefold()
+        ):
+            old_analyzer.disconnect()
+            old_disconnected = True
         new_analyzer.connect()
     except Exception as exc:
         logger.exception("Failed to bring up new analyzer; rolling back")
@@ -1806,7 +1906,13 @@ def update_analyzer_settings(req: AnalyzerSettings) -> dict:
             "analyzer.parity": previous.parity,
             "analyzer.stop_bits": str(previous.stopBits),
             "analyzer.address": previous.address,
+            "analyzer.serial_no": previous.serialNo,
         })
+        if old_disconnected and old_analyzer is not None:
+            try:
+                old_analyzer.connect()
+            except Exception:
+                logger.exception("Failed to reconnect previous analyzer after rollback")
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             f"Could not connect with new settings: {exc}. Reverted to previous configuration.",
@@ -1963,11 +2069,11 @@ def _require_nonblank(value, label: str) -> None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{label} is required")
 
 
-def _validate_readings_for_do(fuel_type: str, readings: dict) -> None:
+def _validate_machine_readings(fuel_type: str, readings: dict) -> None:
     if not readings:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "machine readings are required")
-    gas_fields = ("co_pct", "hc_ppm", "co2_pct", "o2_pct", "lambda_value", "rpm")
-    diesel_fields = ("opacity_pct", "k_value", "rpm")
+    gas_fields = ("co_pct", "hc_ppm", "co2_pct", "o2_pct", "lambda_value")
+    diesel_fields = ("opacity_pct", "k_value")
     fields = gas_fields if fuel_type.upper() == "GAS" else diesel_fields
     for field in fields:
         value = readings.get(field)
@@ -1977,11 +2083,28 @@ def _validate_readings_for_do(fuel_type: str, readings: dict) -> None:
             numeric = float(value)
         except (TypeError, ValueError) as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"reading {field} must be numeric") from exc
-        if numeric <= 0:
+        minimum_is_exclusive = field == "lambda_value"
+        if numeric < 0 or (minimum_is_exclusive and numeric == 0):
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
-                f"reading {field} must be greater than zero under DO 2023-008",
+                f"reading {field} must be {'greater than' if minimum_is_exclusive else 'at least'} zero",
             )
+
+
+def _validate_readings_for_do(fuel_type: str, readings: dict) -> None:
+    _validate_machine_readings(fuel_type, readings)
+    rpm = readings.get("rpm")
+    if rpm is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "reading rpm is required")
+    try:
+        numeric_rpm = float(rpm)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "reading rpm must be numeric") from exc
+    if numeric_rpm <= 0:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "reading rpm must be greater than zero under DO 2023-008",
+        )
 
 
 def _validate_submission_payload(payload: dict, test, readings: dict, photo_count: int) -> None:
@@ -1989,9 +2112,28 @@ def _validate_submission_payload(payload: dict, test, readings: dict, photo_coun
     _require_nonblank(payload.get("centerName"), "centerName")
     _require_nonblank(payload.get("testId"), "testId")
     vehicle = payload.get("vehicle") or {}
+    inspection = payload.get("inspection") or {}
     owner = payload.get("owner") or {}
     technician = payload.get("technician") or {}
-    _require_nonblank(vehicle.get("plateNo"), "vehicle.plateNo")
+    purpose = inspection.get("purpose")
+    _require_nonblank(purpose, "inspection.purpose")
+    purpose = str(purpose).strip()
+    if purpose not in {"FOR_RENEWAL", "FOR_INIT_REG", "FOR_COMPLIANCE"}:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "inspection.purpose must be FOR_RENEWAL, FOR_INIT_REG, or FOR_COMPLIANCE",
+        )
+    if purpose != test.inspection_purpose:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "inspection.purpose must match the purpose selected when the test started",
+        )
+    if purpose != "FOR_INIT_REG":
+        _require_nonblank(vehicle.get("plateNo"), "vehicle.plateNo")
+    _require_nonblank(vehicle.get("mvNo"), "vehicle.mvNo")
+    if purpose == "FOR_INIT_REG":
+        _require_nonblank(vehicle.get("engineNo"), "vehicle.engineNo")
+        _require_nonblank(vehicle.get("chassisNo"), "vehicle.chassisNo")
     _require_nonblank(vehicle.get("fuelType"), "vehicle.fuelType")
     _require_nonblank(test.analyzer_serial, "analyzer serial")
     if owner.get("ownerType") == "ORGANIZATION":
@@ -2015,6 +2157,7 @@ def _reading_to_dict(result) -> dict:
             "co2_pct": r.co2_pct,
             "o2_pct": r.o2_pct,
             "lambda_value": r.lambda_value,
+            "no_ppm": r.no_ppm,
             "rpm": r.rpm,
             "oil_temp_c": r.oil_temp_c,
         }
@@ -2149,6 +2292,7 @@ def _readings_for_test(test) -> dict:
             "co2_pct": r.co2_pct,
             "o2_pct": r.o2_pct,
             "lambda_value": r.lambda_value,
+            "no_ppm": r.no_ppm,
             "rpm": r.rpm,
             "oil_temp_c": r.oil_temp_c,
         }
@@ -2168,6 +2312,7 @@ def _test_detail_to_response(test) -> dict:
         "id": test.id,
         "plateNumber": test.plate_number,
         "fuelType": test.fuel_type,
+        "inspectionPurpose": test.inspection_purpose,
         "passFail": test.pass_fail,
         # SQLite returns its UTC timestamps as naive datetimes.  Always expose
         # an explicit UTC offset so the cloud cannot interpret a near-midnight

@@ -82,6 +82,7 @@ class EmissionTest(Base):
     operator_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
     plate_number: Mapped[str] = mapped_column(String, nullable=False, index=True)
     fuel_type: Mapped[str] = mapped_column(String, nullable=False)  # GAS | DIESEL
+    inspection_purpose: Mapped[str] = mapped_column(String, nullable=False, default="FOR_RENEWAL")
     pass_fail: Mapped[Optional[bool]] = mapped_column(Boolean)
     session_token: Mapped[str] = mapped_column(String, nullable=False)
     analyzer_serial: Mapped[Optional[str]] = mapped_column(String)
@@ -107,6 +108,7 @@ class GasTestResult(Base):
     co2_pct: Mapped[Optional[float]] = mapped_column(Float)
     o2_pct: Mapped[Optional[float]] = mapped_column(Float)
     lambda_value: Mapped[Optional[float]] = mapped_column(Float)
+    no_ppm: Mapped[Optional[float]] = mapped_column(Float)
     rpm: Mapped[Optional[int]] = mapped_column(Integer)
     oil_temp_c: Mapped[Optional[float]] = mapped_column(Float)
 

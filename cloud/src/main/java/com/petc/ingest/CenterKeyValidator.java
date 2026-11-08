@@ -54,7 +54,14 @@ public class CenterKeyValidator {
             int dailyUploadLimit,
             String authorizationStatus,
             Instant authorizationExpiresAt
-    ) {}
+    ) {
+        /** Compatibility constructor for release tests and non-lane-specific services. */
+        public CenterContext(String tenantId, String centerId, String authorizationStatus,
+                             Instant authorizationExpiresAt) {
+            this(tenantId, centerId, centerId, null, 1, true, 80,
+                    authorizationStatus, authorizationExpiresAt);
+        }
+    }
 
     /** Returns the tenant UUID (as String) for the given raw center API key. */
     public String validate(String rawKey) {
@@ -109,6 +116,17 @@ public class CenterKeyValidator {
             }
         }
         throw new AuthException("Invalid X-Center-Key");
+    }
+
+    /**
+     * Rejects a desktop-supplied center ID that does not match its authenticated
+     * X-Center-Key.  Callers must persist {@link CenterContext#centerId()} —
+     * never the submitted value — after this check succeeds.
+     */
+    public void requireMatchingCenter(CenterContext authenticatedCenter, String submittedCenterId) {
+        if (submittedCenterId == null || !authenticatedCenter.centerId().equals(submittedCenterId)) {
+            throw new AuthException("Submitted centerId does not match X-Center-Key");
+        }
     }
 
     private Instant toInstant(Object value) {

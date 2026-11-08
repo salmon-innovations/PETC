@@ -1,10 +1,9 @@
 """
 Background reconciler for cloud LTMS submissions.
 
-Polls the cloud every 30 s for any LtmsSubmission rows stuck in
-PENDING or WAITING_FOR_LTMS that have a cloud_submission_id.
-When the cloud reports a terminal state (ACCEPTED / REJECTED / DEAD),
-updates the local row and renders the CEC PDF if accepted.
+Polls the cloud every 30 s for non-terminal LtmsSubmission rows that have a
+cloud_submission_id. When the cloud reports a terminal state, updates the
+local row and renders the CEC PDF only for PASSED (or legacy ACCEPTED).
 
 Started as a daemon thread by service.py alongside the CloudSyncPusher.
 Silently no-ops when PETC_CLOUD_URL is not configured.
@@ -23,7 +22,10 @@ from zoneinfo import ZoneInfo
 logger = logging.getLogger(__name__)
 
 _POLL_INTERVAL_S = 30.0
-_WAITING_STATES = ("PENDING", "WAITING_FOR_LTMS")
+_WAITING_STATES = (
+    "PENDING", "WAITING_FOR_LTMS", "IN_FLIGHT", "BLOCKED", "DEFERRED",
+    "RECONCILING",
+)
 _RETRY_BACKOFF_SECONDS = (5, 15, 60, 300, 900)
 _MANILA = ZoneInfo("Asia/Manila")
 # Foreground submission and the daemon may notice the same durable row at the
@@ -340,11 +342,12 @@ class SubmissionReconciler:
             raise
 
         if not status.is_terminal:
+            self._store_nonterminal_state(submission_id, status)
             return status.state
 
         now = datetime.now(timezone.utc)
         pdf_path: Optional[str] = None
-        if status.state == "ACCEPTED" and status.certificate_no:
+        if status.is_success and status.certificate_no:
             render_row = type("CecRenderRow", (), {
                 "id": render_id,
                 "payload_json": render_payload,
@@ -366,11 +369,11 @@ class SubmissionReconciler:
             row.valid_from = status.valid_from
             row.valid_until = status.valid_until
             row.last_error = status.rejection_reason
-            row.accepted_at = now if status.state == "ACCEPTED" else None
+            row.accepted_at = now if status.is_success else None
             if pdf_path:
                 row.pdf_path = pdf_path
 
-            if status.state == "ACCEPTED":
+            if status.is_success:
                 test_row = session.get(EmissionTest, row.test_id)
                 if test_row:
                     test_row.uploaded_at = now
@@ -512,6 +515,25 @@ class SubmissionReconciler:
             if sub:
                 sub.state, sub.last_error = state, reason
                 session.commit()
+
+    @staticmethod
+    def _store_nonterminal_state(submission_id: str, status) -> None:
+        """Persist the latest known cloud state while keeping it pollable."""
+        from ..db.session import SessionLocal
+        from ..db.models import LtmsSubmission
+
+        with SessionLocal() as session:
+            row = session.get(LtmsSubmission, submission_id)
+            if row is None:
+                return
+            if status.is_known_nonterminal:
+                row.state = status.state
+                row.last_error = status.rejection_reason
+            else:
+                # Do not save an unknown value: it would fall outside
+                # _WAITING_STATES and silently stop future polling.
+                row.last_error = f"Unexpected non-terminal cloud state: {status.state}"
+            session.commit()
 
     def _render_cec(self, sub, status, now: datetime) -> Optional[str]:
         try:

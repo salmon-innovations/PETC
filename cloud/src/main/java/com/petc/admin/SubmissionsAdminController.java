@@ -109,6 +109,8 @@ public class SubmissionsAdminController {
                        l.lane_number, t.name AS center_name,
                        s.tenant_id::text AS tenant_id, s.state, s.attempts, s.payload::text AS payload,
                        s.certificate_no, s.ltms_ref_no, s.or_no, s.dermalog_token,
+                       s.cec_number, s.ltms_inbox_id, s.ltms_evaluation,
+                       s.ltms_expiry_date, s.ltms_error_code, s.ltms_error_message,
                        s.rejection_reason, s.valid_from, s.valid_until,
                        s.created_at, s.accepted_at, s.blocked_at, s.grace_released_at,
                        s.last_attempt_at, s.next_attempt_at, s.acceptance_seq,

@@ -138,7 +138,7 @@ class SerialAnalyzer(Analyzer):
         token = str(uuid.uuid4())
         with self._lock:
             self._pending[token] = threading.Event()
-        cmd = self.poll_command()
+        cmd = self.start_command()
         if cmd is not None:
             self._serial.write(cmd)  # type: ignore[union-attr]
         return token
@@ -192,6 +192,14 @@ class SerialAnalyzer(Analyzer):
         """Override to send a command to trigger a reading. Return None for push devices."""
         return None
 
+    def start_command(self) -> bytes | None:
+        """Return the command sent once when a test session starts.
+
+        The default preserves the original behavior. Stateful protocols can
+        override this independently from their recurring poll command.
+        """
+        return self.poll_command()
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
@@ -212,10 +220,11 @@ class SerialAnalyzer(Analyzer):
                         self._deliver(result)
 
                 now = time.monotonic()
-                cmd = self.poll_command()
-                if cmd is not None and now >= next_poll:
+                if now >= next_poll:
+                    cmd = self.poll_command()
                     try:
-                        self._serial.write(cmd)  # type: ignore[union-attr]
+                        if cmd is not None:
+                            self._serial.write(cmd)  # type: ignore[union-attr]
                     except serial.SerialException:
                         pass
                     next_poll = now + self._poll_interval

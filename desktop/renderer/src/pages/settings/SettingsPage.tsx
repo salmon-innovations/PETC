@@ -10,6 +10,9 @@ const ANALYZER_TYPES: { value: AnalyzerType; label: string }[] = [
   { value: "fty_opacimeter", label: "FTY-100 Opacimeter (FOFEN SINGLE)" },
   { value: "fofen_gas", label: "Fofen Petrol Gas Analyzer — binary push" },
   { value: "fofen_ascii", label: "Fofen Petrol Gas Analyzer — ASCII receipt (PRINT)" },
+  { value: "koeng_gas", label: "KOENG KEG-500 CE Gas Analyzer" },
+  { value: "koeng_diesel", label: "KOENG Diesel Analyzer" },
+  { value: "cartesykj_gas", label: "CARTESYKJ MQ-550 Gas Analyzer" },
 ];
 
 const BAUD_OPTIONS = [9600, 19200, 38400, 57600, 115200];
@@ -47,7 +50,36 @@ export default function SettingsPage() {
         <h2 className="font-semibold text-sm text-gray-700">Data Location</h2>
         <DataPath />
       </section>
+
+      <CommissioningSection />
     </div>
+  );
+}
+
+function CommissioningSection() {
+  const [message, setMessage] = useState<string | null>(null);
+
+  return (
+    <section className="bg-white rounded-xl shadow p-5 space-y-3">
+      <div>
+        <h2 className="font-semibold text-sm text-gray-700">Center Commissioning</h2>
+        <p className="mt-1 text-xs text-gray-500">
+          Import a center-specific properties file downloaded from the PETC portal.
+          The app restarts after a successful import.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={async () => {
+          const result = await window.petcBridge.importCommissioning();
+          setMessage(result.message);
+        }}
+        className="rounded border border-gray-300 px-3 py-2 text-xs hover:bg-gray-50"
+      >
+        Import commissioning file
+      </button>
+      {message && <p className="text-xs text-gray-600">{message}</p>}
+    </section>
   );
 }
 
@@ -135,7 +167,21 @@ function AnalyzerHardwareSection() {
         <select
           className="w-full border rounded px-2 py-1 text-sm"
           value={form.type}
-          onChange={(e) => setForm({ ...form, type: e.target.value as AnalyzerType })}
+          onChange={(e) => {
+            const type = e.target.value as AnalyzerType;
+            const typeChanged = type !== form.type;
+            setForm(type === "koeng_gas" || type === "koeng_diesel" || type === "cartesykj_gas"
+              ? {
+                  ...form,
+                  type,
+                  baud: 9600,
+                  dataBits: 8,
+                  parity: "N",
+                  stopBits: 1,
+                  serialNo: typeChanged ? "" : form.serialNo,
+                }
+              : { ...form, type, serialNo: typeChanged ? "" : form.serialNo });
+          }}
         >
           {ANALYZER_TYPES.map((t) => (
             <option key={t.value} value={t.value}>{t.label}</option>
@@ -183,6 +229,32 @@ function AnalyzerHardwareSection() {
               ))}
             </select>
           </Field>
+
+          {(form.type === "koeng_gas" || form.type === "koeng_diesel" || form.type === "cartesykj_gas") && (
+            <>
+              <Field label="Analyzer serial number">
+                <input
+                  className="w-full border rounded px-2 py-1 text-sm font-mono"
+                  value={form.serialNo}
+                  onChange={(e) => setForm({ ...form, serialNo: e.target.value })}
+                  placeholder="From the calibration plate"
+                />
+              </Field>
+              {form.type === "cartesykj_gas" ? (
+                <p className="text-xs text-gray-500">
+                  CARTESYKJ MQ-550 communication is fixed at 9600 baud, 8N1 and
+                  uses a polled current-analysis request. Close other serial tools
+                  before connecting because COM ports are exclusive.
+                </p>
+              ) : (
+                <p className="text-xs text-gray-500">
+                  KOENG communication is fixed at 9600 baud, 8N1. The diesel analyzer
+                  continuously transmits readings. Close the vendor Koeng Analyzer System
+                  before connecting because COM ports are exclusive.
+                </p>
+              )}
+            </>
+          )}
 
           <button
             type="button"

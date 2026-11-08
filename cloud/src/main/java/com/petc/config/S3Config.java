@@ -3,13 +3,13 @@ package com.petc.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import org.springframework.util.StringUtils;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 import java.net.URI;
@@ -35,9 +35,8 @@ public class S3Config {
                 .region(Region.of(region))
                 .credentialsProvider(credentialsProvider());
 
-        if (hasCustomEndpoint()) {
-            builder.endpointOverride(URI.create(endpoint.trim()))
-                    .forcePathStyle(true);
+        if (StringUtils.hasText(endpoint)) {
+            builder.endpointOverride(URI.create(endpoint)).forcePathStyle(true);
         }
         return builder.build();
     }
@@ -48,32 +47,21 @@ public class S3Config {
                 .region(Region.of(region))
                 .credentialsProvider(credentialsProvider());
 
-        if (hasCustomEndpoint()) {
-            builder.endpointOverride(URI.create(endpoint.trim()))
-                    .serviceConfiguration(S3Configuration.builder()
-                            .pathStyleAccessEnabled(true)
-                            .build());
+        if (StringUtils.hasText(endpoint)) {
+            builder.endpointOverride(URI.create(endpoint));
         }
         return builder.build();
     }
 
     private AwsCredentialsProvider credentialsProvider() {
-        boolean hasAccessKey = accessKey != null && !accessKey.isBlank();
-        boolean hasSecretKey = secretKey != null && !secretKey.isBlank();
+        boolean hasAccessKey = StringUtils.hasText(accessKey);
+        boolean hasSecretKey = StringUtils.hasText(secretKey);
         if (hasAccessKey != hasSecretKey) {
-            throw new IllegalStateException(
-                    "S3_ACCESS_KEY and S3_SECRET_KEY must either both be set or both be empty");
+            throw new IllegalStateException("S3_ACCESS_KEY and S3_SECRET_KEY must be provided together");
         }
         if (hasAccessKey) {
-            return StaticCredentialsProvider.create(
-                    AwsBasicCredentials.create(accessKey.trim(), secretKey.trim()));
+            return StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey));
         }
-        // AWS_PROFILE selects a named local profile. In deployed environments
-        // the same chain naturally uses task, instance, or web-identity roles.
         return DefaultCredentialsProvider.create();
-    }
-
-    private boolean hasCustomEndpoint() {
-        return endpoint != null && !endpoint.isBlank();
     }
 }

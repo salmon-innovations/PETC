@@ -21,6 +21,20 @@ from typing import Optional
 import httpx
 
 
+# Keep legacy states during the cloud migration. An unknown state remains
+# non-terminal so a newer cloud response cannot accidentally print a CEC or
+# stop local recovery.
+SUBMISSION_SUCCESS_STATES = frozenset(("PASSED", "ACCEPTED"))
+SUBMISSION_TERMINAL_STATES = frozenset((
+    "PASSED", "ACCEPTED", "FAILED_EVALUATION", "ACTION_REQUIRED",
+    "AUTH_BLOCKED", "DEAD", "REJECTED",
+))
+SUBMISSION_NONTERMINAL_STATES = frozenset((
+    "PENDING", "IN_FLIGHT", "BLOCKED", "DEFERRED", "RECONCILING",
+    "WAITING_FOR_LTMS",
+))
+
+
 # Set once by the sidecar after it loads petc.properties.  The legacy
 # environment lookup below is retained only for unit-test/dev invocation of
 # this module; the packaged service never supplies cloud identity by env var.
@@ -64,7 +78,8 @@ class SubmissionCreated:
 
 @dataclass
 class SubmissionStatus:
-    # PENDING | IN_FLIGHT | BLOCKED | ACCEPTED | REJECTED | DEAD
+    # PASSED | FAILED_EVALUATION | ACTION_REQUIRED | DEFERRED |
+    # AUTH_BLOCKED | RECONCILING, plus legacy ACCEPTED | REJECTED.
     state: str
     certificate_no: Optional[str]
     ltms_ref_no: Optional[str]
@@ -76,10 +91,17 @@ class SubmissionStatus:
 
     @property
     def is_terminal(self) -> bool:
-        # BLOCKED is deliberately NOT terminal: the cloud is holding the filing
-        # for want of wallet funds and will dispatch it on top-up or on grace
-        # expiry, so the reconciler must keep polling it.
-        return self.state in ("ACCEPTED", "REJECTED", "DEAD")
+        return self.state in SUBMISSION_TERMINAL_STATES
+
+    @property
+    def is_success(self) -> bool:
+        """Only successful terminal outcomes may produce or print a CEC."""
+        return self.state in SUBMISSION_SUCCESS_STATES
+
+    @property
+    def is_known_nonterminal(self) -> bool:
+        """Whether this state can safely be persisted and polled locally."""
+        return self.state in SUBMISSION_NONTERMINAL_STATES
 
 
 @dataclass

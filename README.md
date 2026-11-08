@@ -331,39 +331,44 @@ npm run build
 
 ## Cloud Development
 
-The production cloud app is `cloud/`. It runs on the host, not in Docker. Use
-the `salmon-innovations` AWS profile so photo uploads go to the dedicated
-private S3 bucket:
+The production cloud app is `cloud/`. Run the full local cloud stack with:
+
+```bash
+docker compose up --build
+```
+
+For faster backend iteration, run Spring Boot on the host instead:
 
 ```bash
 cd cloud
-AWS_PROFILE=salmon-innovations \
-S3_BUCKET=salmon-innovations-petc-dev-photos-016257615426 \
 ./gradlew bootRun
 ```
 
-Start the operator portal separately with `cd cloud/frontend && npm run dev`.
+Then start MinIO and the portal with the portal pointed at the host:
+
+```bash
+API_UPSTREAM=host.docker.internal:8080 docker compose up --build minio cloud-frontend
+```
 
 Cloud ports:
 
 - Backend: `http://localhost:8080`
 - Cloud frontend: `http://localhost:3000`
-- S3 bucket: `salmon-innovations-petc-dev-photos-016257615426`
-- S3 region: `ap-southeast-1`
+- MinIO API: `http://localhost:9000`
+- MinIO console: `http://localhost:9001`
 
 The desktop app does not run in Docker.
 
-> **Do not run the `backend` compose service.** It builds `cloud/backend`, the
-> deprecated spike (see [Project Layout](#project-layout)), which owns a rival set
-> of V1–V3 migrations against the same `petc` database. Running both apps in turn
-> is what produces the Flyway checksum errors below.
+> The `backend` compose service builds the production cloud application in
+> `cloud/`. The similarly named `cloud/backend/` directory is a deprecated spike
+> with rival V1–V3 migrations; do not build or run it against the `petc` database.
 
-The operator portal proxies `/api` to `API_UPSTREAM`, which defaults to
-`host.docker.internal:8080` so the containerised frontend reaches the backend
-running on your host. Override it if the backend lives elsewhere:
+The operator portal proxies `/api` to `API_UPSTREAM`, which defaults to the
+`backend:8080` service in Compose. Override it when the production cloud backend
+is running on your host or elsewhere:
 
 ```bash
-API_UPSTREAM=backend:8080 docker compose up cloud-frontend
+API_UPSTREAM=host.docker.internal:8080 docker compose up cloud-frontend
 ```
 
 ### Fix Flyway Checksum Errors in Local Dev
@@ -408,12 +413,9 @@ next version number instead (`V6__...sql` at the time of writing).
 
 ## Connecting a Center to the Cloud
 
-A center may operate multiple numbered lanes. Each lane is one desktop
-installation and authenticates with its own **lane credential**, sent as the
-`X-Center-Key` header on every ingest request. The cloud derives the trusted
-center and lane from that credential; the desktop does not choose either
-identity. Credentials are issued from the operator portal, stored only as
-bcrypt hashes, and shown exactly once at issue time.
+A center authenticates to the cloud with a **center API key**, sent as the
+`X-Center-Key` header on every ingest request. Keys are issued from the operator
+portal, stored only as bcrypt hashes, and shown exactly once at issue time.
 
 ### 1. Sign in to the operator portal
 
@@ -447,89 +449,112 @@ curl -s -X POST http://localhost:3000/api/tenants \
   -d '{"name":"Makati ETC","slug":"makati-etc"}'
 ```
 
-### 3. Add a lane and issue its credential
+### 3. Issue an API key
 
-On the center detail page, add a numbered lane, then issue its credential. A
-center can have multiple lanes, but each lane has one active desktop credential.
-The key appears once, in a yellow box:
+On **Licenses**, select the center and click **Issue**. The key appears once, in
+a yellow box:
 
 ```text
 petc_EXAMPLEKEYdoNOTuseTHISvalue0000000000000
 ```
 
-Copy it immediately. Only its bcrypt hash is stored, so a lost key cannot be
-recovered — only re-issued.
+Download the commissioning file immediately (and store it securely). It
+contains the one-time raw key, center ID, cloud URL, and update channel. Only
+the key's bcrypt hash is stored by the cloud, so a lost key cannot be recovered
+— only re-issued.
 
-Issuing a new credential for a lane automatically revokes that lane's previous
-credential, so re-issuing is how you rotate it; the old key starts returning
-`401` right away. Credentials cannot be shared between lanes.
+A center holds **at most one active key**. Issuing a new key automatically
+revokes the previous one, so re-issuing is how you rotate a key; the old key
+starts returning `401` right away.
 
-Each lane has an administrator-configurable daily limit, defaulting to **80
-LTMS-accepted CECs per Asia/Manila day**. While LTMS processing is in flight,
-the cloud reserves a slot so concurrent work cannot exceed the limit. LTMS
-`REJECTED` or `DEAD` work releases the reservation; a corrected retry of the
-same test is idempotent and does not consume another slot. The desktop prevents
-starting a new emission test once no slots remain. Tests must be submitted on
-the same Asia/Manila calendar day they were performed; late submission is
-rejected.
+### 4. Point the center's sidecar at the cloud
 
-### 4. Commission the lane desktop
+For a packaged app, select the downloaded commissioning file on first launch.
+For local sidecar development, the equivalent environment variables are:
 
-Windows production installs keep one `petc.properties` file beside `PETC
-Desktop.exe`. The NSIS installer preserves that file on upgrade (an explicit
-uninstall removes it). On first run,
-the shared PETC commissioning screen opens; an administrator enters the cloud
-URL, the issued lane key, expected center ID, and expected **lane number**.
-It validates `/api/lanes/me`, wallet, and quota live, displays the resolved
-identity, and requires confirmation before writing the file. The key is masked
-in diagnostics and is never returned by the desktop API or logged.
+```bash
+PETC_CLOUD_URL=http://localhost:8080 \
+PETC_CENTER_ID=makati-etc \
+PETC_CLOUD_KEY='petc_replace_with_the_issued_key' \
+PETC_DATA_DIR=/tmp/petc-mock-data \
+PETC_PORT=8765 \
+PETC_GOV_MOCK=true \
+desktop/.venv/bin/python -m petc.service
+```
 
-For macOS development, copy `desktop/petc.properties.example` to
-`desktop/petc.properties`, fill in an issued development credential, then run
-the Electron app normally. `PETC_CONFIG_PATH` is supported only for an explicit
-unfrozen development/test config path; it is not a production configuration
-mechanism. Analyzer, camera, and printer settings remain local application
-settings as before.
+`PETC_CENTER_ID` must match the center's slug from step 2.
 
-An uncommissioned or invalid workstation can sign in and open Settings/history
-for diagnostics, but cannot start a test. Before every test, PETC requires a
-fresh reachable cloud profile, matching active center/lane, sufficient fresh
-wallet balance, a current Asia/Manila quota with capacity, and no unresolved
-work from another lane.
+Electron spawns its own sidecar and always supplies `PETC_PORT` and
+`PETC_DATA_DIR`. In development it can also load `desktop/petc.properties`. A
+packaged app requires a center-specific commissioning file on first launch and
+stores it as `petc.properties` in Electron's per-user app-data directory. The
+file can be replaced later from **Settings → Center Commissioning**.
 
-### 5. Rotate or recover
+### 5. Verify the connection
 
-Re-issue a lane credential in the portal when a key is lost or compromised.
-After the new credential is issued, use **Settings → Reconfigure cloud lane**
-on the workstation and confirm the resolved center/lane. Do not copy an old
-properties file to a different lane: pending work is reconciled by its original
-test UUID, and the workstation blocks a lane change while unresolved tests
-belong to another lane. A previous-day test is retained in history but is not
-submittable.
+Confirm the key authenticates:
 
-On a per-machine Windows installation, reconfiguration writes beside
-`PETC Desktop.exe` under Program Files. Run PETC Desktop as administrator, or
-use installer repair, when Windows requests permission to update that file.
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' \
+  http://localhost:8080/api/registry/vehicle/ABC1234 \
+  -H "X-Center-Key: petc_replace_with_the_issued_key"
+# 200 = connected; 401 = key invalid, revoked, or superseded by a re-issue
+```
 
-You can also confirm the submission landed under the right tenant and lane:
+Then run a mock test and LTMS upload in the desktop app, and reopen the portal's
+**Centers** page. The center's row should now show `1` active license and a
+recent **Last Sync**.
+
+You can also confirm the submission landed under the right tenant:
 
 ```bash
 psql postgresql://petc:petc@localhost:5432/petc \
-  -c "SELECT t.slug, l.lane_number, s.test_id, s.state FROM submissions s JOIN tenants t ON t.id = s.tenant_id JOIN lanes l ON l.id = s.lane_id;"
+  -c "SELECT t.slug, s.test_id, s.state FROM submissions s JOIN tenants t ON t.id = s.tenant_id;"
 ```
 
 ### Revoking a key
 
-**Revoke** on a lane disables its credential immediately; that lane desktop's
-next request fails with `401`. Revoked rows are retained for audit — revoking
-is not a delete. Center authorization, wallet balance, and CEC pricing remain
-shared by all of its lanes.
+**Revoke** on the Licenses page disables the key immediately; the center's next
+request fails with `401`. Revoked rows are retained for audit — revoking is not a
+delete.
 
-### Development credentials
+### Dev shortcut: the built-in mock key
 
-Use an explicitly issued development lane credential in
-`desktop/petc.properties`; do not rely on environment defaults. Production
-never falls back to localhost, a development center, or a development key.
+For local work you can skip issuing a key entirely. The backend accepts a
+hardcoded key and auto-creates a `dev-center` tenant for it:
+
+```text
+X-Center-Key: dev-insecure-key
+```
+
+```bash
+PETC_CLOUD_URL=http://localhost:8080 \
+PETC_CENTER_ID=dev-center \
+PETC_CLOUD_KEY=dev-insecure-key \
+PETC_DATA_DIR=/tmp/petc-mock-data \
+PETC_PORT=8765 \
+PETC_GOV_MOCK=true \
+desktop/.venv/bin/python -m petc.service
+```
+
+Controlled by, and **must be disabled outside dev**:
+
+```text
+DEV_CENTER_KEY_ENABLED=true
+DEV_CENTER_KEY=dev-insecure-key
+DEV_CENTER_SLUG=dev-center
+DEV_CENTER_NAME=Mock PETC Center
+```
+
+`ProductionGuard` fails startup closed if the `production` profile is active
+while this dev key is still enabled.
+
+## AWS Deployment
+
+The Terraform stacks, initial bootstrap sequence, GitHub environment variables,
+retention policy, and desktop release flow are documented in
+[`infra/README.md`](infra/README.md). UAT deploys from `release`; production
+deploys from `main` through the protected GitHub `PROD` environment.
 
 ## Current Development Notes
 

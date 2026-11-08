@@ -10,6 +10,7 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 # Data directory is set by the Electron main process via env var;
 # falls back to cwd for dev use.
 _DATA_DIR = Path(os.environ.get("PETC_DATA_DIR", "."))
+_DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = _DATA_DIR / "petc.db"
 
 engine = create_engine(
@@ -69,6 +70,12 @@ def _additive_sqlite_migrations() -> None:
             "city": "VARCHAR",
             "source": "VARCHAR DEFAULT 'LTMS' NOT NULL",
         },
+        "gas_test_results": {
+            "no_ppm": "FLOAT",
+        },
+        "emission_tests": {
+            "inspection_purpose": "VARCHAR DEFAULT 'FOR_RENEWAL' NOT NULL",
+        },
         "ltms_submissions": {
             "payload_json": "TEXT",
             "ltms_reference_no": "VARCHAR",
@@ -116,6 +123,7 @@ def _seed_default_settings() -> None:
         "analyzer.parity": os.environ.get("PETC_ANALYZER_PARITY", "N"),
         "analyzer.stop_bits": os.environ.get("PETC_ANALYZER_STOPBITS", "1"),
         "analyzer.address": os.environ.get("PETC_ANALYZER_ADDRESS", "01"),
+        "analyzer.serial_no": os.environ.get("PETC_ANALYZER_SERIAL_NO", ""),
         "camera.type": os.environ.get("PETC_CAMERA", "mock"),
         "camera.device": os.environ.get("PETC_CAMERA_DEVICE", "0"),
     }

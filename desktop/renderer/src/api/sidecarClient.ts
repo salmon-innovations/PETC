@@ -5,7 +5,7 @@
  */
 import axios, { type AxiosInstance } from "axios";
 import { useAuthStore } from "../store/authStore";
-import type { SidecarStatus, VehicleInfo, DriverInfo, OwnerInfo, EmissionTestDetail, TestPhoto } from "../types";
+import type { SidecarStatus, VehicleInfo, DriverInfo, OwnerInfo, EmissionTestDetail, TestPhoto, InspectionPurpose } from "../types";
 
 let _client: AxiosInstance | null = null;
 
@@ -66,8 +66,40 @@ export interface DriverLookupResponse {
   driver: DriverInfo | null;
 }
 
+export type LtmsSubmissionState =
+  | "PASSED"
+  | "FAILED_EVALUATION"
+  | "ACTION_REQUIRED"
+  | "DEFERRED"
+  | "AUTH_BLOCKED"
+  | "RECONCILING"
+  | "PENDING"
+  | "IN_FLIGHT"
+  | "BLOCKED"
+  | "DEAD"
+  | "ACCEPTED"
+  | "REJECTED"
+  | "EXPIRED"
+  | "WAITING_FOR_LTMS";
+
+export function isLtmsSuccessState(state: string | null | undefined): boolean {
+  return state === "PASSED" || state === "ACCEPTED";
+}
+
+export function isLtmsTerminalState(state: string | null | undefined): boolean {
+  return state === "PASSED" || state === "ACCEPTED"
+    || state === "FAILED_EVALUATION" || state === "ACTION_REQUIRED"
+    || state === "AUTH_BLOCKED" || state === "DEAD" || state === "REJECTED"
+    || state === "EXPIRED";
+}
+
+export function isLtmsNonterminalState(state: string | null | undefined): boolean {
+  return state === "PENDING" || state === "IN_FLIGHT" || state === "BLOCKED"
+    || state === "DEFERRED" || state === "RECONCILING" || state === "WAITING_FOR_LTMS";
+}
+
 export interface LtmsSubmitResponse {
-  state: "ACCEPTED" | "REJECTED" | "PENDING" | "WAITING_FOR_LTMS" | "BLOCKED" | "DEAD" | "EXPIRED";
+  state: LtmsSubmissionState;
   certificateNo: string | null;
   rejectionReason: string | null;
   statusMessage?: string | null;
@@ -114,7 +146,7 @@ export function sidecarErrorMessage(error: unknown): string {
   return "The request could not be completed. Check the sidecar and try again.";
 }
 
-export type AnalyzerType = "mock" | "serial_gas" | "serial_diesel" | "fty_opacimeter" | "fofen_gas" | "fofen_ascii";
+export type AnalyzerType = "mock" | "serial_gas" | "serial_diesel" | "fty_opacimeter" | "fofen_gas" | "fofen_ascii" | "koeng_gas" | "koeng_diesel" | "cartesykj_gas";
 
 export interface AnalyzerSettings {
   type: AnalyzerType;
@@ -124,6 +156,7 @@ export interface AnalyzerSettings {
   parity: "N" | "E" | "O";
   stopBits: number;
   address: string;
+  serialNo: string;
 }
 
 export interface SerialPortInfo {
@@ -212,12 +245,14 @@ export const sidecarClient = {
     operatorId: string;
     plateNumber: string;
     fuelType: string;
+    inspectionPurpose: InspectionPurpose;
   }): Promise<StartTestResponse> {
     const c = await client();
     const { data } = await c.post("/test/start", {
       operator_id: params.operatorId,
       plate_number: params.plateNumber,
       fuel_type: params.fuelType,
+      inspection_purpose: params.inspectionPurpose,
     });
     return {
       testId: data.test_id,

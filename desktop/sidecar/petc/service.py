@@ -88,6 +88,12 @@ def run() -> None:
         # crashing before an administrator can repair a fresh install.
         runtime_config = type("Runtime", (), {"profile": _CONFIG["profile"]})()
 
+    if runtime_config.profile == "production" and not getattr(runtime_config, "enforce_hardware", True):
+        logger.warning(
+            "Production hardware enforcement is temporarily disabled for commissioning; "
+            "set petc.enforce.hardware=true before live accredited operation"
+        )
+
     init_db()
     logger.info("SQLite initialised (profile=%s)", runtime_config.profile)
 

@@ -1,7 +1,16 @@
-# Copy to desktop/petc.properties for macOS development. Windows commissioning
-# writes petc.properties beside PETC Desktop.exe. Never commit the real file.
-petc.profile=dev
-petc.cloud.url=http://localhost:8080
-petc.cloud.key=REPLACE_WITH_ISSUED_LANE_KEY
-petc.expected.center=REPLACE_WITH_ISSUED_CENTER_ID
+# Download a center/lane-specific file from the operator portal. Never put an
+# issued petc.cloud.key in source control.
+petc.profile=accreditation-demo
+petc.cloud.url=https://uat-api.petc.siiportal.com
+petc.cloud.key=replace-with-issued-lane-key
+petc.expected.center=replace-with-issued-center-uuid
 petc.expected.lane=1
+petc.update.url=https://uat-app.petc.siiportal.com/downloads/desktop/uat
+petc.enforce.hardware=false
+
+# Hardware can be commissioned here or changed later in Settings.
+petc.analyzer=mock
+petc.analyzer.port=COM1
+petc.analyzer.baud=9600
+petc.camera=mock
+petc.printer=mock

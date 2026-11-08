@@ -20,6 +20,7 @@ class GasReading:
     co2_pct: float
     o2_pct: float
     lambda_value: float
+    no_ppm: Optional[float] = None
     rpm: Optional[int] = None
     oil_temp_c: Optional[float] = None
 

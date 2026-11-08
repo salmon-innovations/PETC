@@ -18,6 +18,19 @@ export async function getSidecarBaseUrl() {
     await client();
     return _baseUrl;
 }
+export function isLtmsSuccessState(state) {
+    return state === "PASSED" || state === "ACCEPTED";
+}
+export function isLtmsTerminalState(state) {
+    return state === "PASSED" || state === "ACCEPTED"
+        || state === "FAILED_EVALUATION" || state === "ACTION_REQUIRED"
+        || state === "AUTH_BLOCKED" || state === "DEAD" || state === "REJECTED"
+        || state === "EXPIRED";
+}
+export function isLtmsNonterminalState(state) {
+    return state === "PENDING" || state === "IN_FLIGHT" || state === "BLOCKED"
+        || state === "DEFERRED" || state === "RECONCILING" || state === "WAITING_FOR_LTMS";
+}
 export function sidecarErrorMessage(error) {
     if (axios.isAxiosError(error)) {
         const detail = error.response?.data?.detail;
@@ -93,6 +106,7 @@ export const sidecarClient = {
             operator_id: params.operatorId,
             plate_number: params.plateNumber,
             fuel_type: params.fuelType,
+            inspection_purpose: params.inspectionPurpose,
         });
         return {
             testId: data.test_id,

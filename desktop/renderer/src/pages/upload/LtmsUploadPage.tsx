@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { sidecarClient, sidecarErrorMessage, type LtmsSubmitResponse, type VehicleLookupResponse } from "../../api/sidecarClient";
+import { isLtmsNonterminalState, isLtmsSuccessState, sidecarClient, sidecarErrorMessage, type LtmsSubmitResponse, type VehicleLookupResponse } from "../../api/sidecarClient";
 import { useAuthStore } from "../../store/authStore";
-import type { Classification, EmissionTest, EmissionTestDetail, FuelType, OwnerInfo, TestPhoto, VehicleInfo } from "../../types";
+import { INSPECTION_PURPOSE_LABELS, type Classification, type DotrVehicleGroup, type EmissionTest, type EmissionTestDetail, type FuelType, type InspectionPurpose, type OwnerInfo, type TestPhoto, type VehicleInfo } from "../../types";
 import { evaluateEmission, type EngineFlags } from "../../utils/emissionLimits";
 import { CameraStream, type CameraStreamHandle } from "../../components/CameraStream";
+import { TestListFilters } from "../../components/TestListFilters";
+import { useSearchParams } from "react-router-dom";
+import { EMPTY_TEST_FILTERS, filterEmissionTests, type TestListFilterState } from "../../utils/testFilters";
 
 type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
 type PhotoType = TestPhoto["photoType"];
@@ -27,6 +30,7 @@ type VehicleForm = {
   transmission: "M/T" | "A/T";
   fuelType: FuelType;
   classification: Classification;
+  dotrVehicleGroup: DotrVehicleGroup;
 };
 
 type OwnerForm = OwnerInfo;
@@ -54,6 +58,7 @@ const EMPTY_VEHICLE: VehicleForm = {
   transmission: "A/T",
   fuelType: "GAS",
   classification: "PRIVATE",
+  dotrVehicleGroup: "LIGHT",
 };
 
 const EMPTY_OWNER: OwnerForm = {
@@ -70,6 +75,9 @@ const STEP_LABELS = ["Vehicle", "Owner", "Results", "Technician", "Photos", "Rev
 
 export default function LtmsUploadPage() {
   const [selected, setSelected] = useState<EmissionTest | null>(null);
+  const [filters, setFilters] = useState<TestListFilterState>({ ...EMPTY_TEST_FILTERS });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTestId = searchParams.get("testId");
 
   const { data: pending = [] } = useQuery<EmissionTest[]>({
     queryKey: ["tests", "pending-ltms"],
@@ -82,8 +90,29 @@ export default function LtmsUploadPage() {
     refetchInterval: 30_000,
   });
 
+  useEffect(() => {
+    if (selected || !requestedTestId) return;
+    const requestedTest = pending.find((test) => test.id === requestedTestId);
+    if (requestedTest) setSelected(requestedTest);
+  }, [pending, requestedTestId, selected]);
+
+  const closeWizard = () => {
+    setSelected(null);
+    if (requestedTestId) setSearchParams({}, { replace: true });
+  };
+
+  const openWizard = (test: EmissionTest) => {
+    setSelected(test);
+    setSearchParams({ testId: test.id }, { replace: true });
+  };
+
+  const filteredPending = useMemo(
+    () => filterEmissionTests(pending, filters),
+    [pending, filters],
+  );
+
   if (selected) {
-    return <UploadWizard test={selected} onDone={() => setSelected(null)} onCancel={() => setSelected(null)} />;
+    return <UploadWizard test={selected} onDone={closeWizard} onCancel={closeWizard} />;
   }
 
   return (
@@ -93,18 +122,30 @@ export default function LtmsUploadPage() {
         <p className="text-sm text-gray-500">Completed local tests waiting for registry submission.</p>
       </div>
 
+      <TestListFilters filters={filters} onChange={setFilters} />
+
+      {pending.length > 0 && (
+        <p className="text-xs text-gray-500">
+          Showing {filteredPending.length} of {pending.length} pending tests
+        </p>
+      )}
+
       {pending.length === 0 ? (
         <div className="bg-white rounded-lg shadow px-6 py-12 text-center text-gray-500">
           No tests pending LTMS submission.
         </div>
+      ) : filteredPending.length === 0 ? (
+        <div className="bg-white rounded-lg shadow px-6 py-12 text-center text-gray-500">
+          No pending tests match the selected filters.
+        </div>
       ) : (
         <div className="bg-white rounded-lg shadow divide-y">
-          {pending.map((test) => (
+          {filteredPending.map((test) => (
             <div key={test.id} className="flex items-center justify-between px-5 py-3">
               <div>
                 <p className="font-semibold text-sm text-gray-800">{test.plateNumber}</p>
                 <p className="text-xs text-gray-500">
-                  {test.fuelType} · {test.startedAt ? new Date(test.startedAt).toLocaleString() : "No date"}
+                  {test.fuelType} · {INSPECTION_PURPOSE_LABELS[test.inspectionPurpose]} · {test.startedAt ? new Date(test.startedAt).toLocaleString() : "No date"}
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -115,7 +156,7 @@ export default function LtmsUploadPage() {
                   {test.passFail ? "PASS" : "FAIL"}
                 </span>
                 <button
-                  onClick={() => setSelected(test)}
+                  onClick={() => openWizard(test)}
                   className="rounded-md bg-blue-600 px-3 py-1.5 text-xs text-white font-medium hover:bg-blue-700"
                 >
                   Open Wizard
@@ -130,6 +171,7 @@ export default function LtmsUploadPage() {
 }
 
 function UploadWizard({ test, onDone, onCancel }: { test: EmissionTest; onDone: () => void; onCancel: () => void }) {
+  const requiresManualEntry = test.inspectionPurpose === "FOR_INIT_REG";
   const [step, setStep] = useState<WizardStep>(1);
   const [vehicle, setVehicle] = useState<VehicleForm>({ ...EMPTY_VEHICLE, plateNo: test.plateNumber, fuelType: test.fuelType });
   const [owner, setOwner] = useState<OwnerForm>(EMPTY_OWNER);
@@ -156,14 +198,20 @@ function UploadWizard({ test, onDone, onCancel }: { test: EmissionTest; onDone: 
     mutationFn: (plate: string) => sidecarClient.lookupVehicle(plate),
     onSuccess: (result) => {
       setLookup(result);
-      if (result.vehicle) setVehicle(mapVehicle(result.vehicle));
+      if (result.vehicle) {
+        setVehicle((current) => mapVehicle(result.vehicle!, current.fuelType));
+      }
       if (result.owner) setOwner(result.owner);
     },
   });
 
   useEffect(() => {
+    if (requiresManualEntry) {
+      setLookup({ found: false, source: "LTMS", vehicle: null, owner: null });
+      return;
+    }
     lookupMutation.mutate(test.plateNumber);
-  }, [test.plateNumber]);
+  }, [requiresManualEntry, test.plateNumber]);
 
   const verdict = useMemo(
     () => evaluateEmission(vehicle.fuelType, detail?.readings ?? {}, engineFlags),
@@ -171,10 +219,10 @@ function UploadWizard({ test, onDone, onCancel }: { test: EmissionTest; onDone: 
   );
 
   const payload = useMemo(() => ({
-    centerId: "dev-center",
     centerName: "PETC Center",
     testId: test.id,
     testDatetime: detail?.testedAt ?? test.completedAt ?? test.startedAt,
+    inspection: { purpose: test.inspectionPurpose },
     vehicle,
     owner,
     engineFlags,
@@ -203,16 +251,26 @@ function UploadWizard({ test, onDone, onCancel }: { test: EmissionTest; onDone: 
           <button onClick={onCancel} className="text-sm text-gray-500 hover:text-gray-700">Back</button>
           <div>
             <h1 className="text-xl font-bold text-gray-800">LTMS Upload - {test.plateNumber}</h1>
-            <p className="text-xs text-gray-500">{lookupStatusText(lookup, lookupMutation.isPending)}</p>
+            <p className="text-xs text-gray-500">
+              {INSPECTION_PURPOSE_LABELS[test.inspectionPurpose]} · {requiresManualEntry
+                ? "New registration: no registry lookup; manually encode vehicle and owner data."
+                : lookupStatusText(lookup, lookupMutation.isPending)}
+            </p>
           </div>
         </div>
-        <button
-          onClick={() => lookupMutation.mutate(vehicle.plateNo)}
-          disabled={lookupMutation.isPending}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
-        >
-          {lookupMutation.isPending ? "Looking up..." : "Lookup Plate"}
-        </button>
+        {requiresManualEntry ? (
+          <span className="rounded-md bg-amber-100 px-3 py-1.5 text-xs font-medium text-amber-800">
+            Manual encoding required
+          </span>
+        ) : (
+          <button
+            onClick={() => lookupMutation.mutate(vehicle.plateNo)}
+            disabled={lookupMutation.isPending}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
+          >
+            {lookupMutation.isPending ? "Looking up..." : "Lookup Plate"}
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-6 gap-2">
@@ -237,6 +295,7 @@ function UploadWizard({ test, onDone, onCancel }: { test: EmissionTest; onDone: 
         <VehicleStep
           vehicle={vehicle}
           lookup={lookup}
+          requiresManualEntry={requiresManualEntry}
           onChange={setVehicle}
           onNext={goNext}
         />
@@ -285,18 +344,26 @@ function UploadWizard({ test, onDone, onCancel }: { test: EmissionTest; onDone: 
   );
 }
 
-function VehicleStep({ vehicle, lookup, onChange, onNext }: {
+function VehicleStep({ vehicle, lookup, requiresManualEntry, onChange, onNext }: {
   vehicle: VehicleForm;
   lookup: VehicleLookupResponse | null;
+  requiresManualEntry: boolean;
   onChange: (vehicle: VehicleForm) => void;
   onNext: () => void;
 }) {
   const set = <K extends keyof VehicleForm>(key: K, value: VehicleForm[K]) => onChange({ ...vehicle, [key]: value });
-  const valid = vehicle.plateNo && vehicle.make && vehicle.series && vehicle.engineNo && vehicle.chassisNo;
+  const valid = vehicle.mvNo && vehicle.make && vehicle.series && vehicle.engineNo && vehicle.chassisNo
+    && (requiresManualEntry || vehicle.plateNo);
 
   return (
     <section className="bg-white rounded-lg shadow p-5 space-y-4">
-      <StepHeading title="Step 1 - Plate Lookup + Vehicle Details" />
+      <StepHeading title={requiresManualEntry ? "Step 1 - Manual Vehicle Details" : "Step 1 - Plate Lookup + Vehicle Details"} />
+      {requiresManualEntry && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Initial registration is treated as not yet available in LTMS or Stradcom. Enter the vehicle details manually.
+          The fuel type remains the value selected when the emission test started.
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-4">
         <TextField label="Plate No" value={vehicle.plateNo} onChange={(value) => set("plateNo", value.toUpperCase())} />
         <TextField label="MV No" value={vehicle.mvNo} onChange={(value) => set("mvNo", value)} badge={badgeFor("mvNo", vehicle.mvNo, lookup?.vehicle?.mvNo)} />
@@ -312,8 +379,12 @@ function VehicleStep({ vehicle, lookup, onChange, onNext }: {
         <TextField label="Year Model" type="number" value={String(vehicle.yearModel)} onChange={(value) => set("yearModel", Number(value || 0))} badge={badgeFor("yearModel", String(vehicle.yearModel), lookup?.vehicle ? String(lookup.vehicle.yearModel) : undefined)} />
         <TextField label="Color" value={vehicle.color} onChange={(value) => set("color", value.toUpperCase())} badge={badgeFor("color", vehicle.color, lookup?.vehicle?.color)} />
         <Segment label="Transmission" value={vehicle.transmission} options={["M/T", "A/T"]} onChange={(value) => set("transmission", value as VehicleForm["transmission"])} />
-        <Segment label="Fuel Type" value={vehicle.fuelType} options={["GAS", "DIESEL", "MOTORCYCLE"]} onChange={(value) => set("fuelType", value as FuelType)} />
-        <Segment label="Classification" value={vehicle.classification} options={["PRIVATE", "PUBLIC", "GOVERNMENT", "DIPLOMATIC"]} onChange={(value) => set("classification", value as Classification)} />
+        <Segment label="Fuel Type" value={vehicle.fuelType} options={["GAS", "DIESEL"]} onChange={(value) => set("fuelType", value as FuelType)} />
+        <Segment label="DOTr Vehicle Group" value={vehicle.dotrVehicleGroup} options={["LIGHT", "HEAVY", "MOTORCYCLE"]} onChange={(value) => {
+          const group = value as DotrVehicleGroup;
+          onChange({ ...vehicle, dotrVehicleGroup: group, fuelType: group === "MOTORCYCLE" ? "GAS" : vehicle.fuelType });
+        }} />
+        <Segment label="Classification" value={vehicle.classification} options={["PRIVATE", "FOR_HIRE", "GOVERNMENT", "EXEMPT", "DIPLOMATIC"]} onChange={(value) => set("classification", value as Classification)} />
       </div>
       <FooterNav nextDisabled={!valid} onNext={onNext} />
     </section>
@@ -500,6 +571,7 @@ function ReviewStep({ payload, result, isPending, isError, error, onBack, onDone
   const vehicle = payload.vehicle as VehicleForm;
   const owner = payload.owner as OwnerForm;
   const verdict = payload.verdict as ReturnType<typeof evaluateEmission>;
+  const purpose = (payload.inspection as { purpose: InspectionPurpose }).purpose;
 
   if (isPending) {
     return (
@@ -516,13 +588,13 @@ function ReviewStep({ payload, result, isPending, isError, error, onBack, onDone
   }
 
   if (result) {
-    if (result.state === "ACCEPTED" && result.submissionId) {
+    if (isLtmsSuccessState(result.state) && result.submissionId) {
       return <CecPreviewAndPrint submissionId={result.submissionId} certificateNo={result.certificateNo} onDone={onDone} />;
     }
-    if (result.state === "WAITING_FOR_LTMS") {
+    if (isLtmsNonterminalState(result.state)) {
       return (
         <section className="rounded-lg shadow p-8 text-center space-y-3 bg-blue-50 border border-blue-200">
-          <p className="text-xl font-bold text-blue-800">Queued — awaiting LTMS response</p>
+          <p className="text-xl font-bold text-blue-800">{result.state} — awaiting LTMS response</p>
           <p className="text-sm text-blue-700">
             The test has been submitted to the cloud. LTMS is processing the request.
             The CEC certificate will become available in <strong>History</strong> once approved.
@@ -559,9 +631,12 @@ function ReviewStep({ payload, result, isPending, isError, error, onBack, onDone
       <StepHeading title="Step 6 - Review & Submit" />
       <div className="grid grid-cols-2 gap-4 text-sm">
         <SummaryBlock title="Vehicle" rows={[
+          ["Purpose", INSPECTION_PURPOSE_LABELS[purpose]],
           ["Plate", vehicle.plateNo],
           ["Vehicle", `${vehicle.yearModel} ${vehicle.make} ${vehicle.series}`],
           ["Fuel", vehicle.fuelType],
+          ["DOTr Group", vehicle.dotrVehicleGroup],
+          ["Classification", vehicle.classification],
           ["Engine / Chassis", `${vehicle.engineNo} / ${vehicle.chassisNo}`],
         ]} />
         <SummaryBlock title="Owner" rows={[
@@ -761,7 +836,11 @@ function SummaryBlock({ title, rows }: { title: string; rows: [string, string][]
   );
 }
 
-function mapVehicle(vehicle: VehicleInfo): VehicleForm {
+function mapVehicle(vehicle: VehicleInfo, fallbackFuelType: FuelType): VehicleForm {
+  const motorcycle = vehicle.vehicleType === "MOTORCYCLE" || vehicle.fuelType === "MOTORCYCLE";
+  const fuelType = motorcycle ? "GAS" : vehicle.fuelType ?? fallbackFuelType;
+  const dotrVehicleGroup = vehicle.dotrVehicleGroup
+    ?? (motorcycle ? "MOTORCYCLE" : ["TRUCK", "BUS"].includes(vehicle.vehicleType) ? "HEAVY" : "LIGHT");
   return {
     plateNo: vehicle.plateNo ?? vehicle.plateNumber,
     mvNo: vehicle.mvNo ?? "",
@@ -777,8 +856,11 @@ function mapVehicle(vehicle: VehicleInfo): VehicleForm {
     yearModel: vehicle.yearModel ?? vehicle.year ?? new Date().getFullYear(),
     color: vehicle.color ?? "",
     transmission: vehicle.transmission ?? "A/T",
-    fuelType: vehicle.fuelType ?? "GAS",
-    classification: vehicle.classification ?? "PRIVATE",
+    fuelType,
+    classification: vehicle.classification === "PUBLIC"
+      ? "FOR_HIRE"
+      : vehicle.classification ?? "PRIVATE",
+    dotrVehicleGroup,
   };
 }
 

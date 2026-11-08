@@ -1,5 +1,5 @@
 -- ============================================================
--- V8: Multiple independently credentialed lanes per PETC center
+-- V15: Multiple independently credentialed lanes per PETC center
 -- ============================================================
 -- A tenant remains the center-level commercial boundary (authorization,
 -- wallet and price).  A lane is the independently operated desktop endpoint.
@@ -118,18 +118,22 @@ INSERT INTO lane_daily_quota (lane_id, business_date, accepted_count, reserved_c
 SELECT l.id,
        (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')::date,
        count(s.id) FILTER (
-           WHERE s.state = 'ACCEPTED'
+           WHERE s.state IN ('ACCEPTED', 'PASSED', 'FAILED_EVALUATION')
              AND (s.accepted_at AT TIME ZONE 'Asia/Manila')::date =
                  (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')::date
        )::int,
-       count(s.id) FILTER (WHERE s.state IN ('PENDING', 'IN_FLIGHT', 'BLOCKED'))::int,
+       count(s.id) FILTER (WHERE s.state IN (
+           'PENDING', 'IN_FLIGHT', 'BLOCKED', 'DEFERRED', 'RECONCILING', 'AUTH_BLOCKED'
+       ))::int,
        GREATEST(l.daily_upload_limit, count(s.id) FILTER (
-           WHERE s.state = 'ACCEPTED'
+           WHERE s.state IN ('ACCEPTED', 'PASSED', 'FAILED_EVALUATION')
              AND (s.accepted_at AT TIME ZONE 'Asia/Manila')::date =
                  (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')::date
-       )::int + count(s.id) FILTER (WHERE s.state IN ('PENDING', 'IN_FLIGHT', 'BLOCKED'))::int,
+       )::int + count(s.id) FILTER (WHERE s.state IN (
+           'PENDING', 'IN_FLIGHT', 'BLOCKED', 'DEFERRED', 'RECONCILING', 'AUTH_BLOCKED'
+       ))::int,
        count(s.id) FILTER (
-           WHERE s.state = 'ACCEPTED'
+           WHERE s.state IN ('ACCEPTED', 'PASSED', 'FAILED_EVALUATION')
              AND (s.accepted_at AT TIME ZONE 'Asia/Manila')::date =
                  (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')::date
        )::int)
@@ -144,7 +148,9 @@ ON CONFLICT (lane_id, business_date) DO NOTHING;
 INSERT INTO submission_quota_reservations (submission_id, lane_id, business_date, state)
 SELECT s.id, s.lane_id, (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')::date, 'RESERVED'
   FROM submissions s
- WHERE s.state IN ('PENDING', 'IN_FLIGHT', 'BLOCKED')
+ WHERE s.state IN (
+     'PENDING', 'IN_FLIGHT', 'BLOCKED', 'DEFERRED', 'RECONCILING', 'AUTH_BLOCKED'
+ )
 ON CONFLICT (submission_id) DO NOTHING;
 
 -- The original local-photo metadata is retained for auditability; new S3

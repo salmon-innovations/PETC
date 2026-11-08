@@ -1,6 +1,7 @@
 package com.petc.wallet;
 
 import com.petc.audit.AuditService;
+import com.petc.settings.PlatformSettingsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
@@ -10,8 +11,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.time.OffsetDateTime;
 
 /**
  * Prepaid wallet: balances, the immutable ledger, and the charge applied when
@@ -31,12 +32,12 @@ public class WalletService {
     private static final Logger log = LoggerFactory.getLogger(WalletService.class);
 
     private final JdbcTemplate jdbc;
-    private final CenterPricingService pricing;
+    private final PlatformSettingsService settings;
     private final AuditService audit;
 
-    public WalletService(JdbcTemplate jdbc, CenterPricingService pricing, AuditService audit) {
+    public WalletService(JdbcTemplate jdbc, PlatformSettingsService settings, AuditService audit) {
         this.jdbc = jdbc;
-        this.pricing = pricing;
+        this.settings = settings;
         this.audit = audit;
     }
 
@@ -59,21 +60,36 @@ public class WalletService {
         return sum == null ? 0L : sum;
     }
 
+    /** Effective accepted-CEC charge for a center, falling back to the platform default. */
+    public long chargePerUploadCentavos(String tenantId) {
+        Long override = jdbc.queryForObject(
+                "SELECT cec_charge_override_centavos FROM tenants WHERE id = ?::uuid",
+                Long.class, tenantId);
+        return override == null ? settings.chargePerUploadCentavos() : override;
+    }
+
+    /** Nullable negotiated rate; NULL means the center inherits the platform default. */
+    public Long chargeOverrideCentavos(String tenantId) {
+        return jdbc.queryForObject(
+                "SELECT cec_charge_override_centavos FROM tenants WHERE id = ?::uuid",
+                Long.class, tenantId);
+    }
+
     public WalletSummary summaryFor(String tenantId) {
         long balance = getBalance(tenantId);
-        var config = pricing.getFor(tenantId);
+        Long chargeOverride = chargeOverrideCentavos(tenantId);
+        long defaultCharge = settings.chargePerUploadCentavos();
         Integer blocked = jdbc.queryForObject(
                 "SELECT count(*) FROM submissions WHERE tenant_id = ?::uuid AND state = 'BLOCKED'",
                 Integer.class, tenantId);
         return new WalletSummary(
-                tenantId,
                 balance,
-                balance < config.lowBalanceThresholdCentavos(),
+                balance < settings.lowBalanceThresholdCentavos(),
                 balance < 0,
                 blocked == null ? 0 : blocked,
-                config.chargePerUploadCentavos(),
-                config.lowBalanceThresholdCentavos(),
-                config.updatedAt()
+                chargeOverride == null ? defaultCharge : chargeOverride,
+                chargeOverride,
+                defaultCharge
         );
     }
 
@@ -124,16 +140,12 @@ public class WalletService {
      * again) carries a higher acceptanceSeq and IS charged.
      */
     @Transactional(propagation = Propagation.MANDATORY)
-    public void chargeForAcceptance(String tenantId, String submissionId, int acceptanceSeq) {
-        Long amountValue = jdbc.queryForObject("""
-                SELECT charge_snapshot_centavos
-                  FROM submissions
-                 WHERE id = ?::uuid AND tenant_id = ?::uuid
-                """, Long.class, submissionId, tenantId);
-        if (amountValue == null) {
-            throw new IllegalStateException("Submission price snapshot is missing: " + submissionId);
-        }
-        long amount = amountValue;
+    public void chargeForAcceptance(
+            String tenantId,
+            String submissionId,
+            int acceptanceSeq,
+            long amount
+    ) {
         if (amount <= 0) {
             return;
         }
@@ -213,8 +225,7 @@ public class WalletService {
         int released = 0;
         long remaining = balance;
         for (BlockedSubmission sub : blocked) {
-            // Preserve FIFO. A later cheaper quote must not jump an older held
-            // filing merely because the newer one happens to fit.
+            // Preserve FIFO: a later cheaper quote may not jump an older hold.
             if (sub.chargeCentavos() > remaining) {
                 break;
             }
@@ -232,6 +243,45 @@ public class WalletService {
         return released;
     }
 
+    /**
+     * Sets or clears one center's negotiated CEC price. A null override returns
+     * the center to the live platform default; existing immutable ledger rows
+     * are never rewritten.
+     */
+    @Transactional
+    public ChargeOverrideResult setChargeOverride(
+            String tenantId,
+            Long overrideCentavos,
+            String superAdminId,
+            String actorLabel
+    ) {
+        if (overrideCentavos != null && overrideCentavos < 0) {
+            throw new IllegalArgumentException("CEC charge override must be zero or greater");
+        }
+
+        Long beforeOverride = chargeOverrideCentavos(tenantId);
+        long beforeEffective = beforeOverride == null
+                ? settings.chargePerUploadCentavos()
+                : beforeOverride;
+        jdbc.update("""
+                UPDATE tenants
+                   SET cec_charge_override_centavos = ?
+                 WHERE id = ?::uuid
+                """, overrideCentavos, tenantId);
+
+        long defaultCharge = settings.chargePerUploadCentavos();
+        long effectiveCharge = overrideCentavos == null ? defaultCharge : overrideCentavos;
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("beforeOverrideCentavos", beforeOverride);
+        detail.put("afterOverrideCentavos", overrideCentavos);
+        detail.put("beforeEffectiveCentavos", beforeEffective);
+        detail.put("afterEffectiveCentavos", effectiveCharge);
+        detail.put("defaultChargeCentavos", defaultCharge);
+        audit.recordSuperAdmin(superAdminId, actorLabel, tenantId,
+                "CENTER_CEC_CHARGE_CHANGED", "tenant", tenantId, detail);
+        return new ChargeOverrideResult(overrideCentavos, effectiveCharge, defaultCharge);
+    }
+
     private void applyBalance(String tenantId, long balanceAfter) {
         jdbc.update("""
                 UPDATE wallet_accounts
@@ -243,17 +293,22 @@ public class WalletService {
     // ---------------------------------------------------------------- schema
 
     public record WalletSummary(
-            String tenantId,
             long balanceCentavos,
             boolean low,
             boolean negative,
             int blockedCount,
             long chargePerUploadCentavos,
-            long lowBalanceThresholdCentavos,
-            OffsetDateTime pricingUpdatedAt
+            Long chargeOverrideCentavos,
+            long defaultChargePerUploadCentavos
     ) {}
 
     public record TopUpResult(long balanceCentavos, int releasedSubmissions) {}
+
+    public record ChargeOverrideResult(
+            Long chargeOverrideCentavos,
+            long chargePerUploadCentavos,
+            long defaultChargePerUploadCentavos
+    ) {}
 
     private record BlockedSubmission(String id, long chargeCentavos) {}
 }

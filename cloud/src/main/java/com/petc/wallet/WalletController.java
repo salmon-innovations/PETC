@@ -35,18 +35,11 @@ public class WalletController {
     private static final int MAX_LEDGER_PAGE = 200;
 
     private final WalletService wallet;
-    private final CenterPricingService pricing;
     private final PlatformSettingsService settings;
     private final JdbcTemplate jdbc;
 
-    public WalletController(
-            WalletService wallet,
-            CenterPricingService pricing,
-            PlatformSettingsService settings,
-            JdbcTemplate jdbc
-    ) {
+    public WalletController(WalletService wallet, PlatformSettingsService settings, JdbcTemplate jdbc) {
         this.wallet = wallet;
-        this.pricing = pricing;
         this.settings = settings;
         this.jdbc = jdbc;
     }
@@ -54,24 +47,25 @@ public class WalletController {
     /** Balance and exposure for every center, for the dashboard and centers list. */
     @GetMapping("/centers")
     public List<CenterWalletResponse> listCenters() {
+        long lowThreshold = settings.lowBalanceThresholdCentavos();
         long debtFloor = settings.debtFloorCentavos();
+        long defaultCharge = settings.chargePerUploadCentavos();
         return jdbc.query("""
                 SELECT t.id::text AS tenant_id,
                        t.slug     AS slug,
                        t.name     AS name,
+                       t.cec_charge_override_centavos AS charge_override,
                        COALESCE(w.balance_centavos, 0) AS balance,
-                       COALESCE(c.charge_per_upload_centavos, 8000) AS charge_per_upload,
-                       COALESCE(c.low_balance_threshold_centavos, 40000) AS low_threshold,
                        (SELECT count(*) FROM submissions s
                          WHERE s.tenant_id = t.id AND s.state = 'BLOCKED') AS blocked_count
                   FROM tenants t
                   LEFT JOIN wallet_accounts w ON w.tenant_id = t.id
-                  LEFT JOIN tenant_billing_configs c ON c.tenant_id = t.id
                  ORDER BY COALESCE(w.balance_centavos, 0) ASC, t.name
                 """,
                 (rs, i) -> {
                     long balance = rs.getLong("balance");
-                    long lowThreshold = rs.getLong("low_threshold");
+                    Number rawOverride = (Number) rs.getObject("charge_override");
+                    Long chargeOverride = rawOverride == null ? null : rawOverride.longValue();
                     return new CenterWalletResponse(
                             rs.getString("tenant_id"),
                             rs.getString("slug"),
@@ -81,8 +75,8 @@ public class WalletController {
                             balance < 0,
                             balance <= debtFloor,
                             rs.getInt("blocked_count"),
-                            rs.getLong("charge_per_upload"),
-                            lowThreshold
+                            chargeOverride == null ? defaultCharge : chargeOverride,
+                            chargeOverride
                     );
                 });
     }
@@ -106,26 +100,26 @@ public class WalletController {
                 summary.negative(),
                 summary.blockedCount(),
                 summary.chargePerUploadCentavos(),
-                summary.lowBalanceThresholdCentavos(),
-                summary.pricingUpdatedAt()
+                summary.chargeOverrideCentavos(),
+                summary.defaultChargePerUploadCentavos()
         );
     }
 
-    /** Immediate per-center price/threshold edit. Existing submissions keep their quote. */
-    @PutMapping("/centers/{tenantId}/pricing")
-    public CenterPricingService.PricingConfig updatePricing(
+    /** Set a negotiated accepted-CEC price, or send null to inherit the platform default. */
+    @PutMapping("/centers/{tenantId}/cec-charge")
+    public CenterWalletDetail updateCecCharge(
             @PathVariable String tenantId,
-            @Valid @RequestBody PricingUpdateRequest req,
+            @Valid @RequestBody CecChargeOverrideRequest req,
             @AuthenticationPrincipal PetcUserPrincipal principal
     ) {
         requireTenant(tenantId);
-        return pricing.update(
+        wallet.setChargeOverride(
                 tenantId,
-                req.chargePerUploadCentavos(),
-                req.lowBalanceThresholdCentavos(),
+                req.chargeOverrideCentavos(),
                 principal == null ? null : principal.userId(),
                 principal == null ? "unknown" : principal.email()
         );
+        return centerDetail(tenantId);
     }
 
     @GetMapping("/centers/{tenantId}/ledger")
@@ -184,7 +178,7 @@ public class WalletController {
             boolean belowDebtFloor,
             int blockedCount,
             long chargePerUploadCentavos,
-            long lowBalanceThresholdCentavos
+            Long chargeOverrideCentavos
     ) {}
 
     /** balanceMatches false means the projection has drifted from the ledger — a bug. */
@@ -197,13 +191,12 @@ public class WalletController {
             boolean negative,
             int blockedCount,
             long chargePerUploadCentavos,
-            long lowBalanceThresholdCentavos,
-            java.time.OffsetDateTime pricingUpdatedAt
+            Long chargeOverrideCentavos,
+            long defaultChargePerUploadCentavos
     ) {}
 
-    public record PricingUpdateRequest(
-            @NotNull @PositiveOrZero Long chargePerUploadCentavos,
-            @NotNull @PositiveOrZero Long lowBalanceThresholdCentavos
+    public record CecChargeOverrideRequest(
+            @PositiveOrZero Long chargeOverrideCentavos
     ) {}
 
     /**

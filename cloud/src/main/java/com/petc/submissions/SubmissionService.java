@@ -2,10 +2,11 @@ package com.petc.submissions;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.petc.audit.AuditService;
+import com.petc.lanes.LaneQuotaExceededException;
 import com.petc.lanes.LaneQuotaService;
 import com.petc.lanes.LateSubmissionException;
-import com.petc.wallet.CenterPricingService;
 import com.petc.wallet.WalletService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,8 +19,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -27,28 +28,33 @@ import java.util.Optional;
 public class SubmissionService {
 
     private static final Logger log = LoggerFactory.getLogger(SubmissionService.class);
+    /** A timed-out claim is reconciled, never automatically re-submitted. */
+    private static final int CLAIM_LEASE_SECONDS = 300;
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
-    private final CenterPricingService pricing;
     private final WalletService wallet;
     private final AuditService audit;
     private final LaneQuotaService quota;
 
+    @Autowired
     public SubmissionService(
             JdbcTemplate jdbc,
             ObjectMapper mapper,
-            CenterPricingService pricing,
             WalletService wallet,
             AuditService audit,
             LaneQuotaService quota
     ) {
         this.jdbc = jdbc;
         this.mapper = mapper;
-        this.pricing = pricing;
         this.wallet = wallet;
         this.audit = audit;
         this.quota = quota;
+    }
+
+    /** Compatibility constructor retained for focused release-era unit tests. */
+    SubmissionService(JdbcTemplate jdbc, ObjectMapper mapper, WalletService wallet, AuditService audit) {
+        this(jdbc, mapper, wallet, audit, null);
     }
 
     /**
@@ -64,11 +70,12 @@ public class SubmissionService {
      * than inheriting the exhausted one from the rejected attempt.
      */
     @Transactional
-    public String enqueue(String tenantId, String laneId, String centerId, String testId, Map<String, Object> payload) {
+    public String enqueue(String tenantId, String laneId, String centerId,
+                          String testId, Map<String, Object> payload) {
         try {
             requireTodayTest(payload);
             String payloadJson = mapper.writeValueAsString(payload);
-            long quotedCharge = pricing.getFor(tenantId).chargePerUploadCentavos();
+            long quotedCharge = wallet.chargePerUploadCentavos(tenantId);
             String submissionId = jdbc.queryForObject("""
                     INSERT INTO submissions
                         (tenant_id, lane_id, center_id, test_id, payload,
@@ -76,52 +83,49 @@ public class SubmissionService {
                     VALUES (?::uuid, ?::uuid, ?, ?, ?::jsonb, ?, now())
                     ON CONFLICT (lane_id, test_id) DO UPDATE
                         SET state = CASE
-                                WHEN submissions.state IN ('REJECTED','DEAD') THEN 'PENDING'
+                                WHEN submissions.state IN ('REJECTED','ACTION_REQUIRED','DEAD') THEN 'PENDING'
                                 ELSE submissions.state
                             END,
                             payload = CASE
-                                WHEN submissions.state IN ('REJECTED','DEAD') THEN EXCLUDED.payload
+                                WHEN submissions.state IN ('REJECTED','ACTION_REQUIRED','DEAD') THEN EXCLUDED.payload
                                 ELSE submissions.payload
                             END,
                             attempts = CASE
-                                WHEN submissions.state IN ('REJECTED','DEAD') THEN 0
+                                WHEN submissions.state IN ('REJECTED','ACTION_REQUIRED','DEAD') THEN 0
                                 ELSE submissions.attempts
                             END,
                             rejection_reason = CASE
-                                WHEN submissions.state IN ('REJECTED','DEAD') THEN NULL
+                                WHEN submissions.state IN ('REJECTED','ACTION_REQUIRED','DEAD') THEN NULL
                                 ELSE submissions.rejection_reason
                             END,
                             next_attempt_at = CASE
-                                WHEN submissions.state IN ('REJECTED','DEAD') THEN now()
+                                WHEN submissions.state IN ('REJECTED','ACTION_REQUIRED','DEAD') THEN now()
                                 ELSE submissions.next_attempt_at
                             END,
                             charge_snapshot_centavos = CASE
-                                WHEN submissions.state IN ('REJECTED','DEAD')
+                                WHEN submissions.state IN ('REJECTED','ACTION_REQUIRED','DEAD')
                                     THEN EXCLUDED.charge_snapshot_centavos
                                 ELSE submissions.charge_snapshot_centavos
                             END,
                             price_snapshotted_at = CASE
-                                WHEN submissions.state IN ('REJECTED','DEAD')
+                                WHEN submissions.state IN ('REJECTED','ACTION_REQUIRED','DEAD')
                                     THEN EXCLUDED.price_snapshotted_at
                                 ELSE submissions.price_snapshotted_at
                             END,
                             blocked_at = CASE
-                                WHEN submissions.state IN ('REJECTED','DEAD') THEN NULL
+                                WHEN submissions.state IN ('REJECTED','ACTION_REQUIRED','DEAD') THEN NULL
                                 ELSE submissions.blocked_at
                             END,
                             grace_released_at = CASE
-                                WHEN submissions.state IN ('REJECTED','DEAD') THEN NULL
+                                WHEN submissions.state IN ('REJECTED','ACTION_REQUIRED','DEAD') THEN NULL
                                 ELSE submissions.grace_released_at
                             END
                     RETURNING id::text
                     """, String.class, tenantId, laneId, centerId, testId, payloadJson, quotedCharge);
-            // Existing PENDING/ACCEPTED rows already have a RESERVED/CONSUMED
-            // reservation and reserve() is a no-op.  A requeued REJECTED/DEAD
-            // row has RELEASED its previous reservation and receives one anew.
             quota.reserve(tenantId, laneId, submissionId);
             return submissionId;
         } catch (Exception e) {
-            if (e instanceof LateSubmissionException || e instanceof com.petc.lanes.LaneQuotaExceededException) {
+            if (e instanceof LateSubmissionException || e instanceof LaneQuotaExceededException) {
                 throw (RuntimeException) e;
             }
             throw new RuntimeException("Failed to enqueue submission for test " + testId, e);
@@ -141,7 +145,8 @@ public class SubmissionService {
         var rows = jdbc.queryForList("""
                 SELECT state, certificate_no, ltms_ref_no, rejection_reason,
                        or_no, dermalog_token, valid_from, valid_until
-                FROM submissions WHERE id = ?::uuid AND tenant_id = ?::uuid AND lane_id = ?::uuid
+                FROM submissions
+                WHERE id = ?::uuid AND tenant_id = ?::uuid AND lane_id = ?::uuid
                 """, submissionId, tenantId, laneId);
         if (rows.isEmpty()) return Optional.empty();
         var row = rows.get(0);
@@ -157,18 +162,8 @@ public class SubmissionService {
         ));
     }
 
-    /** Mark a submission IN_FLIGHT before calling the gov client. */
-    void markInFlight(String submissionId) {
-        jdbc.update("""
-                UPDATE submissions SET state = 'IN_FLIGHT', last_attempt_at = now(),
-                    attempts = attempts + 1
-                WHERE id = ?::uuid
-                """, submissionId);
-    }
-
-    /** Legacy acceptance helper; quota conversion remains transactionally coupled. */
-    @Transactional
-    public void markAccepted(
+    /** Record a successful LTMS acceptance with the CEC presentation fields. */
+    void markAccepted(
             String submissionId,
             String certificateNo,
             String ltmsRefNo,
@@ -177,9 +172,9 @@ public class SubmissionService {
             LocalDate validFrom,
             LocalDate validUntil
     ) {
-        String tenantId = jdbc.queryForObject("""
+        int updated = jdbc.update("""
                 UPDATE submissions
-                SET state = 'ACCEPTED',
+                SET state = 'PASSED',
                     certificate_no = ?,
                     ltms_ref_no = ?,
                     or_no = ?,
@@ -187,18 +182,19 @@ public class SubmissionService {
                     valid_from = ?,
                     valid_until = ?,
                     accepted_at = now()
-                WHERE id = ?::uuid AND state IN ('PENDING', 'IN_FLIGHT')
-                RETURNING tenant_id::text
+                WHERE id = ?::uuid AND state = 'IN_FLIGHT'
                 """,
-                String.class, certificateNo,
+                certificateNo,
                 ltmsRefNo,
                 orNo,
                 dermalogToken,
                 validFrom != null ? Date.valueOf(validFrom) : null,
                 validUntil != null ? Date.valueOf(validUntil) : null,
                 submissionId);
-        if (tenantId != null) quota.consume(submissionId, tenantId);
-        log.info("Submission {} accepted cert={}", submissionId, certificateNo);
+        if (updated > 0) {
+            completeAttempt(submissionId, "PASSED", null);
+            log.info("Submission {} accepted cert={}", submissionId, certificateNo);
+        }
     }
 
     /**
@@ -228,11 +224,12 @@ public class SubmissionService {
             String orNo,
             String dermalogToken,
             LocalDate validFrom,
-            LocalDate validUntil
+            LocalDate validUntil,
+            long chargeCentavos
     ) {
         Integer seq = jdbc.queryForObject("""
                 UPDATE submissions
-                   SET state = 'ACCEPTED',
+                   SET state = 'PASSED',
                        certificate_no = ?,
                        ltms_ref_no = ?,
                        or_no = ?,
@@ -241,7 +238,7 @@ public class SubmissionService {
                        valid_until = ?,
                        accepted_at = now(),
                        acceptance_seq = acceptance_seq + 1
-                 WHERE id = ?::uuid AND tenant_id = ?::uuid AND state IN ('PENDING', 'IN_FLIGHT')
+                 WHERE id = ?::uuid AND tenant_id = ?::uuid AND state = 'IN_FLIGHT'
              RETURNING acceptance_seq
                 """,
                 Integer.class,
@@ -255,19 +252,92 @@ public class SubmissionService {
                 tenantId);
 
         if (seq == null) {
-            var states = jdbc.queryForList("SELECT state FROM submissions WHERE id = ?::uuid AND tenant_id = ?::uuid",
-                    submissionId, tenantId);
-            if (!states.isEmpty() && "ACCEPTED".equals(states.getFirst().get("state"))) {
-                // Duplicate LTMS success delivery after our transaction committed.
-                // Its quota/wallet effect was already finalized atomically.
-                return;
-            }
-            throw new IllegalStateException("Submission " + submissionId + " is not eligible for acceptance");
+            throw new IllegalStateException(
+                    "Submission " + submissionId + " is not an in-flight claim for tenant " + tenantId);
         }
 
-        quota.consume(submissionId, tenantId);
-        wallet.chargeForAcceptance(tenantId, submissionId, seq);
+        completeAttempt(submissionId, "PASSED", null);
+        if (quota != null) quota.consume(submissionId, tenantId);
+        wallet.chargeForAcceptance(tenantId, submissionId, seq, chargeCentavos);
         log.info("Submission {} accepted cert={} (acceptance #{})", submissionId, certificateNo, seq);
+    }
+
+    /**
+     * Records an HTTP-successful LTMS CEC response and charges exactly once.
+     * A stored FAILED evaluation is accepted by LTMS but remains non-printable.
+     */
+    @Transactional
+    public void markLtmsAcceptedAndCharge(
+            String submissionId,
+            String tenantId,
+            String cecNumber,
+            String inboxId,
+            String evaluation,
+            Instant expiry,
+            String orNumber,
+            long chargeCentavos
+    ) {
+        String state = "PASSED".equalsIgnoreCase(evaluation) ? "PASSED" : "FAILED_EVALUATION";
+        Integer seq = jdbc.queryForObject("""
+                UPDATE submissions
+                   SET state = ?,
+                       certificate_no = ?,
+                       ltms_ref_no = ?,
+                       or_no = ?,
+                       valid_until = ?,
+                       cec_number = ?,
+                       ltms_inbox_id = ?,
+                       ltms_evaluation = ?,
+                       ltms_expiry_date = ?,
+                       accepted_at = now(),
+                       acceptance_seq = acceptance_seq + 1,
+                       claim_lease_until = NULL
+                 WHERE id = ?::uuid AND tenant_id = ?::uuid AND state = 'IN_FLIGHT'
+             RETURNING acceptance_seq
+                """, Integer.class,
+                state, cecNumber, inboxId, orNumber,
+                expiry != null ? Date.valueOf(expiry.atZone(java.time.ZoneId.of("Asia/Manila")).toLocalDate()) : null,
+                cecNumber, inboxId, evaluation,
+                expiry != null ? Timestamp.from(expiry) : null,
+                submissionId, tenantId);
+        if (seq == null) throw new IllegalStateException("LTMS response no longer owns the in-flight submission");
+        completeAttempt(submissionId, state, null);
+        if (quota != null) quota.consume(submissionId, tenantId);
+        wallet.chargeForAcceptance(tenantId, submissionId, seq, chargeCentavos);
+        log.info("Submission {} accepted by LTMS state={} inbox={}", submissionId, state,
+                com.petc.ltms.LtmsRedactor.identifier(inboxId));
+    }
+
+    /** Persist LTMS's actionable error details without charging the center. */
+    void markLtmsRejected(
+            String submissionId,
+            String state,
+            Integer errorCode,
+            String errorMessage,
+            String inboxId,
+            String reasonsJson
+    ) {
+        String terminalState = switch (state) {
+            case "AUTH_BLOCKED", "FAILED_EVALUATION", "DEFERRED", "RECONCILING" -> state;
+            default -> "ACTION_REQUIRED";
+        };
+        int updated = jdbc.update("""
+                UPDATE submissions
+                   SET state = ?,
+                       rejection_reason = ?,
+                       ltms_error_code = ?,
+                       ltms_error_message = ?,
+                       ltms_inbox_id = ?,
+                       ltms_reasons = COALESCE(?::jsonb, '[]'::jsonb),
+                       reconciliation_status = CASE WHEN ? = 'RECONCILING' THEN 'REQUIRED' ELSE reconciliation_status END,
+                       claim_lease_until = NULL
+                 WHERE id = ?::uuid AND state = 'IN_FLIGHT'
+                """, terminalState, errorMessage, errorCode, errorMessage, inboxId,
+                reasonsJson, terminalState, submissionId);
+        if (updated > 0) completeAttempt(submissionId, terminalState, errorMessage);
+        if (updated > 0 && "ACTION_REQUIRED".equals(terminalState) && quota != null) {
+            quota.release(submissionId);
+        }
     }
 
     /**
@@ -282,9 +352,10 @@ public class SubmissionService {
     public void markBlocked(String submissionId, String tenantId, long balanceCentavos) {
         int updated = jdbc.update("""
                 UPDATE submissions SET state = 'BLOCKED', blocked_at = now()
-                 WHERE id = ?::uuid AND tenant_id = ?::uuid AND state IN ('PENDING', 'IN_FLIGHT')
+                 WHERE id = ?::uuid AND tenant_id = ?::uuid AND state = 'IN_FLIGHT'
                 """, submissionId, tenantId);
         if (updated > 0) {
+            completeAttempt(submissionId, "BLOCKED", null);
             audit.recordSystem(tenantId, "SUBMISSION_BLOCKED", "submission", submissionId,
                     Map.of("balanceCentavos", balanceCentavos));
             log.info("Submission {} blocked — insufficient wallet balance ({})",
@@ -293,32 +364,50 @@ public class SubmissionService {
     }
 
     /** Record a definitive LTMS rejection (non-retryable). */
-    @Transactional
-    public void markRejected(String submissionId, String reason) {
-        jdbc.update("""
-                UPDATE submissions SET state = 'REJECTED', rejection_reason = ?
-                WHERE id = ?::uuid
-                """, reason, submissionId);
-        quota.release(submissionId);
-        log.info("Submission {} rejected reason={}", submissionId, reason);
+    void markRejected(String submissionId, String reason) {
+        int updated = jdbc.update("""
+                UPDATE submissions
+                   SET state = 'ACTION_REQUIRED',
+                       rejection_reason = ?,
+                       ltms_error_message = ?,
+                       claim_lease_until = NULL
+                 WHERE id = ?::uuid AND state = 'IN_FLIGHT'
+                """, reason, reason, submissionId);
+        if (updated > 0) {
+            completeAttempt(submissionId, "ACTION_REQUIRED", reason);
+            if (quota != null) quota.release(submissionId);
+            log.info("Submission {} requires action reason={}", submissionId, reason);
+        }
     }
 
     /** Schedule a retry with exponential backoff. Marks DEAD after maxAttempts. */
-    @Transactional
-    public void markRetry(String submissionId, int attempts, int maxAttempts, int[] backoffSeconds) {
+    void markRetry(String submissionId, int attempts, int maxAttempts, int[] backoffSeconds) {
         if (attempts >= maxAttempts) {
-            jdbc.update("UPDATE submissions SET state = 'DEAD' WHERE id = ?::uuid", submissionId);
-            quota.release(submissionId);
-            log.warn("Submission {} exhausted {} attempts — DEAD", submissionId, attempts);
+            int updated = jdbc.update("""
+                    UPDATE submissions
+                       SET state = 'DEAD', claim_lease_until = NULL
+                     WHERE id = ?::uuid AND state = 'IN_FLIGHT'
+                    """, submissionId);
+            if (updated > 0) {
+                completeAttempt(submissionId, "DEAD", "Retry budget exhausted");
+                if (quota != null) quota.release(submissionId);
+                log.warn("Submission {} exhausted {} attempts — DEAD", submissionId, attempts);
+            }
             return;
         }
-        int delaySec = backoffSeconds[Math.min(attempts, backoffSeconds.length - 1)];
+        // claimPending increments attempts before returning the row. Convert
+        // the one-based attempt count to the backoff array's zero-based index.
+        int delaySec = backoffSeconds[Math.min(Math.max(attempts - 1, 0), backoffSeconds.length - 1)];
         Instant nextRetry = Instant.now().plusSeconds(delaySec);
-        jdbc.update("""
-                UPDATE submissions SET state = 'PENDING', next_attempt_at = ?
-                WHERE id = ?::uuid
+        int updated = jdbc.update("""
+                UPDATE submissions
+                   SET state = 'DEFERRED', next_attempt_at = ?, claim_lease_until = NULL
+                 WHERE id = ?::uuid AND state = 'IN_FLIGHT'
                 """, Timestamp.from(nextRetry), submissionId);
-        log.debug("Submission {} retry in {}s (attempt {})", submissionId, delaySec, attempts);
+        if (updated > 0) {
+            completeAttempt(submissionId, "DEFERRED", null);
+            log.debug("Submission {} deferred for {}s (attempt {})", submissionId, delaySec, attempts);
+        }
     }
 
     /**
@@ -328,14 +417,39 @@ public class SubmissionService {
      * not re-examined on every two-second tick. grace_released_at rides along so
      * the runner can tell which rows have already escaped the wallet check.
      */
-    java.util.List<PendingSubmission> claimPending(int batchSize) {
+    @Transactional
+    List<PendingSubmission> claimPending(int batchSize) {
         return jdbc.query("""
+                WITH due AS (
+                    SELECT id
+                      FROM submissions
+                     WHERE state IN ('PENDING', 'DEFERRED')
+                       AND next_attempt_at <= now()
+                     ORDER BY next_attempt_at, id
+                     FOR UPDATE SKIP LOCKED
+                     LIMIT ?
+                ), claimed AS (
+                    UPDATE submissions s
+                       SET state = 'IN_FLIGHT',
+                           last_attempt_at = now(),
+                           claimed_at = now(),
+                           claim_lease_until = now() + make_interval(secs => ?),
+                           attempts = s.attempts + 1,
+                           attempt_sequence = s.attempt_sequence + 1
+                      FROM due
+                     WHERE s.id = due.id
+                 RETURNING s.id, s.tenant_id, s.center_id, s.test_id, s.payload,
+                           s.attempts, s.attempt_sequence, s.operation, s.grace_released_at,
+                           s.charge_snapshot_centavos
+                ), recorded AS (
+                    INSERT INTO submission_attempts
+                        (submission_id, attempt_no, operation, request_payload, state)
+                    SELECT id, attempt_sequence, operation, payload, 'IN_FLIGHT'
+                      FROM claimed
+                )
                 SELECT id::text, tenant_id::text, center_id, test_id, payload::text, attempts,
                        grace_released_at, charge_snapshot_centavos
-                FROM submissions
-                WHERE state = 'PENDING' AND next_attempt_at <= now()
-                ORDER BY next_attempt_at
-                LIMIT ?
+                  FROM claimed
                 """,
                 (rs, i) -> new PendingSubmission(
                         rs.getString("id"),
@@ -347,27 +461,54 @@ public class SubmissionService {
                         rs.getTimestamp("grace_released_at") != null,
                         rs.getLong("charge_snapshot_centavos")
                 ),
-                batchSize);
+                batchSize, CLAIM_LEASE_SECONDS);
     }
 
-    record SubmissionStatus(
-            String state,
-            String certificateNo,
-            String ltmsRefNo,
-            String rejectionReason,
-            String orNo,
-            String dermalogToken,
-            LocalDate validFrom,
-            LocalDate validUntil
-    ) {}
     /**
-     * @param graceReleased true once the DO 2023-008 sweep has force-released
-     *                      this row; the runner then skips the wallet check,
-     *                      which is how a balance is allowed to go negative.
+     * An expired worker lease has an unknown outbound outcome.  It must be
+     * reconciled before another POST/PUT, never returned to the dispatch pool.
      */
-    record PendingSubmission(String id, String tenantId, String centerId, String testId,
-                             String payloadJson, int attempts, boolean graceReleased,
-                             long chargeSnapshotCentavos) {}
+    @Transactional
+    public int moveExpiredClaimsToReconciling() {
+        int updated = jdbc.update("""
+                UPDATE submissions
+                   SET state = 'RECONCILING',
+                       reconciliation_status = 'REQUIRED',
+                       claim_lease_until = NULL,
+                       ltms_error_message = COALESCE(ltms_error_message,
+                           'Worker claim expired; LTMS outcome must be reconciled')
+                 WHERE state = 'IN_FLIGHT' AND claim_lease_until <= now()
+                """);
+        if (updated > 0) {
+            jdbc.update("""
+                    UPDATE submission_attempts a
+                       SET state = 'RECONCILING',
+                           ltms_error_message = COALESCE(a.ltms_error_message,
+                               'Worker claim expired; LTMS outcome must be reconciled'),
+                           finished_at = now()
+                      FROM submissions s
+                     WHERE s.id = a.submission_id
+                       AND s.state = 'RECONCILING'
+                       AND a.attempt_no = s.attempt_sequence
+                       AND a.finished_at IS NULL
+                    """);
+        }
+        return updated;
+    }
+
+    private void completeAttempt(String submissionId, String state, String errorMessage) {
+        jdbc.update("""
+                UPDATE submission_attempts a
+                   SET state = ?,
+                       ltms_error_message = COALESCE(?, ltms_error_message),
+                       finished_at = now()
+                  FROM submissions s
+                 WHERE s.id = a.submission_id
+                   AND a.submission_id = ?::uuid
+                   AND a.attempt_no = s.attempt_sequence
+                   AND a.finished_at IS NULL
+                """, state, errorMessage, submissionId);
+    }
 
     private void requireTodayTest(Map<String, Object> payload) {
         Object raw = payload.get("testDatetime");
@@ -393,7 +534,27 @@ public class SubmissionService {
             }
         }
         if (!LocalDate.now(LaneQuotaService.BUSINESS_ZONE).equals(testDate)) {
-            throw new LateSubmissionException("Late submissions are not permitted; testDatetime must be today in Asia/Manila");
+            throw new LateSubmissionException(
+                    "Late submissions are not permitted; testDatetime must be today in Asia/Manila");
         }
     }
+
+    record SubmissionStatus(
+            String state,
+            String certificateNo,
+            String ltmsRefNo,
+            String rejectionReason,
+            String orNo,
+            String dermalogToken,
+            LocalDate validFrom,
+            LocalDate validUntil
+    ) {}
+    /**
+     * @param graceReleased true once the DO 2023-008 sweep has force-released
+     *                      this row; the runner then skips the wallet check,
+     *                      which is how a balance is allowed to go negative.
+     */
+    record PendingSubmission(String id, String tenantId, String centerId, String testId,
+                             String payloadJson, int attempts, boolean graceReleased,
+                             long chargeSnapshotCentavos) {}
 }

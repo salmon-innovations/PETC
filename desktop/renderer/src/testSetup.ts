@@ -6,6 +6,7 @@ window.petcBridge = {
   getCommissioningToken: () => Promise.resolve("test-commissioning-token"),
   getUserDataPath: () => Promise.resolve("/tmp/petc-test"),
   openPath: () => Promise.resolve(""),
+  importCommissioning: () => Promise.resolve({ imported: false, message: "Import cancelled." }),
   onUpdateAvailable: () => () => {},
   onUpdateReady: () => () => {},
   installUpdate: () => {},

@@ -35,7 +35,10 @@ public class LaneQuotaService {
         if (submissions.isEmpty()) throw new IllegalArgumentException("Submission does not belong to this lane");
         // A migrated or already-finalized accepted test has already consumed
         // its CEC slot; a status/retry POST must not reserve another one.
-        if ("ACCEPTED".equals(submissions.getFirst().get("state"))) return;
+        String submissionState = String.valueOf(submissions.getFirst().get("state"));
+        if ("ACCEPTED".equals(submissionState)
+                || "PASSED".equals(submissionState)
+                || "FAILED_EVALUATION".equals(submissionState)) return;
         LocalDate today = LocalDate.now(BUSINESS_ZONE);
         // The INSERT is intentionally separate from the lock.  ON CONFLICT
         // makes creation safe under concurrent desktop requests; SELECT FOR

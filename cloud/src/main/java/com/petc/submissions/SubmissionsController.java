@@ -1,7 +1,6 @@
 package com.petc.submissions;
 
 import com.petc.ingest.CenterKeyValidator;
-import com.petc.lanes.LaneQuotaService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -25,12 +24,10 @@ public class SubmissionsController {
 
     private final SubmissionService service;
     private final CenterKeyValidator keyValidator;
-    private final LaneQuotaService quota;
 
-    public SubmissionsController(SubmissionService service, CenterKeyValidator keyValidator, LaneQuotaService quota) {
+    public SubmissionsController(SubmissionService service, CenterKeyValidator keyValidator) {
         this.service = service;
         this.keyValidator = keyValidator;
-        this.quota = quota;
     }
 
     /**
@@ -42,13 +39,15 @@ public class SubmissionsController {
             @RequestHeader("X-Center-Key") String centerKey,
             @Valid @RequestBody SubmitRequest req
     ) {
-        var ctx = keyValidator.validateContext(centerKey);
-        // centerId is deliberately ignored: the lane credential is the only
-        // authority for the center/lane that receives this test.
-        String submissionId = service.enqueue(ctx.tenantId(), ctx.laneId(), ctx.centerId(), req.testId(), req.payload());
-        var usage = quota.current(ctx.tenantId(), ctx.laneId());
+        var center = keyValidator.validateContext(centerKey);
+        // centerId is retained in the DTO for a compatibility-safe rollout,
+        // but the authenticated key is authoritative. A forged/mistaken ID is
+        // rejected and never reaches the queue or any future LTMS request.
+        keyValidator.requireMatchingCenter(center, req.centerId());
+        String submissionId = service.enqueue(
+                center.tenantId(), center.laneId(), center.centerId(), req.testId(), req.payload());
         return ResponseEntity.status(HttpStatus.ACCEPTED)
-                .body(new SubmitResponse(submissionId, "PENDING", ctx.laneId(), usage));
+                .body(new SubmitResponse(submissionId, "PENDING"));
     }
 
     /**
@@ -76,9 +75,7 @@ public class SubmissionsController {
                         s.orNo(),
                         s.dermalogToken(),
                         s.validFrom(),
-                        s.validUntil(),
-                        ctx.laneId(),
-                        quota.current(ctx.tenantId(), ctx.laneId())
+                        s.validUntil()
                 )))
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -86,12 +83,12 @@ public class SubmissionsController {
     // ── request / response records ────────────────────────────────────────
 
     record SubmitRequest(
-            String centerId,
+            @NotBlank String centerId,
             @NotBlank String testId,
             @NotNull Map<String, Object> payload
     ) {}
 
-    record SubmitResponse(String submissionId, String state, String laneId, LaneQuotaService.Quota quota) {}
+    record SubmitResponse(String submissionId, String state) {}
 
     record StatusResponse(
             String submissionId,
@@ -102,8 +99,6 @@ public class SubmissionsController {
             String orNo,
             String dermalogToken,
             LocalDate validFrom,
-            LocalDate validUntil,
-            String laneId,
-            LaneQuotaService.Quota quota
+            LocalDate validUntil
     ) {}
 }

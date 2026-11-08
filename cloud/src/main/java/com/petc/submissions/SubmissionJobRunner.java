@@ -7,12 +7,20 @@ import com.petc.gov.GovRegistryClient;
 import com.petc.gov.SubmissionResult;
 import com.petc.settings.PlatformSettingsService;
 import com.petc.wallet.WalletService;
+import com.petc.ltms.LtmsOutcome;
+import com.petc.ltms.LtmsRemoteException;
+import com.petc.ltms.LtmsSubmissionGateway;
+import com.petc.ltms.config.LtmsSafetyGuard;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,19 +40,37 @@ public class SubmissionJobRunner {
     private final ObjectMapper mapper;
     private final PlatformSettingsService settings;
     private final WalletService wallet;
+    private final LtmsSubmissionGateway ltmsGateway;
+    private final LtmsSafetyGuard ltmsSafety;
 
+    @Autowired
     public SubmissionJobRunner(
             SubmissionService service,
             GovRegistryClient govClient,
             ObjectMapper mapper,
             PlatformSettingsService settings,
-            WalletService wallet
+            WalletService wallet,
+            LtmsSubmissionGateway ltmsGateway,
+            LtmsSafetyGuard ltmsSafety
     ) {
         this.service = service;
         this.govClient = govClient;
         this.mapper = mapper;
         this.settings = settings;
         this.wallet = wallet;
+        this.ltmsGateway = ltmsGateway;
+        this.ltmsSafety = ltmsSafety;
+    }
+
+    /** Test/legacy constructor keeps fixture tests on the non-network adapter. */
+    SubmissionJobRunner(
+            SubmissionService service,
+            GovRegistryClient govClient,
+            ObjectMapper mapper,
+            PlatformSettingsService settings,
+            WalletService wallet
+    ) {
+        this(service, govClient, mapper, settings, wallet, null, null);
     }
 
     /**
@@ -59,6 +85,10 @@ public class SubmissionJobRunner {
      */
     @Scheduled(fixedDelay = 2000)
     public void processPending() {
+        int expired = service.moveExpiredClaimsToReconciling();
+        if (expired > 0) {
+            log.warn("Moved {} expired submission claim(s) to reconciliation", expired);
+        }
         List<SubmissionService.PendingSubmission> batch = service.claimPending(BATCH_SIZE);
         Map<String, Long> projected = new HashMap<>();
 
@@ -77,23 +107,55 @@ public class SubmissionJobRunner {
                 }
                 remainingBefore = remaining;
             }
-            boolean accepted = process(sub);
+            boolean accepted = ltmsSafety != null && ltmsSafety.uploadCallsPermitted()
+                    ? processLtms(sub, charge)
+                    : process(sub, charge);
             if (accepted && charge > 0) {
                 if (remainingBefore != null) {
                     projected.put(sub.tenantId(), remainingBefore - charge);
                 } else {
-                    // A grace-released acceptance still debits its quote. If
-                    // this tenant already has a running batch projection, keep
-                    // that projection aligned with the now-lower balance.
-                    projected.computeIfPresent(sub.tenantId(), (ignored, value) -> value - charge);
+                    projected.computeIfPresent(
+                            sub.tenantId(), (ignored, value) -> value - charge);
                 }
             }
         }
     }
 
-    /** Returns true only when LTMS accepted and the quoted charge was applied. */
-    private boolean process(SubmissionService.PendingSubmission sub) {
-        service.markInFlight(sub.id());
+    private boolean processLtms(SubmissionService.PendingSubmission sub, long chargeCentavos) {
+        try {
+            LtmsSubmissionGateway.Result result = ltmsGateway.upload(
+                    sub.id(), sub.tenantId(), sub.centerId(), sub.payloadJson());
+            if (result.accepted()) {
+                service.markLtmsAcceptedAndCharge(
+                        sub.id(), sub.tenantId(), result.cecNumber(), result.inboxId(),
+                        result.evaluationOrState(), result.expiry(), result.orNumber(), chargeCentavos);
+                return true;
+            }
+            service.markLtmsRejected(
+                    sub.id(), result.evaluationOrState(), result.errorCode(),
+                    result.errorMessage(), result.inboxId(), result.reasonsJson());
+            return false;
+        } catch (IllegalArgumentException validation) {
+            service.markLtmsRejected(sub.id(), "ACTION_REQUIRED", null,
+                    validation.getMessage(), null, "[]");
+            return false;
+        } catch (LtmsRemoteException remote) {
+            String state = remote.outcome() == LtmsOutcome.AUTH_BLOCKED
+                    || remote.outcome() == LtmsOutcome.MISSING_PRIVILEGE
+                    ? "AUTH_BLOCKED" : "RECONCILING";
+            service.markLtmsRejected(sub.id(), state, remote.errorCode(),
+                    remote.getMessage(), remote.inboxId(), "[]");
+            return false;
+        } catch (Exception unexpected) {
+            // A request may have reached LTMS. Never replay it blindly.
+            service.markLtmsRejected(sub.id(), "RECONCILING", null,
+                    "LTMS outcome is uncertain; search the assigned CEC before retrying",
+                    null, "[]");
+            return false;
+        }
+    }
+
+    private boolean process(SubmissionService.PendingSubmission sub, long chargeCentavos) {
         try {
             EmissionPayload payload = toEmissionPayload(sub);
             SubmissionResult result = govClient.submitEmissionResult(payload);
@@ -108,7 +170,8 @@ public class SubmissionJobRunner {
                         result.orNo(),
                         result.dermalogToken(),
                         result.validFrom(),
-                        result.validUntil()
+                        result.validUntil(),
+                        chargeCentavos
                 );
                 return true;
             } else {
@@ -132,6 +195,8 @@ public class SubmissionJobRunner {
 
             Map<String, Object> readings = (Map<String, Object>) payload.getOrDefault("readings", Map.of());
             List<Map<String, Object>> rawPhotos = (List<Map<String, Object>>) payload.getOrDefault("photos", List.of());
+            Map<String, Object> vehicle = objectMap(payload.get("vehicle"));
+            Map<String, Object> verdict = objectMap(payload.get("verdict"));
 
             List<EmissionPayload.PhotoRef> photos = rawPhotos.stream()
                     .map(p -> new EmissionPayload.PhotoRef(
@@ -144,18 +209,54 @@ public class SubmissionJobRunner {
 
             return new EmissionPayload(
                     sub.testId(),
-                    (String) payload.getOrDefault("plateNumber", ""),
-                    (String) payload.getOrDefault("licenseNo", ""),
-                    (String) payload.getOrDefault("fuelType", "GAS"),
-                    Boolean.TRUE.equals(payload.get("passFail")),
+                    firstNonBlank(stringValue(vehicle.get("plateNo")),
+                            stringValue(vehicle.get("plateNumber")), stringValue(payload.get("plateNumber"))),
+                    stringValue(payload.get("licenseNo")),
+                    firstNonBlank(stringValue(vehicle.get("fuelType")),
+                            stringValue(payload.get("fuelType")), "GAS"),
+                    verdict.get("pass") instanceof Boolean pass
+                            ? pass : Boolean.TRUE.equals(payload.get("passFail")),
                     readings,
                     photos,
-                    (String) payload.getOrDefault("operatorId", ""),
+                    stringValue(payload.get("operatorId")),
                     sub.tenantId(),
-                    Instant.now()
+                    capturedAt(payload)
             );
         } catch (Exception e) {
             throw new RuntimeException("Failed to deserialise submission payload for " + sub.id(), e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> objectMap(Object value) {
+        return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+    }
+
+    private static String stringValue(Object value) {
+        return value == null ? "" : value.toString();
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) return value;
+        }
+        return "";
+    }
+
+    /** Preserve the captured test time; dispatch time is only a legacy fallback. */
+    private static Instant capturedAt(Map<String, Object> payload) {
+        String raw = firstNonBlank(stringValue(payload.get("testDatetime")),
+                stringValue(payload.get("testedAt")));
+        if (raw.isBlank()) return Instant.now();
+        try {
+            return Instant.parse(raw);
+        } catch (java.time.format.DateTimeParseException ignored) {
+            try {
+                return OffsetDateTime.parse(raw).toInstant();
+            } catch (java.time.format.DateTimeParseException noOffset) {
+                // Existing SQLite rows store UTC timestamps without an offset.
+                return LocalDateTime.parse(raw).toInstant(ZoneOffset.UTC);
+            }
         }
     }
 }
