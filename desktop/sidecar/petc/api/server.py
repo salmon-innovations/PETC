@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 import uvicorn
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile, status
+import httpx
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -223,6 +224,13 @@ class StatusResponse(BaseModel):
     config: dict = {}
     readiness_ready: bool = False
     readiness_reason: str = "PETC commissioning is required"
+    billing_mode: Optional[str] = None
+    billing_current_usage_count: Optional[int] = None
+    billing_current_estimate_centavos: Optional[int] = None
+    billing_next_cutoff: Optional[str] = None
+    billing_open_total_centavos: Optional[int] = None
+    billing_past_due_total_centavos: Optional[int] = None
+    billing_past_due_invoice_count: Optional[int] = None
 
 
 class CommissioningRequest(BaseModel):
@@ -266,6 +274,11 @@ class UploadSubmitRequest(BaseModel):
     payload: dict
 
 
+class BillingTopUpRequest(BaseModel):
+    amount_centavos: int
+    client_request_id: str
+
+
 # ---------------------------------------------------------------------------
 # Schema — auth
 # ---------------------------------------------------------------------------
@@ -303,7 +316,11 @@ def _commissioning_check(config) -> dict:
         readiness_reasons.append("The issued credential does not match the expected center or lane")
     if not profile.active:
         readiness_reasons.append("The issued lane is inactive")
-    if wallet.negative or wallet.balance_centavos < wallet.charge_per_upload_centavos:
+    if wallet.mode != "POSTPAID" and (
+        wallet.negative
+        or wallet.balance_centavos is None
+        or wallet.balance_centavos < wallet.charge_per_upload_centavos
+    ):
         readiness_reasons.append("The center wallet is insufficient for a new test")
     if quota.business_date != today:
         readiness_reasons.append("The cloud quota is not for the current Asia/Manila business date")
@@ -493,7 +510,105 @@ def get_status(
         config=config.public() if config else {},
         readiness_ready=readiness["ready"],
         readiness_reason=readiness["reason"],
+        billing_mode=wallet.get("mode") if wallet else None,
+        billing_current_usage_count=wallet.get("current_usage_count") if wallet else None,
+        billing_current_estimate_centavos=wallet.get("current_estimate_centavos") if wallet else None,
+        billing_next_cutoff=wallet.get("next_cutoff") if wallet else None,
+        billing_open_total_centavos=wallet.get("open_total_centavos") if wallet else None,
+        billing_past_due_total_centavos=wallet.get("past_due_total_centavos") if wallet else None,
+        billing_past_due_invoice_count=wallet.get("past_due_invoice_count") if wallet else None,
     )
+
+
+@app.get("/billing/summary")
+def billing_summary() -> dict:
+    from ..cloud_client import CloudUnavailableError, get_client
+    from ..submissions.reconciler import _store_wallet
+
+    try:
+        summary = get_client().get_wallet()
+        _store_wallet(summary)
+        return {
+            "mode": summary.mode,
+            "charge_per_upload_centavos": summary.charge_per_upload_centavos,
+            "balance_centavos": summary.balance_centavos,
+            "low": summary.low,
+            "negative": summary.negative,
+            "blocked_count": summary.blocked_count,
+            "current_usage_count": summary.current_usage_count,
+            "current_estimate_centavos": summary.current_estimate_centavos,
+            "period_start": summary.period_start,
+            "next_cutoff": summary.next_cutoff,
+            "open_total_centavos": summary.open_total_centavos,
+            "past_due_total_centavos": summary.past_due_total_centavos,
+            "past_due_invoice_count": summary.past_due_invoice_count,
+        }
+    except (CloudUnavailableError, httpx.HTTPError) as exc:
+        raise _billing_cloud_error(exc) from exc
+
+
+@app.post("/billing/topups")
+def create_billing_topup(req: BillingTopUpRequest) -> dict:
+    from ..cloud_client import CloudUnavailableError, get_client
+
+    try:
+        uuid.UUID(req.client_request_id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "client_request_id must be a UUID") from exc
+    if req.amount_centavos <= 0:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "amount_centavos must be positive")
+    try:
+        return get_client().create_topup(req.amount_centavos, req.client_request_id)
+    except (CloudUnavailableError, httpx.HTTPError) as exc:
+        raise _billing_cloud_error(exc) from exc
+
+
+@app.get("/billing/topups/{topup_id}")
+def get_billing_topup(topup_id: str) -> dict:
+    from ..cloud_client import CloudUnavailableError, get_client
+
+    try:
+        uuid.UUID(topup_id)
+        return get_client().get_topup(topup_id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "topup_id must be a UUID") from exc
+    except (CloudUnavailableError, httpx.HTTPError) as exc:
+        raise _billing_cloud_error(exc) from exc
+
+
+@app.get("/billing/invoices")
+def get_billing_invoices(limit: int = 20) -> list[dict]:
+    from ..cloud_client import CloudUnavailableError, get_client
+
+    try:
+        return get_client().get_invoices(limit)
+    except (CloudUnavailableError, httpx.HTTPError) as exc:
+        raise _billing_cloud_error(exc) from exc
+
+
+@app.get("/billing/invoices/{invoice_id}")
+def get_billing_invoice(invoice_id: str) -> dict:
+    from ..cloud_client import CloudUnavailableError, get_client
+
+    try:
+        uuid.UUID(invoice_id)
+        return get_client().get_invoice(invoice_id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "invoice_id must be a UUID") from exc
+    except (CloudUnavailableError, httpx.HTTPError) as exc:
+        raise _billing_cloud_error(exc) from exc
+
+
+def _billing_cloud_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        try:
+            body = exc.response.json()
+            detail = body.get("detail") or body.get("title") or "Cloud billing request failed"
+        except Exception:
+            detail = "Cloud billing request failed"
+        return HTTPException(code if code < 500 else status.HTTP_503_SERVICE_UNAVAILABLE, detail)
+    return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Cloud billing is unavailable")
 
 
 @app.post("/test/start", response_model=StartTestResponse)
@@ -2401,7 +2516,11 @@ def _readiness_status(lane: Optional[dict], wallet: Optional[dict]) -> tuple[obj
             fetched_at = fetched_at.replace(tzinfo=timezone.utc)
         if not fetched_at or (now - fetched_at).total_seconds() > _LANE_QUOTA_MAX_AGE_SECONDS:
             reasons.append("Cloud wallet is offline/stale")
-        if wallet.get("negative") or int(wallet.get("balance_centavos", 0)) < int(wallet.get("charge_per_upload_centavos", 1)):
+        if wallet.get("mode") != "POSTPAID" and (
+            wallet.get("negative")
+            or wallet.get("balance_centavos") is None
+            or int(wallet.get("balance_centavos", 0)) < int(wallet.get("charge_per_upload_centavos", 1))
+        ):
             reasons.append("Center wallet is insufficient for a new test")
     return config, {"ready": not reasons, "reason": "; ".join(dict.fromkeys(reasons)) or "Ready for testing"}
 

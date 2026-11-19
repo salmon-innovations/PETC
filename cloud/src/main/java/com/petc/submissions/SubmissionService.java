@@ -5,6 +5,8 @@ import com.petc.audit.AuditService;
 import com.petc.lanes.LaneQuotaExceededException;
 import com.petc.lanes.LaneQuotaService;
 import com.petc.lanes.LateSubmissionException;
+import com.petc.billing.BillingMode;
+import com.petc.billing.BillingService;
 import com.petc.wallet.WalletService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
@@ -36,6 +38,7 @@ public class SubmissionService {
     private final WalletService wallet;
     private final AuditService audit;
     private final LaneQuotaService quota;
+    private final BillingService billing;
 
     @Autowired
     public SubmissionService(
@@ -43,18 +46,25 @@ public class SubmissionService {
             ObjectMapper mapper,
             WalletService wallet,
             AuditService audit,
-            LaneQuotaService quota
+            LaneQuotaService quota,
+            BillingService billing
     ) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.wallet = wallet;
         this.audit = audit;
         this.quota = quota;
+        this.billing = billing;
     }
 
-    /** Compatibility constructor retained for focused release-era unit tests. */
+    /** Compatibility constructors retained for focused release-era unit tests. */
+    SubmissionService(JdbcTemplate jdbc, ObjectMapper mapper, WalletService wallet, AuditService audit,
+                      LaneQuotaService quota) {
+        this(jdbc, mapper, wallet, audit, quota, null);
+    }
+
     SubmissionService(JdbcTemplate jdbc, ObjectMapper mapper, WalletService wallet, AuditService audit) {
-        this(jdbc, mapper, wallet, audit, null);
+        this(jdbc, mapper, wallet, audit, null, null);
     }
 
     /**
@@ -76,11 +86,15 @@ public class SubmissionService {
             requireTodayTest(payload);
             String payloadJson = mapper.writeValueAsString(payload);
             long quotedCharge = wallet.chargePerUploadCentavos(tenantId);
+            BillingService.BillingSnapshot billingSnapshot = billing == null
+                    ? new BillingService.BillingSnapshot(BillingMode.PREPAID, 1)
+                    : billing.snapshotFor(tenantId);
             String submissionId = jdbc.queryForObject("""
                     INSERT INTO submissions
                         (tenant_id, lane_id, center_id, test_id, payload,
-                         charge_snapshot_centavos, price_snapshotted_at)
-                    VALUES (?::uuid, ?::uuid, ?, ?, ?::jsonb, ?, now())
+                         charge_snapshot_centavos, price_snapshotted_at,
+                         billing_mode_snapshot, billing_profile_revision)
+                    VALUES (?::uuid, ?::uuid, ?, ?, ?::jsonb, ?, now(), ?, ?)
                     ON CONFLICT (lane_id, test_id) DO UPDATE
                         SET state = CASE
                                 WHEN submissions.state IN ('REJECTED','ACTION_REQUIRED','DEAD') THEN 'PENDING'
@@ -112,6 +126,16 @@ public class SubmissionService {
                                     THEN EXCLUDED.price_snapshotted_at
                                 ELSE submissions.price_snapshotted_at
                             END,
+                            billing_mode_snapshot = CASE
+                                WHEN submissions.state IN ('REJECTED','ACTION_REQUIRED','DEAD')
+                                    THEN EXCLUDED.billing_mode_snapshot
+                                ELSE submissions.billing_mode_snapshot
+                            END,
+                            billing_profile_revision = CASE
+                                WHEN submissions.state IN ('REJECTED','ACTION_REQUIRED','DEAD')
+                                    THEN EXCLUDED.billing_profile_revision
+                                ELSE submissions.billing_profile_revision
+                            END,
                             blocked_at = CASE
                                 WHEN submissions.state IN ('REJECTED','ACTION_REQUIRED','DEAD') THEN NULL
                                 ELSE submissions.blocked_at
@@ -121,8 +145,9 @@ public class SubmissionService {
                                 ELSE submissions.grace_released_at
                             END
                     RETURNING id::text
-                    """, String.class, tenantId, laneId, centerId, testId, payloadJson, quotedCharge);
-            quota.reserve(tenantId, laneId, submissionId);
+                    """, String.class, tenantId, laneId, centerId, testId, payloadJson, quotedCharge,
+                    billingSnapshot.mode().name(), billingSnapshot.revision());
+            if (quota != null) quota.reserve(tenantId, laneId, submissionId);
             return submissionId;
         } catch (Exception e) {
             if (e instanceof LateSubmissionException || e instanceof LaneQuotaExceededException) {
@@ -258,7 +283,7 @@ public class SubmissionService {
 
         completeAttempt(submissionId, "PASSED", null);
         if (quota != null) quota.consume(submissionId, tenantId);
-        wallet.chargeForAcceptance(tenantId, submissionId, seq, chargeCentavos);
+        recordAcceptanceAccounting(tenantId, submissionId, seq, chargeCentavos);
         log.info("Submission {} accepted cert={} (acceptance #{})", submissionId, certificateNo, seq);
     }
 
@@ -303,7 +328,7 @@ public class SubmissionService {
         if (seq == null) throw new IllegalStateException("LTMS response no longer owns the in-flight submission");
         completeAttempt(submissionId, state, null);
         if (quota != null) quota.consume(submissionId, tenantId);
-        wallet.chargeForAcceptance(tenantId, submissionId, seq, chargeCentavos);
+        recordAcceptanceAccounting(tenantId, submissionId, seq, chargeCentavos);
         log.info("Submission {} accepted by LTMS state={} inbox={}", submissionId, state,
                 com.petc.ltms.LtmsRedactor.identifier(inboxId));
     }
@@ -440,7 +465,7 @@ public class SubmissionService {
                      WHERE s.id = due.id
                  RETURNING s.id, s.tenant_id, s.center_id, s.test_id, s.payload,
                            s.attempts, s.attempt_sequence, s.operation, s.grace_released_at,
-                           s.charge_snapshot_centavos
+                           s.charge_snapshot_centavos, s.billing_mode_snapshot
                 ), recorded AS (
                     INSERT INTO submission_attempts
                         (submission_id, attempt_no, operation, request_payload, state)
@@ -448,7 +473,7 @@ public class SubmissionService {
                       FROM claimed
                 )
                 SELECT id::text, tenant_id::text, center_id, test_id, payload::text, attempts,
-                       grace_released_at, charge_snapshot_centavos
+                       grace_released_at, charge_snapshot_centavos, billing_mode_snapshot
                   FROM claimed
                 """,
                 (rs, i) -> new PendingSubmission(
@@ -459,7 +484,8 @@ public class SubmissionService {
                         rs.getString("payload"),
                         rs.getInt("attempts"),
                         rs.getTimestamp("grace_released_at") != null,
-                        rs.getLong("charge_snapshot_centavos")
+                        rs.getLong("charge_snapshot_centavos"),
+                        BillingMode.valueOf(rs.getString("billing_mode_snapshot"))
                 ),
                 batchSize, CLAIM_LEASE_SECONDS);
     }
@@ -539,6 +565,33 @@ public class SubmissionService {
         }
     }
 
+    private void recordAcceptanceAccounting(
+            String tenantId, String submissionId, int acceptanceSeq, long chargeCentavos
+    ) {
+        BillingMode mode = BillingMode.PREPAID;
+        Instant acceptedAt = Instant.now();
+        if (billing != null) {
+            AcceptanceBillingSnapshot snapshot = jdbc.query("""
+                    SELECT billing_mode_snapshot, accepted_at
+                      FROM submissions
+                     WHERE id = ?::uuid AND tenant_id = ?::uuid
+                    """, rs -> rs.next()
+                    ? new AcceptanceBillingSnapshot(
+                            BillingMode.valueOf(rs.getString("billing_mode_snapshot")),
+                            rs.getTimestamp("accepted_at").toInstant())
+                    : null, submissionId, tenantId);
+            if (snapshot != null) {
+                mode = snapshot.mode();
+                acceptedAt = snapshot.acceptedAt();
+            }
+            billing.recordUsage(tenantId, submissionId, acceptanceSeq, mode,
+                    chargeCentavos, acceptedAt);
+        }
+        if (mode == BillingMode.PREPAID) {
+            wallet.chargeForAcceptance(tenantId, submissionId, acceptanceSeq, chargeCentavos);
+        }
+    }
+
     record SubmissionStatus(
             String state,
             String certificateNo,
@@ -556,5 +609,13 @@ public class SubmissionService {
      */
     record PendingSubmission(String id, String tenantId, String centerId, String testId,
                              String payloadJson, int attempts, boolean graceReleased,
-                             long chargeSnapshotCentavos) {}
+                             long chargeSnapshotCentavos, BillingMode billingMode) {
+        PendingSubmission(String id, String tenantId, String centerId, String testId,
+                          String payloadJson, int attempts, boolean graceReleased,
+                          long chargeSnapshotCentavos) {
+            this(id, tenantId, centerId, testId, payloadJson, attempts, graceReleased,
+                    chargeSnapshotCentavos, BillingMode.PREPAID);
+        }
+    }
+    private record AcceptanceBillingSnapshot(BillingMode mode, Instant acceptedAt) {}
 }

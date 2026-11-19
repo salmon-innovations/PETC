@@ -160,4 +160,11 @@ export interface SidecarStatus {
   };
   readinessReady: boolean;
   readinessReason: string;
+  billingMode: "PREPAID" | "POSTPAID" | null;
+  billingCurrentUsageCount: number | null;
+  billingCurrentEstimateCentavos: number | null;
+  billingNextCutoff: string | null;
+  billingOpenTotalCentavos: number | null;
+  billingPastDueTotalCentavos: number | null;
+  billingPastDueInvoiceCount: number | null;
 }

@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.time.OffsetDateTime;
 
 /**
  * Prepaid wallet: balances, the immutable ledger, and the charge applied when
@@ -82,21 +83,28 @@ public class WalletService {
         Integer blocked = jdbc.queryForObject(
                 "SELECT count(*) FROM submissions WHERE tenant_id = ?::uuid AND state = 'BLOCKED'",
                 Integer.class, tenantId);
+        OffsetDateTime pricingUpdatedAt = jdbc.queryForObject(
+                "SELECT max(updated_at) FROM platform_settings WHERE setting_key IN ('charge_per_upload_centavos', 'low_balance_threshold_centavos')",
+                OffsetDateTime.class);
         return new WalletSummary(
+                tenantId,
                 balance,
                 balance < settings.lowBalanceThresholdCentavos(),
                 balance < 0,
                 blocked == null ? 0 : blocked,
                 chargeOverride == null ? defaultCharge : chargeOverride,
                 chargeOverride,
-                defaultCharge
+                defaultCharge,
+                settings.lowBalanceThresholdCentavos(),
+                pricingUpdatedAt
         );
     }
 
     public List<Map<String, Object>> ledgerFor(String tenantId, int limit) {
         return jdbc.queryForList("""
                 SELECT id, entry_type, amount_centavos, balance_after,
-                       submission_id::text, acceptance_seq, created_by, note, created_at
+                       submission_id::text, acceptance_seq, created_by, note,
+                       provider, external_reference, created_at
                   FROM wallet_ledger
                  WHERE tenant_id = ?::uuid
                  ORDER BY created_at DESC, id DESC
@@ -209,6 +217,36 @@ public class WalletService {
         return new TopUpResult(balanceAfter, released);
     }
 
+    /** Credits a verified provider payment exactly once inside the fulfillment transaction. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public TopUpResult topUpFromProvider(
+            String tenantId,
+            long amountCentavos,
+            String provider,
+            String externalReference
+    ) {
+        if (amountCentavos <= 0) throw new IllegalArgumentException("Top-up amount must be positive");
+        long balance = lockAndGetBalance(tenantId);
+        long balanceAfter = balance + amountCentavos;
+        List<Long> inserted = jdbc.query("""
+                INSERT INTO wallet_ledger
+                    (tenant_id, entry_type, amount_centavos, balance_after, created_by, note,
+                     provider, external_reference)
+                VALUES (?::uuid, 'TOPUP', ?, ?, 'paymongo', 'Verified PayMongo QR payment', ?, ?)
+                ON CONFLICT DO NOTHING
+                RETURNING id
+                """, (rs, rowNum) -> rs.getLong(1), tenantId, amountCentavos, balanceAfter,
+                provider, externalReference);
+        if (inserted.isEmpty()) {
+            return new TopUpResult(balance, 0);
+        }
+        applyBalance(tenantId, balanceAfter);
+        audit.recordSystem(tenantId, "WALLET_TOPUP_VERIFIED", "wallet", tenantId,
+                Map.of("amountCentavos", amountCentavos, "balanceAfter", balanceAfter,
+                       "provider", provider, "externalReference", externalReference));
+        return new TopUpResult(balanceAfter, releaseBlocked(tenantId, balanceAfter));
+    }
+
     /**
      * Returns held submissions to the dispatch queue, oldest first, while the
      * balance covers them. Rows beyond what the top-up affords stay BLOCKED.
@@ -293,13 +331,16 @@ public class WalletService {
     // ---------------------------------------------------------------- schema
 
     public record WalletSummary(
+            String tenantId,
             long balanceCentavos,
             boolean low,
             boolean negative,
             int blockedCount,
             long chargePerUploadCentavos,
             Long chargeOverrideCentavos,
-            long defaultChargePerUploadCentavos
+            long defaultChargePerUploadCentavos,
+            long lowBalanceThresholdCentavos,
+            OffsetDateTime pricingUpdatedAt
     ) {}
 
     public record TopUpResult(long balanceCentavos, int releasedSubmissions) {}

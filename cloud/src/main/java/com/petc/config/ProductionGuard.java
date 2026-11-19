@@ -1,6 +1,7 @@
 package com.petc.config;
 
 import com.petc.settings.PlatformSettingsService;
+import com.petc.payments.PayMongoProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,6 +32,7 @@ public class ProductionGuard implements ApplicationRunner {
     private final String s3AccessKey;
     private final String s3SecretKey;
     private final PlatformSettingsService settings;
+    private final PayMongoProperties payMongo;
 
     public ProductionGuard(
             Environment environment,
@@ -41,7 +43,8 @@ public class ProductionGuard implements ApplicationRunner {
             @Value("${petc.s3.endpoint}") String s3Endpoint,
             @Value("${petc.s3.access-key}") String s3AccessKey,
             @Value("${petc.s3.secret-key}") String s3SecretKey,
-            PlatformSettingsService settings
+            PlatformSettingsService settings,
+            PayMongoProperties payMongo
     ) {
         this.environment = environment;
         this.govMock = govMock;
@@ -52,6 +55,7 @@ public class ProductionGuard implements ApplicationRunner {
         this.s3AccessKey = s3AccessKey;
         this.s3SecretKey = s3SecretKey;
         this.settings = settings;
+        this.payMongo = payMongo;
     }
 
     @Override
@@ -91,6 +95,12 @@ public class ProductionGuard implements ApplicationRunner {
         }
         if (settings.backoffSeconds().length == 0) {
             errors.add("submission.backoff_seconds must not be empty");
+        }
+        if (payMongo.isEnabled() && !payMongo.isLiveMode()) {
+            errors.add("petc.paymongo.live-mode must be true when PayMongo is enabled in production");
+        }
+        if (payMongo.isExposeTestUrl()) {
+            errors.add("petc.paymongo.expose-test-url must be false in production");
         }
         if (!errors.isEmpty()) {
             throw new IllegalStateException("Production profile is not compliant: " + String.join("; ", errors));

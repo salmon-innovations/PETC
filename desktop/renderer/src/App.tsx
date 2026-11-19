@@ -11,6 +11,7 @@ import SettingsPage from "./pages/settings/SettingsPage";
 import CommissioningPage from "./pages/settings/CommissioningPage";
 import { sidecarClient } from "./api/sidecarClient";
 import { useQuery } from "@tanstack/react-query";
+import BillingPage from "./pages/billing/BillingPage";
 
 // HashRouter avoids file:// routing issues when Electron loads the built bundle
 const queryClient = new QueryClient({
@@ -48,6 +49,7 @@ export default function App() {
             <Route path="/settings"  element={<SettingsPage />} />
             <Route element={<RequireCommissioning><RunTestPage /></RequireCommissioning>} path="/test" />
             <Route element={<RequireCommissioning><LtmsUploadPage /></RequireCommissioning>} path="/upload" />
+            <Route path="/billing"   element={<BillingPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/test" replace />} />
         </Routes>

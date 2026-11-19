@@ -27,13 +27,16 @@ module "petc" {
   ltms_production_upload_enabled = false
   ltms_commissioning_approved    = false
   # Populate these only during approved production commissioning.
-  ltms_allowed_hosts    = []
-  ltms_petc_base_url    = ""
-  ltms_jwt_base_url     = ""
-  service_desired_count = 2
-  bootstrap_mode        = true
-  log_retention_days    = 365
-  object_retention_days = 1095
+  ltms_allowed_hosts       = []
+  ltms_petc_base_url       = ""
+  ltms_jwt_base_url        = ""
+  paymongo_enabled         = false
+  paymongo_live_mode       = true
+  paymongo_expose_test_url = false
+  service_desired_count    = 2
+  bootstrap_mode           = true
+  log_retention_days       = 365
+  object_retention_days    = 1095
 
   create_rds                  = true
   application_database_name   = "petc_prod"

@@ -66,10 +66,13 @@ class SubmissionServiceTest {
                 sql.capture(), eq(String.class),
                 eq("22222222-2222-2222-2222-222222222222"),
                 eq("11111111-1111-1111-1111-111111111111"),
-                eq("center-1"), eq("test-1"), any(String.class), eq(5_500L));
+                eq("center-1"), eq("test-1"), any(String.class), eq(5_500L),
+                eq("PREPAID"), eq(1L));
         assertThat(sql.getValue())
                 .contains("charge_snapshot_centavos")
-                .contains("price_snapshotted_at");
+                .contains("price_snapshotted_at")
+                .contains("billing_mode_snapshot")
+                .contains("billing_profile_revision");
     }
 
     @Test

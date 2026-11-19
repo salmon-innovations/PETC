@@ -105,16 +105,28 @@ class SubmissionStatus:
 
 
 @dataclass
-class WalletStatus:
-    """This center's prepaid balance, as last seen from the cloud."""
+class BillingStatus:
+    """Mode-aware center billing, pricing, and identity status."""
     tenant_id: str
-    balance_centavos: int
+    balance_centavos: Optional[int]
     low: bool
     negative: bool
     blocked_count: int
     charge_per_upload_centavos: int
-    low_balance_threshold_centavos: int
+    low_balance_threshold_centavos: Optional[int]
     pricing_updated_at: Optional[str]
+    mode: str = "PREPAID"
+    current_usage_count: Optional[int] = None
+    current_estimate_centavos: Optional[int] = None
+    period_start: Optional[str] = None
+    next_cutoff: Optional[str] = None
+    open_total_centavos: Optional[int] = None
+    past_due_total_centavos: Optional[int] = None
+    past_due_invoice_count: Optional[int] = None
+
+
+# Compatibility name retained for existing imports/tests.
+WalletStatus = BillingStatus
 
 
 @dataclass
@@ -238,22 +250,45 @@ class CloudClient:
 
     # ── wallet ───────────────────────────────────────────────────────────
 
-    def get_wallet(self) -> "WalletStatus":
-        """This center's prepaid balance. The cloud scopes it by our API key."""
+    def get_wallet(self) -> "BillingStatus":
+        """This center's mode-aware billing status. Cloud scopes it by API key."""
         with httpx.Client(timeout=self._timeout) as client:
-            r = client.get(f"{self._base}/api/wallet/me", headers=self._headers)
+            r = client.get(f"{self._base}/api/billing/me", headers=self._headers)
             r.raise_for_status()
             body = r.json()
-        return WalletStatus(
+        return BillingStatus(
             tenant_id=body["tenantId"],
-            balance_centavos=body["balanceCentavos"],
-            low=body["low"],
-            negative=body["negative"],
-            blocked_count=body["blockedCount"],
+            balance_centavos=body.get("balanceCentavos"),
+            low=body.get("low") or False,
+            negative=body.get("negative") or False,
+            blocked_count=body.get("blockedCount") or 0,
             charge_per_upload_centavos=body["chargePerUploadCentavos"],
-            low_balance_threshold_centavos=body["lowBalanceThresholdCentavos"],
+            low_balance_threshold_centavos=body.get("lowBalanceThresholdCentavos"),
             pricing_updated_at=body.get("pricingUpdatedAt"),
+            mode=body["mode"],
+            current_usage_count=body.get("currentUsageCount"),
+            current_estimate_centavos=body.get("currentEstimateCentavos"),
+            period_start=body.get("periodStart"),
+            next_cutoff=body.get("nextCutoff"),
+            open_total_centavos=body.get("openTotalCentavos"),
+            past_due_total_centavos=body.get("pastDueTotalCentavos"),
+            past_due_invoice_count=body.get("pastDueInvoiceCount"),
         )
+
+    def create_topup(self, amount_centavos: int, client_request_id: str) -> dict:
+        return self._post("/api/billing/me/topups", {
+            "amountCentavos": amount_centavos,
+            "clientRequestId": client_request_id,
+        })
+
+    def get_topup(self, topup_id: str) -> dict:
+        return self._get(f"/api/billing/me/topups/{topup_id}")
+
+    def get_invoices(self, limit: int = 20) -> list[dict]:
+        return self._get(f"/api/billing/me/invoices?limit={max(1, min(limit, 100))}")
+
+    def get_invoice(self, invoice_id: str) -> dict:
+        return self._get(f"/api/billing/me/invoices/{invoice_id}")
 
     # ── lane identity and daily capacity ─────────────────────────────────
 
@@ -315,6 +350,12 @@ class CloudClient:
                 json=body,
                 headers=self._headers,
             )
+            r.raise_for_status()
+            return r.json()
+
+    def _get(self, path: str):
+        with httpx.Client(timeout=self._timeout) as client:
+            r = client.get(f"{self._base}{path}", headers=self._headers)
             r.raise_for_status()
             return r.json()
 

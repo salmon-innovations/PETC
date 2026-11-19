@@ -73,6 +73,14 @@ def _store_wallet(wallet) -> None:
         "charge_per_upload_centavos": wallet.charge_per_upload_centavos,
         "low_balance_threshold_centavos": wallet.low_balance_threshold_centavos,
         "pricing_updated_at": wallet.pricing_updated_at,
+        "mode": wallet.mode,
+        "current_usage_count": wallet.current_usage_count,
+        "current_estimate_centavos": wallet.current_estimate_centavos,
+        "period_start": wallet.period_start,
+        "next_cutoff": wallet.next_cutoff,
+        "open_total_centavos": wallet.open_total_centavos,
+        "past_due_total_centavos": wallet.past_due_total_centavos,
+        "past_due_invoice_count": wallet.past_due_invoice_count,
         "fetched_at": fetched_at,
     }
 

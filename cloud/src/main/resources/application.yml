@@ -79,6 +79,23 @@ petc:
     dev-tenant-name: ${DEV_CENTER_NAME:Mock PETC Center}
   submission:
     max-attempts: ${SUBMISSION_MAX_ATTEMPTS:5}
+  billing:
+    finalizer-delay-ms: ${BILLING_FINALIZER_DELAY_MS:60000}
+  paymongo:
+    enabled: ${PAYMONGO_ENABLED:false}
+    base-url: ${PAYMONGO_BASE_URL:https://api.paymongo.com}
+    secret-key: ${PAYMONGO_SECRET_KEY:}
+    webhook-secret: ${PAYMONGO_WEBHOOK_SECRET:}
+    live-mode: ${PAYMONGO_LIVE_MODE:false}
+    expose-test-url: ${PAYMONGO_EXPOSE_TEST_URL:false}
+    qr-expiry-seconds: ${PAYMONGO_QR_EXPIRY_SECONDS:1800}
+    minimum-topup-centavos: ${PAYMONGO_MINIMUM_TOPUP_CENTAVOS:10000}
+    maximum-topup-centavos: ${PAYMONGO_MAXIMUM_TOPUP_CENTAVOS:5000000}
+    connect-timeout: ${PAYMONGO_CONNECT_TIMEOUT:5s}
+    request-timeout: ${PAYMONGO_REQUEST_TIMEOUT:20s}
+    webhook-tolerance: ${PAYMONGO_WEBHOOK_TOLERANCE:5m}
+    reconcile-delay-ms: ${PAYMONGO_RECONCILE_DELAY_MS:30000}
+    webhook-worker-delay-ms: ${PAYMONGO_WEBHOOK_WORKER_DELAY_MS:1000}
 
 logging:
   level:
