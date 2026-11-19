@@ -159,11 +159,44 @@ jobs:
           pyinstaller ../installer/petc_sidecar.spec --distpath dist --workpath build/pyinstaller --noconfirm
           $env:PETC_PROFILE = "dev"
           $env:PETC_GOV_MOCK = "true"
-          $env:PETC_DATA_DIR = "$env:RUNNER_TEMP\petc-sidecar-smoke"
-          $sidecar = Start-Process -FilePath "dist/petc/petc.exe" -PassThru
-          Start-Sleep -Seconds 8
-          Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8765/health
-          Stop-Process -Id $sidecar.Id -Force
+          $smokeDir = Join-Path $env:RUNNER_TEMP "petc-sidecar-smoke"
+          New-Item -ItemType Directory -Path $smokeDir -Force | Out-Null
+          $env:PETC_DATA_DIR = Join-Path $smokeDir "data"
+          @(
+            "petc.profile=dev"
+            "petc.cloud.url=http://127.0.0.1:8080"
+            "petc.cloud.key=ci-test-key"
+            "petc.expected.center=ci-center"
+            "petc.expected.lane=1"
+          ) | Set-Content -Path (Join-Path $smokeDir "petc.properties") -Encoding utf8
+          $stdout = Join-Path $smokeDir "sidecar.stdout.log"
+          $stderr = Join-Path $smokeDir "sidecar.stderr.log"
+          $sidecarExe = (Resolve-Path "dist/petc/petc.exe").Path
+          $sidecar = Start-Process -FilePath $sidecarExe -WorkingDirectory $smokeDir -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+          try {
+            $healthy = $false
+            $deadline = (Get-Date).AddSeconds(60)
+            while ((Get-Date) -lt $deadline) {
+              if ($sidecar.HasExited) { throw "Packaged Windows sidecar exited with code $($sidecar.ExitCode)" }
+              try {
+                $response = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8765/health -TimeoutSec 2 -ErrorAction Stop
+                if ($response.StatusCode -eq 200) { $healthy = $true; break }
+              } catch {
+                Start-Sleep -Seconds 2
+              }
+            }
+            if (-not $healthy) { throw "Packaged Windows sidecar did not become healthy within 60 seconds" }
+          } catch {
+            if (-not $sidecar.HasExited) { Stop-Process -Id $sidecar.Id -Force }
+            $sidecar.WaitForExit()
+            Write-Host "Sidecar stdout:"
+            if (Test-Path $stdout) { Get-Content $stdout }
+            Write-Host "Sidecar stderr:"
+            if (Test-Path $stderr) { Get-Content $stderr }
+            throw
+          } finally {
+            if (-not $sidecar.HasExited) { Stop-Process -Id $sidecar.Id -Force }
+          }
           Pop-Location
           Push-Location desktop/renderer
           npm ci
