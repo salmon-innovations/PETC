@@ -84,7 +84,7 @@ public class WalletService {
                 "SELECT count(*) FROM submissions WHERE tenant_id = ?::uuid AND state = 'BLOCKED'",
                 Integer.class, tenantId);
         OffsetDateTime pricingUpdatedAt = jdbc.queryForObject(
-                "SELECT max(updated_at) FROM platform_settings WHERE setting_key IN ('charge_per_upload_centavos', 'low_balance_threshold_centavos')",
+                "SELECT max(updated_at) FROM platform_settings WHERE key IN ('wallet.charge_per_upload_centavos', 'wallet.low_balance_threshold_centavos')",
                 OffsetDateTime.class);
         return new WalletSummary(
                 tenantId,
