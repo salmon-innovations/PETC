@@ -3,6 +3,9 @@
 # Output: sidecar/dist/petc  (directory bundle, not one-file, for faster cold start)
 
 from pathlib import Path
+import sys
+
+from PyInstaller.utils.hooks import collect_data_files
 
 block_cipher = None
 sidecar_dir = Path(SPECPATH).parent / 'sidecar'
@@ -13,7 +16,7 @@ a = Analysis(
     binaries=[],
     datas=[
         (str(sidecar_dir / 'petc'), 'petc'),
-    ],
+    ] + (collect_data_files('tzdata') if sys.platform == 'win32' else []),
     hiddenimports=[
         'uvicorn.logging',
         'uvicorn.loops',
