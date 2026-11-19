@@ -44,7 +44,8 @@ public class SubmissionsController {
         // but the authenticated key is authoritative. A forged/mistaken ID is
         // rejected and never reaches the queue or any future LTMS request.
         keyValidator.requireMatchingCenter(center, req.centerId());
-        String submissionId = service.enqueue(center.tenantId(), center.centerId(), req.testId(), req.payload());
+        String submissionId = service.enqueue(
+                center.tenantId(), center.laneId(), center.centerId(), req.testId(), req.payload());
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(new SubmitResponse(submissionId, "PENDING"));
     }
@@ -64,7 +65,7 @@ public class SubmissionsController {
         // "OR current_tenant_id() IS NULL" branch. Without the tenantId below,
         // any valid center key could read any other center's submission.
         var ctx = keyValidator.validateContext(centerKey);
-        return service.getStatus(submissionId, ctx.tenantId())
+        return service.getStatus(submissionId, ctx.tenantId(), ctx.laneId())
                 .map(s -> ResponseEntity.ok(new StatusResponse(
                         submissionId,
                         s.state(),

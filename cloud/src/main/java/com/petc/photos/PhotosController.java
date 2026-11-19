@@ -44,19 +44,21 @@ public class PhotosController {
 
     /**
      * Returns a presigned PUT URL valid for {@code presignTtlSeconds}.
-     * S3 key is scoped to {@code tenants/{tenantId}/tests/{testId}/{photoId}.jpg}.
+     * S3 key is scoped to the authenticated lane, preventing one desktop from
+     * writing into a sibling lane's test namespace.
      */
     @PostMapping("/presign")
     public ResponseEntity<PresignResponse> presign(
             @RequestHeader("X-Center-Key") String centerKey,
             @Valid @RequestBody PresignRequest req
     ) {
-        String tenantId = keyValidator.validateContext(centerKey).tenantId();
+        var ctx = keyValidator.validateContext(centerKey);
         String contentType = req.contentType() != null ? req.contentType() : "image/jpeg";
         if (!contentType.equals("image/jpeg") && !contentType.equals("image/jpg")) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Only JPEG photo uploads are accepted");
         }
-        String s3Key = "tenants/%s/tests/%s/%s.jpg".formatted(tenantId, req.testId(), req.photoId());
+        String s3Key = "tenants/%s/lanes/%s/tests/%s/%s.jpg"
+                .formatted(ctx.tenantId(), ctx.laneId(), req.testId(), req.photoId());
 
         PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
                 .signatureDuration(Duration.ofSeconds(presignTtlSeconds))

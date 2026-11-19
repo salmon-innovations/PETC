@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import { spawn, ChildProcess } from "child_process";
+import { randomBytes } from "crypto";
 import log from "electron-log";
 import {
   CommissioningConfig,
@@ -28,6 +29,11 @@ if (!isDev) {
 // ── sidecar lifecycle ─────────────────────────────────────────────────────
 let sidecarProcess: ChildProcess | null = null;
 let commissioningConfig: CommissioningConfig | null = null;
+let commissioningFilePath: string | null = null;
+// Capability shared only with the context-isolated PETC renderer and its
+// localhost sidecar. It prevents arbitrary local web pages from replacing a
+// workstation credential through the commissioning endpoints.
+const commissioningToken = randomBytes(32).toString("hex");
 
 function sidecarBinary(): string {
   if (isDev) {
@@ -38,10 +44,10 @@ function sidecarBinary(): string {
       : path.join(desktopRoot, ".venv", "bin", "python");
     return fs.existsSync(venvPython) ? venvPython : (process.platform === "win32" ? "python" : "python3");
   }
-  // In production: PyInstaller-frozen directory bundle inside resources/petc-sidecar/
-  // The COLLECT() in petc_sidecar.spec names the directory "petc"; the exe inside is "petc".
+  // In production the FileSet copies the contents of sidecar/dist/petc into
+  // resources/petc-sidecar/, so the frozen executable is directly beneath it.
   const exe = process.platform === "win32" ? "petc.exe" : "petc";
-  return path.join(process.resourcesPath, "petc-sidecar", "petc", exe);
+  return path.join(process.resourcesPath, "petc-sidecar", exe);
 }
 
 function sidecarArgs(): string[] {
@@ -56,7 +62,7 @@ function spawnSidecar(): void {
   const args = sidecarArgs();
   const cwd = isDev
     ? path.join(__dirname, "..", "..", "sidecar")
-    : path.join(process.resourcesPath, "petc-sidecar", "petc");
+    : path.join(process.resourcesPath, "petc-sidecar");
 
   log.info(`Spawning sidecar: ${bin} ${args.join(" ")} (cwd: ${cwd})`);
 
@@ -66,7 +72,13 @@ function spawnSidecar(): void {
       ...process.env,
       PETC_PORT: String(SIDECAR_PORT),
       PETC_DATA_DIR: app.getPath("userData"),
+      PETC_COMMISSIONING_TOKEN: commissioningToken,
       ...(commissioningConfig ? commissioningEnvironment(commissioningConfig) : {}),
+      ...(commissioningFilePath
+        ? isDev
+          ? { PETC_CONFIG_PATH: commissioningFilePath }
+          : { PETC_PACKAGED_CONFIG_PATH: commissioningFilePath }
+        : {}),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -87,9 +99,6 @@ function spawnSidecar(): void {
 function commissioningEnvironment(config: CommissioningConfig): NodeJS.ProcessEnv {
   return {
     PETC_PROFILE: config.profile,
-    PETC_CLOUD_URL: config.cloudUrl,
-    PETC_CLOUD_KEY: config.cloudKey,
-    PETC_CENTER_ID: config.centerId,
     ...(config.analyzer ? { PETC_ANALYZER: config.analyzer } : {}),
     ...(config.analyzerPort ? { PETC_ANALYZER_PORT: config.analyzerPort } : {}),
     ...(config.analyzerBaud ? { PETC_ANALYZER_BAUD: config.analyzerBaud } : {}),
@@ -106,7 +115,10 @@ async function chooseAndInstallCommissioningFile(): Promise<CommissioningConfig 
     filters: [{ name: "PETC properties", extensions: ["properties"] }],
   });
   if (result.canceled || result.filePaths.length === 0) return null;
-  return installCommissioningFile(result.filePaths[0], app.getPath("userData"), app.isPackaged);
+  const installedPath = path.join(app.getPath("userData"), "petc.properties");
+  const config = installCommissioningFile(result.filePaths[0], app.getPath("userData"), app.isPackaged);
+  commissioningFilePath = installedPath;
+  return config;
 }
 
 async function loadOrCommission(): Promise<CommissioningConfig | null> {
@@ -117,7 +129,10 @@ async function loadOrCommission(): Promise<CommissioningConfig | null> {
     || (fs.existsSync(installedPath) ? installedPath : "")
     || (!app.isPackaged && fs.existsSync(devPath) ? devPath : "");
 
-  if (candidate) return loadCommissioningFile(candidate, app.isPackaged);
+  if (candidate) {
+    commissioningFilePath = path.resolve(candidate);
+    return loadCommissioningFile(candidate, app.isPackaged);
+  }
   if (!app.isPackaged) return null;
 
   await dialog.showMessageBox({
@@ -173,6 +188,7 @@ ipcMain.handle("sidecar:url", () => `http://127.0.0.1:${SIDECAR_PORT}`);
 
 /** Renderer asks for the app data directory (for DB file path display) */
 ipcMain.handle("app:userData", () => app.getPath("userData"));
+ipcMain.handle("commissioning:token", () => commissioningToken);
 
 /** Renderer asks to open a file in the OS file manager */
 ipcMain.handle("shell:openPath", (_e, filePath: string) => shell.openPath(filePath));

@@ -4,6 +4,7 @@
  * and cached — it never changes for the lifetime of the window.
  */
 import axios from "axios";
+import { useAuthStore } from "../store/authStore";
 let _client = null;
 let _baseUrl = null;
 async function client() {
@@ -23,11 +24,22 @@ export function isLtmsSuccessState(state) {
 export function isLtmsTerminalState(state) {
     return state === "PASSED" || state === "ACCEPTED"
         || state === "FAILED_EVALUATION" || state === "ACTION_REQUIRED"
-        || state === "AUTH_BLOCKED" || state === "DEAD" || state === "REJECTED";
+        || state === "AUTH_BLOCKED" || state === "DEAD" || state === "REJECTED"
+        || state === "EXPIRED";
 }
 export function isLtmsNonterminalState(state) {
     return state === "PENDING" || state === "IN_FLIGHT" || state === "BLOCKED"
         || state === "DEFERRED" || state === "RECONCILING" || state === "WAITING_FOR_LTMS";
+}
+export function sidecarErrorMessage(error) {
+    if (axios.isAxiosError(error)) {
+        const detail = error.response?.data?.detail;
+        if (typeof detail === "string")
+            return detail;
+        if (detail?.message)
+            return detail.message;
+    }
+    return "The request could not be completed. Check the sidecar and try again.";
 }
 // ── API calls ──────────────────────────────────────────────────────────────
 export const sidecarClient = {
@@ -46,7 +58,47 @@ export const sidecarClient = {
             walletNegative: data.wallet_negative ?? false,
             walletBlockedCount: data.wallet_blocked_count ?? 0,
             walletFetchedAt: data.wallet_fetched_at ?? null,
+            walletCenterId: data.wallet_center_id ?? null,
+            walletChargePerUploadCentavos: data.wallet_charge_per_upload_centavos ?? null,
+            walletLowBalanceThresholdCentavos: data.wallet_low_balance_threshold_centavos ?? null,
+            walletPricingUpdatedAt: data.wallet_pricing_updated_at ?? null,
+            centerId: data.center_id ?? null,
+            centerName: data.center_name ?? null,
+            laneId: data.lane_id ?? null,
+            laneNumber: data.lane_number ?? null,
+            laneActive: data.lane_active ?? null,
+            laneIdentityConflict: data.lane_identity_conflict ?? false,
+            laneQuotaUsed: data.lane_quota_used ?? null,
+            laneQuotaReserved: data.lane_quota_reserved ?? null,
+            laneQuotaLimit: data.lane_quota_limit ?? null,
+            laneQuotaRemaining: data.lane_quota_remaining ?? null,
+            laneQuotaBusinessDate: data.lane_quota_business_date ?? null,
+            laneQuotaResetsAt: data.lane_quota_resets_at ?? null,
+            laneQuotaFetchedAt: data.lane_quota_fetched_at ?? null,
+            configured: data.configured ?? false,
+            commissioningRequired: data.commissioning_required ?? true,
+            config: data.config ?? {},
+            readinessReady: data.readiness_ready ?? false,
+            readinessReason: data.readiness_reason ?? "PETC commissioning is required",
         };
+    },
+    async validateCommissioning(params) {
+        const c = await client();
+        const token = await window.petcBridge.getCommissioningToken();
+        const { data } = await c.post("/commissioning/validate", {
+            cloud_url: params.cloudUrl, cloud_key: params.cloudKey,
+            expected_center: params.expectedCenter, expected_lane: params.expectedLane,
+        }, { headers: commissioningHeaders(token) });
+        return data;
+    },
+    async saveCommissioning(params) {
+        const c = await client();
+        const token = await window.petcBridge.getCommissioningToken();
+        const { data } = await c.post("/commissioning/save", {
+            cloud_url: params.cloudUrl, cloud_key: params.cloudKey,
+            expected_center: params.expectedCenter, expected_lane: params.expectedLane, confirmed: true,
+        }, { headers: commissioningHeaders(token) });
+        return data;
     },
     async startTest(params) {
         const c = await client();
@@ -184,3 +236,7 @@ export const sidecarClient = {
         return data;
     },
 };
+function commissioningHeaders(capability) {
+    const session = useAuthStore.getState().token;
+    return { "X-PETC-Commissioning-Token": capability, ...(session ? { Authorization: `Bearer ${session}` } : {}) };
+}

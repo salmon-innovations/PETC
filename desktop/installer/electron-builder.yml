@@ -11,7 +11,7 @@ artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
 files:
   - package.json
   - from: renderer/dist
-    to: .
+    to: electron/renderer
     filter:
       - "**/*"
   - from: electron/dist
@@ -27,6 +27,8 @@ extraResources:
     filter:
       - "**/*"
 
+# Entry point is declared in desktop/package.json (electron/dist/main.js).
+
 asar: true
 
 mac:
@@ -34,8 +36,7 @@ mac:
     - dmg
     - zip
   category: public.app-category.productivity
-  identity: null
-  hardenedRuntime: false
+  hardenedRuntime: true
   gatekeeperAssess: false
 
 dmg:
@@ -54,10 +55,16 @@ win:
 
 nsis:
   oneClick: false
+  # Commissioning writes petc.properties beside PETC Desktop.exe.  A
+  # per-machine installation therefore obtains administrator approval during
+  # install; upgrades leave this non-packaged file in place.
+  perMachine: true
+  allowElevation: true
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: PETC Desktop
+  include: installer/commissioning.nsh
 
 publish:
   provider: generic

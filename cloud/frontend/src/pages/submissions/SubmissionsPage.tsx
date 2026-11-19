@@ -10,6 +10,8 @@ interface Submission {
   test_id: string;
   center_id: string;
   center_name: string;
+  lane_id: string | null;
+  lane_number: number | null;
   state: string;
   attempts: number;
   certificate_no: string | null;
@@ -85,7 +87,7 @@ function StateBadge({ state }: { state: string }) {
 }
 
 function DetailPanel({ id, onClose }: { id: string; onClose: () => void }) {
-  const { data } = useQuery<SubmissionDetail>({
+  const { data, isError } = useQuery<SubmissionDetail>({
     queryKey: ["submission", id],
     queryFn: () => api.get<SubmissionDetail>(`/admin/submissions/${id}`).then((r) => r.data),
   });
@@ -104,17 +106,24 @@ function DetailPanel({ id, onClose }: { id: string; onClose: () => void }) {
           <button onClick={onClose} className="text-xs text-gray-500 underline">Close</button>
         </div>
 
+        {isError && (
+          <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+            Unable to load submission details from the cloud backend.
+          </div>
+        )}
+
         {data && (
           <>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <Field label="State"><StateBadge state={data.state} /></Field>
+              <Field label="Lane">{data.lane_number ? `Lane ${data.lane_number}` : "—"}</Field>
               <Field label="Attempts">{data.attempts}</Field>
               <Field label="Certificate">{data.certificate_no ?? "—"}</Field>
               <Field label="OR No.">{data.or_no ?? "—"}</Field>
               <Field label="Created">{formatDateTime(data.created_at)}</Field>
               <Field label="Accepted">{formatDateTime(data.accepted_at)}</Field>
-              <Field label="Quoted CEC price">{formatCentavos(data.charge_snapshot_centavos)}</Field>
-              <Field label="Price quoted at">{formatDateTime(data.price_snapshotted_at)}</Field>
+              <Field label="Quoted price">{formatCentavos(data.charge_snapshot_centavos)}</Field>
+              <Field label="Price quoted">{formatDateTime(data.price_snapshotted_at)}</Field>
               <Field label="Valid from">{data.valid_from ?? "—"}</Field>
               <Field label="Valid until">{data.valid_until ?? "—"}</Field>
               <Field label="CEC number">{data.cec_number ?? "—"}</Field>
@@ -202,18 +211,30 @@ export default function SubmissionsPage() {
 
   const state = params.get("state") ?? "";
   const centerId = params.get("centerId") ?? "";
+  const laneId = params.get("laneId") ?? "";
 
-  const { data: submissions = [] } = useQuery<Submission[]>({
-    queryKey: ["submissions", state, centerId],
+  const submissionsQuery = useQuery<Submission[]>({
+    queryKey: ["submissions", state, centerId, laneId],
     queryFn: () => {
       const q = new URLSearchParams();
       if (state) q.set("state", state);
       if (centerId) q.set("centerId", centerId);
+      if (laneId) q.set("laneId", laneId);
       q.set("limit", "100");
       return api.get<Submission[]>(`/admin/submissions?${q}`).then((r) => r.data);
     },
     refetchInterval: 15_000,
   });
+
+  if (submissionsQuery.isPending) {
+    return <PageStatus message="Loading submissions…" />;
+  }
+
+  if (submissionsQuery.isError) {
+    return <PageStatus error message="Unable to load submissions from the cloud backend." />;
+  }
+
+  const submissions = submissionsQuery.data;
 
   const setFilter = (key: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -246,6 +267,15 @@ export default function SubmissionsPage() {
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
         </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Lane ID</label>
+          <input
+            value={laneId}
+            onChange={(e) => setFilter("laneId", e.target.value)}
+            placeholder="Lane UUID"
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+        </div>
         <span className="ml-auto text-xs text-gray-500">{submissions.length} shown</span>
       </div>
 
@@ -253,7 +283,7 @@ export default function SubmissionsPage() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
             <tr>
-              {["Test", "Center", "State", "Certificate", "Created", ""].map((h) => (
+              {["Test", "Center", "Lane", "State", "Certificate", "Created", ""].map((h) => (
                 <th key={h} className="px-5 py-3 text-left font-semibold">{h}</th>
               ))}
             </tr>
@@ -263,6 +293,7 @@ export default function SubmissionsPage() {
               <tr key={s.id} className={clsx("hover:bg-gray-50", s.state === "BLOCKED" && "bg-amber-50/40")}>
                 <td className="px-5 py-3 font-medium">{s.test_id}</td>
                 <td className="px-5 py-3 text-gray-600">{s.center_name}</td>
+                <td className="px-5 py-3 text-gray-600">{s.lane_number ? `Lane ${s.lane_number}` : "—"}</td>
                 <td className="px-5 py-3">
                   <StateBadge state={s.state} />
                   {s.grace_released_at && (
@@ -282,7 +313,7 @@ export default function SubmissionsPage() {
               </tr>
             ))}
             {submissions.length === 0 && (
-              <tr><td colSpan={6} className="px-5 py-10 text-center text-gray-400">
+              <tr><td colSpan={7} className="px-5 py-10 text-center text-gray-400">
                 No submissions match these filters.
               </td></tr>
             )}
@@ -291,6 +322,22 @@ export default function SubmissionsPage() {
       </div>
 
       {selected && <DetailPanel id={selected} onClose={() => setSelected(null)} />}
+    </div>
+  );
+}
+
+function PageStatus({ message, error = false }: { message: string; error?: boolean }) {
+  return (
+    <div className="max-w-6xl mx-auto p-6 space-y-6">
+      <h1 className="text-xl font-bold text-gray-800">Submissions</h1>
+      <div
+        role={error ? "alert" : "status"}
+        className={error
+          ? "rounded-xl border border-red-300 bg-red-50 p-5 text-sm text-red-800"
+          : "rounded-xl border border-gray-200 bg-white p-5 text-sm text-gray-600"}
+      >
+        {message}
+      </div>
     </div>
   );
 }

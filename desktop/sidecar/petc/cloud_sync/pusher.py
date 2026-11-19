@@ -1,31 +1,19 @@
-"""
-Opportunistic cloud mirror pusher.
+"""Retired compatibility shim for the former mirror ingest path.
 
-Drains the cloud_outbox table and POSTs each event to the cloud backend's
-mirror ingest endpoint.  Failures are re-queued with back-off — the desktop
-is fully functional even if the cloud is unreachable for days.
+The old ``/api/ingest/mirror`` endpoint was an unauthenticated parallel path
+to submissions and commonly returned 403.  Test submission is now persisted
+in SQLite and sent only through the idempotent ``/api/submissions`` workflow.
+This shim remains temporarily so older local API call sites do not lose their
+audit writes during an upgrade, but it never performs a network request.
 """
 from __future__ import annotations
 
-import json
 import logging
-import threading
-import time
-from typing import Optional
-
-import httpx
-
-from ..db.session import SessionLocal
-from ..db.models import CloudOutbox
 
 logger = logging.getLogger(__name__)
 
-_BACKOFF = [5, 15, 60, 300, 900]
-MAX_ATTEMPTS = 5
-
-
 class CloudSyncPusher:
-    """Daemon thread that mirrors local records to the cloud backend."""
+    """Compatibility sink; cloud submission is owned by submissions/reconciler."""
 
     def __init__(
         self,
@@ -34,101 +22,31 @@ class CloudSyncPusher:
         api_key: str,
         poll_interval_s: float = 10.0,
     ) -> None:
-        self._base_url = cloud_base_url.rstrip("/")
-        self._center_id = center_id
-        self._api_key = api_key
-        self._interval = poll_interval_s
-        self._stop = threading.Event()
-        self._thread: Optional[threading.Thread] = None
+        # Keep the constructor signature so mixed-version installs start
+        # cleanly. Values (especially api_key) are deliberately not retained.
+        del cloud_base_url, center_id, api_key, poll_interval_s
 
     def start(self) -> None:
-        self._thread = threading.Thread(target=self._run, daemon=True, name="petc-cloud-sync")
-        self._thread.start()
-        logger.info("CloudSyncPusher started")
+        # Existing installs can have mirror rows left in PENDING. They are not
+        # submission work and must neither look like a stuck queue nor be sent
+        # to the retired endpoint after upgrade.
+        from ..db.models import CloudOutbox
+        from ..db.session import SessionLocal
+        with SessionLocal() as session:
+            session.query(CloudOutbox).filter(CloudOutbox.status == "PENDING").update(
+                {CloudOutbox.status: "RETIRED", CloudOutbox.last_error: "Legacy mirror path retired"},
+                synchronize_session=False,
+            )
+            session.commit()
+        logger.info("Legacy mirror sync retired; using durable submission workflow")
 
     def stop(self) -> None:
-        self._stop.set()
-        if self._thread:
-            self._thread.join(timeout=10)
+        return None
 
     def enqueue(self, entity_type: str, entity_id: str, payload: dict) -> None:
-        """Called immediately after a local write to schedule a mirror push."""
-        import uuid
-        with SessionLocal() as session:
-            row = CloudOutbox(
-                id=str(uuid.uuid4()),
-                entity_type=entity_type,
-                entity_id=entity_id,
-                payload_json=json.dumps(payload),
-            )
-            session.add(row)
-            session.commit()
+        """No-op: records are persisted by their owning local transactions.
 
-    # ----------------------------------------------------------------- private
-
-    def _run(self) -> None:
-        while not self._stop.wait(self._interval):
-            try:
-                self._flush()
-            except Exception:
-                logger.exception("CloudSyncPusher flush error")
-
-    def _flush(self) -> None:
-        now = time.time()
-        with SessionLocal() as session:
-            rows = (
-                session.query(CloudOutbox)
-                .filter(
-                    CloudOutbox.status == "PENDING",
-                    CloudOutbox.next_retry <= __import__("datetime").datetime.utcfromtimestamp(now),
-                )
-                .order_by(CloudOutbox.next_retry)
-                .limit(20)
-                .all()
-            )
-
-        for row in rows:
-            self._send_row(row)
-
-    def _send_row(self, row: CloudOutbox) -> None:
-        url = f"{self._base_url}/api/ingest/mirror"
-        try:
-            with httpx.Client(timeout=15) as client:
-                resp = client.post(
-                    url,
-                    json={
-                        "centerId": self._center_id,
-                        "entityType": row.entity_type,
-                        "entityId": row.entity_id,
-                        "payload": json.loads(row.payload_json),
-                    },
-                    headers={"X-Center-Key": self._api_key},
-                )
-                resp.raise_for_status()
-            self._mark(row.id, "DONE")
-        except Exception as exc:
-            logger.warning("Mirror push failed id=%s: %s", row.id, exc)
-            self._mark_failed(row.id, str(exc))
-
-    def _mark(self, row_id: str, status: str) -> None:
-        with SessionLocal() as session:
-            row = session.get(CloudOutbox, row_id)
-            if row:
-                row.status = status
-                session.commit()
-
-    def _mark_failed(self, row_id: str, error: str) -> None:
-        import datetime
-        with SessionLocal() as session:
-            row = session.get(CloudOutbox, row_id)
-            if not row:
-                return
-            row.attempts += 1
-            row.last_error = error
-            if row.attempts >= MAX_ATTEMPTS:
-                row.status = "DEAD"
-            else:
-                delay = _BACKOFF[min(row.attempts - 1, len(_BACKOFF) - 1)]
-                row.next_retry = datetime.datetime.utcfromtimestamp(time.time() + delay)
-                row.status = "PENDING"
-            session.commit()
+        ``payload`` is explicitly discarded so diagnostic/audit data cannot
+        accidentally include an issued key or revive the legacy mirror route.
+        """
+        del entity_type, entity_id, payload

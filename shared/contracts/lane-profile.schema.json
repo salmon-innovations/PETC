@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PETC Authenticated Lane Profile",
+  "description": "Response from GET /api/lanes/me. The cloud derives this identity from X-Center-Key; a center may have multiple numbered lanes, with one active desktop credential per lane.",
+  "type": "object",
+  "required": ["tenantId", "centerId", "centerName", "laneId", "laneNumber", "active", "dailyUploadLimit", "authorizationStatus", "quota"],
+  "additionalProperties": false,
+  "properties": {
+    "tenantId": { "type": "string", "minLength": 1, "description": "Trusted center/tenant identifier" },
+    "centerId": { "type": "string", "minLength": 1, "description": "Trusted center slug" },
+    "centerName": { "type": "string", "minLength": 1 },
+    "laneId": { "type": "string", "minLength": 1 },
+    "laneNumber": { "type": "integer", "minimum": 1 },
+    "active": { "type": "boolean", "description": "Whether the authenticated lane is active." },
+    "dailyUploadLimit": { "type": "integer", "minimum": 0 },
+    "authorizationStatus": { "type": "string", "enum": ["ACTIVE", "SUSPENDED", "REVOKED", "EXPIRED"] },
+    "authorizationExpiresAt": { "type": ["string", "null"], "format": "date-time" },
+    "quota": { "$ref": "lane-quota.schema.json" }
+  }
+}

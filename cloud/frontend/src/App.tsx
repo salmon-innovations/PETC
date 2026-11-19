@@ -7,11 +7,19 @@ import LicensesPage from "./pages/licensing/LicensesPage";
 import OperationsDashboard from "./pages/dashboard/OperationsDashboard";
 import SubmissionsPage from "./pages/submissions/SubmissionsPage";
 import SettingsPage from "./pages/settings/SettingsPage";
+import BackendUnavailableDialog from "./components/BackendUnavailableDialog";
 import { useAuthStore } from "./store/authStore";
+import { isBackendUnavailableError } from "./store/backendAvailabilityStore";
 import clsx from "clsx";
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
+  defaultOptions: {
+    queries: {
+      retry: (failureCount, error) =>
+        !isBackendUnavailableError(error) && failureCount < 1,
+      staleTime: 30_000,
+    },
+  },
 });
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -81,6 +89,7 @@ function Protected({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <BackendUnavailableDialog />
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />

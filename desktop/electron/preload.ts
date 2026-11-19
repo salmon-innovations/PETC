@@ -8,6 +8,7 @@ import { contextBridge, ipcRenderer } from "electron";
 contextBridge.exposeInMainWorld("petcBridge", {
   // ── sidecar ──────────────────────────────────────────────────────────────
   getSidecarUrl: (): Promise<string> => ipcRenderer.invoke("sidecar:url"),
+  getCommissioningToken: (): Promise<string> => ipcRenderer.invoke("commissioning:token"),
 
   // ── app ──────────────────────────────────────────────────────────────────
   getUserDataPath: (): Promise<string> => ipcRenderer.invoke("app:userData"),

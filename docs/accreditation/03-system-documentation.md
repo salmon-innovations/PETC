@@ -44,7 +44,7 @@ The "Client Application" referred to throughout this document is the **Digiflash
 
 ### 2.1 Product Description
 
-Digiflash is a multi-tenant emission-testing platform for accredited Private Emission Testing Centers in the Philippines. At each center, a Windows desktop application captures emission readings from supported analyzer hardware, photographs the vehicle through a USB webcam, merges the captured data with vehicle and owner data retrieved from LTMS / IRDS **through the Digiflash cloud**, and submits the completed emission test record to LTMS / IRDS **also through the Digiflash cloud**. A printed Certificate of Emission Compliance (CEC) is issued to the vehicle owner once LTMS returns the certificate key, OR number, DERMALOG token, and 60-day validity window.
+Digiflash is a multi-tenant emission-testing platform for accredited Private Emission Testing Centers in the Philippines. A center can operate multiple numbered lanes, each with one desktop installation and one active credential. At each lane, a Windows desktop application captures emission readings from supported analyzer hardware, photographs the vehicle through a USB webcam, merges the captured data with vehicle and owner data retrieved from LTMS / IRDS **through the Digiflash cloud**, and submits the completed emission test record to LTMS / IRDS **also through the Digiflash cloud**. A printed Certificate of Emission Compliance (CEC) is issued to the vehicle owner once LTMS returns the certificate key, OR number, DERMALOG token, and 60-day validity window.
 
 The desktop application is the source of truth for test records at each center. The cloud service holds the single whitelisted public IP that LTMS and IRDS allow inbound from; no individual PETC IP is whitelisted by either registry.
 
@@ -88,7 +88,7 @@ The desktop application is the source of truth for test records at each center. 
 
 ### 2.3 Source-of-Truth Statement
 
-The local SQLite database (`petc.db`) on each Digiflash desktop is the authoritative record of emission tests conducted at that center. The center can continue capturing tests during a temporary cloud or LTMS outage; queued tests are pushed to the cloud when connectivity is restored, and the cloud completes the LTMS submission asynchronously. The CEC is issued only after LTMS returns `ACCEPTED`; if the 60-second short-poll times out the submission enters `WAITING_FOR_LTMS` and a background reconciler on the desktop resolves it when the cloud reports a terminal state.
+The local SQLite database (`petc.db`) on each Digiflash desktop is the authoritative record of emission tests conducted at its lane. The desktop can continue capturing tests during a temporary cloud or LTMS outage, but official cloud submission is allowed only on the test's Asia/Manila calendar day; the system rejects late uploads. The CEC is issued only after LTMS returns `ACCEPTED`; if the 60-second short-poll times out the submission enters `WAITING_FOR_LTMS` and a background reconciler on the desktop resolves it when the cloud reports a terminal state.
 
 ---
 
@@ -157,7 +157,7 @@ This section is the formal Security Policy of the Client Application required by
 - Operators log in to the Client Application via the local sidecar endpoint `POST /auth/login`.
 - User passwords are stored as bcrypt hashes via `passlib` and are never persisted in plaintext.
 - A successful login issues a short-lived JWT session token, held in the renderer's Zustand state for the duration of the session.
-- Cloud requests carry an `X-Center-Key` header whose hash is verified server-side against the `center_licenses.key_hash` column on the operator cloud.
+- Cloud requests carry an `X-Center-Key` header whose hash is verified server-side against the active lane credential on the operator cloud. The validated credential resolves both the center tenant and the numbered lane; caller-supplied identity is not trusted.
 - Enforced in: [desktop/sidecar/petc/api/](../../desktop/sidecar/petc/api/), [desktop/sidecar/petc/service.py](../../desktop/sidecar/petc/service.py).
 
 ### 4.2 Authorization (Role-Based Access Control)
@@ -172,14 +172,14 @@ This section is the formal Security Policy of the Client Application required by
 
 ### 4.3 Tenant Isolation
 
-- Each accredited PETC corresponds to exactly one tenant on the operator cloud.
-- Every cloud request originating from a Client Application is bound to a tenant via the `X-Center-Key` header. The validator resolves the key to a `tenantId`, and every downstream query is scoped by that `tenantId`.
+- Each accredited PETC corresponds to exactly one tenant on the operator cloud and can contain multiple numbered lanes.
+- Every cloud request originating from a Client Application is bound to a tenant and lane via the `X-Center-Key` header. The validator resolves the credential to a `tenantId` and `laneId`, and every downstream submission/photo query is scoped by both values.
 - A tenant's records are never visible to operators of another tenant.
 
 ### 4.4 Data Protection
 
 - The local SQLite database is stored under the per-user `%APPDATA%\PETC\` directory, inheriting NTFS access controls of that user account.
-- The cloud-side API key (`PETC_CLOUD_KEY`) is stored in the operating system credential store / encrypted configuration file, never in plaintext source.
+- The cloud-side lane credential (`PETC_CLOUD_KEY`) is stored in the operating system credential store / encrypted configuration file, never in plaintext source. One active credential is allowed per lane.
 - Test photos are written to the local photos directory and are referenced by their SHA-256 content hash.
 - All outbound communication to LTMS, Stradcom, and the PETC operator cloud is performed exclusively over HTTPS in production deployments.
 
@@ -187,7 +187,7 @@ This section is the formal Security Policy of the Client Application required by
 
 - State-changing actions in the Client Application — test creation, analyzer result capture, photo capture, LTMS submission outcome, CEC print, and CEC reprint — are written to the local `audit_log` table and rolling log file.
 - LTMS submission attempts log: timestamp, operator user ID, plate number, attempt outcome, and any error returned by the registry.
-- Cloud submission and center authorization events are also available from the cloud database for reviewer/MIT audit access.
+- Cloud submission, lane quota, and center authorization events are also available from the cloud database for reviewer/MIT audit access. Center authorization, wallet balance, and CEC pricing remain center-level shared controls across all lanes.
 
 ### 4.5.1 Production Profile Fail-Closed Rules
 
@@ -336,7 +336,7 @@ Frame formats and unit-test fixtures for the ASCII gas and binary diesel adapter
 | `PETC_GOV_MOCK` | `true` (dev) | Use the **local** mock gov client (offline / dev path). In production this is false and gov calls go via the cloud. |
 | `PETC_CLOUD_URL` | unset (prod: set) | Digiflash cloud base URL. When set, the desktop submits to LTMS / IRDS via the cloud and proxies registry lookups through the cloud. When unset, only dev/accreditation-demo can use the local mock-gov path. |
 | `PETC_CENTER_ID` | unset | Center identifier issued at commissioning. |
-| `PETC_CLOUD_KEY` | unset | Per-center API key carried on every cloud request in the `X-Center-Key` header. |
+| `PETC_CLOUD_KEY` | unset | Per-lane credential carried on every cloud request in the `X-Center-Key` header; the cloud derives the center and numbered lane. |
 
 ### 6.2 Database Files
 

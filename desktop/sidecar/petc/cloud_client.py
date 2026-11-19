@@ -21,9 +21,9 @@ from typing import Optional
 import httpx
 
 
-# Keep legacy states during the cloud migration.  An unknown state is
-# deliberately non-terminal: the sidecar must not print a CEC or stop polling
-# merely because the cloud has introduced a state it does not yet understand.
+# Keep legacy states during the cloud migration. An unknown state remains
+# non-terminal so a newer cloud response cannot accidentally print a CEC or
+# stop local recovery.
 SUBMISSION_SUCCESS_STATES = frozenset(("PASSED", "ACCEPTED"))
 SUBMISSION_TERMINAL_STATES = frozenset((
     "PASSED", "ACCEPTED", "FAILED_EVALUATION", "ACTION_REQUIRED",
@@ -35,8 +35,33 @@ SUBMISSION_NONTERMINAL_STATES = frozenset((
 ))
 
 
+# Set once by the sidecar after it loads petc.properties.  The legacy
+# environment lookup below is retained only for unit-test/dev invocation of
+# this module; the packaged service never supplies cloud identity by env var.
+_configured_identity: tuple[str, str] | None = None
+
+
+def configure_identity(cloud_url: str, cloud_key: str) -> None:
+    global _configured_identity
+    _configured_identity = (cloud_url.rstrip("/"), cloud_key)
+
+
+def clear_configured_identity() -> None:
+    """Test helper; production callers should configure rather than clear."""
+    global _configured_identity
+    _configured_identity = None
+
+
 class CloudUnavailableError(Exception):
     """Raised when the cloud URL is not configured."""
+
+
+class DailyUploadLimitError(Exception):
+    """The lane has no remaining capacity for a new test/CEC today."""
+
+    def __init__(self, detail: str, quota: Optional["LaneQuota"] = None) -> None:
+        super().__init__(detail)
+        self.quota = quota
 
 
 @dataclass
@@ -82,11 +107,38 @@ class SubmissionStatus:
 @dataclass
 class WalletStatus:
     """This center's prepaid balance, as last seen from the cloud."""
+    tenant_id: str
     balance_centavos: int
     low: bool
     negative: bool
     blocked_count: int
     charge_per_upload_centavos: int
+    low_balance_threshold_centavos: int
+    pricing_updated_at: Optional[str]
+
+
+@dataclass
+class LaneProfile:
+    """The center/lane identity bound to this desktop credential."""
+    tenant_id: str
+    # A tenant is the authorization/billing boundary; centerId is the issued
+    # operational center identifier printed in CEC-facing payloads.
+    center_id: Optional[str]
+    center_name: Optional[str]
+    lane_id: str
+    lane_number: int
+    active: bool = True
+
+
+@dataclass
+class LaneQuota:
+    """Cloud-authoritative daily lane capacity (Asia/Manila business day)."""
+    used: int
+    reserved: int
+    limit: int
+    remaining: int
+    business_date: str
+    resets_at: Optional[str]
 
 
 class CloudClient:
@@ -134,11 +186,31 @@ class CloudClient:
 
     def create_submission(self, center_id: str, test_id: str, payload: dict) -> SubmissionCreated:
         """Enqueue the test bundle for cloud-side LTMS submission."""
-        resp = self._post("/api/submissions", {
-            "centerId": center_id,
+        # The authenticated lane credential is authoritative.  centerId is
+        # retained only for pre-lane cloud compatibility and omitted for a
+        # lane-aware installation.
+        body = {
             "testId": test_id,
             "payload": payload,
-        })
+        }
+        if center_id:
+            body["centerId"] = center_id
+        try:
+            resp = self._post("/api/submissions", body)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code not in (409, 422, 429):
+                raise
+            try:
+                error = exc.response.json()
+            except ValueError:
+                error = {}
+            if error.get("code") != "LANE_DAILY_UPLOAD_LIMIT_REACHED":
+                raise
+            quota_data = error.get("quota") or error
+            quota = _lane_quota_from_body(quota_data) if quota_data else None
+            raise DailyUploadLimitError(
+                error.get("message") or "This lane has reached its daily upload limit.", quota
+            ) from exc
         return SubmissionCreated(
             submission_id=resp["submissionId"],
             state=resp["state"],
@@ -173,12 +245,40 @@ class CloudClient:
             r.raise_for_status()
             body = r.json()
         return WalletStatus(
+            tenant_id=body["tenantId"],
             balance_centavos=body["balanceCentavos"],
             low=body["low"],
             negative=body["negative"],
             blocked_count=body["blockedCount"],
             charge_per_upload_centavos=body["chargePerUploadCentavos"],
+            low_balance_threshold_centavos=body["lowBalanceThresholdCentavos"],
+            pricing_updated_at=body.get("pricingUpdatedAt"),
         )
+
+    # ── lane identity and daily capacity ─────────────────────────────────
+
+    def get_lane_profile(self) -> LaneProfile:
+        """Authenticated center/lane identity for this desktop installation."""
+        with httpx.Client(timeout=self._timeout) as client:
+            r = client.get(f"{self._base}/api/lanes/me", headers=self._headers)
+            r.raise_for_status()
+            body = r.json()
+        return LaneProfile(
+            tenant_id=body["tenantId"],
+            center_id=body.get("centerId"),
+            center_name=body.get("centerName"),
+            lane_id=body["laneId"],
+            lane_number=int(body["laneNumber"]),
+            active=body.get("active", True),
+        )
+
+    def get_lane_quota(self) -> LaneQuota:
+        """Today's capacity after accepted CECs and active reservations."""
+        with httpx.Client(timeout=self._timeout) as client:
+            r = client.get(f"{self._base}/api/lanes/me/quota", headers=self._headers)
+            r.raise_for_status()
+            body = r.json()
+        return _lane_quota_from_body(body)
 
     # ── registry ─────────────────────────────────────────────────────────
 
@@ -224,6 +324,11 @@ def get_client() -> CloudClient:
     Build a CloudClient from environment variables.
     Raises CloudUnavailableError if PETC_CLOUD_URL is not set.
     """
+    if _configured_identity is not None:
+        url, key = _configured_identity
+        if not url or not key:
+            raise CloudUnavailableError("PETC commissioning is required")
+        return CloudClient(base_url=url, center_key=key)
     url = os.environ.get("PETC_CLOUD_URL", "").strip()
     if not url:
         raise CloudUnavailableError(
@@ -235,4 +340,24 @@ def get_client() -> CloudClient:
 
 def is_available() -> bool:
     """True when PETC_CLOUD_URL is configured."""
+    if _configured_identity is not None:
+        return bool(_configured_identity[0] and _configured_identity[1])
     return bool(os.environ.get("PETC_CLOUD_URL", "").strip())
+
+
+def _lane_quota_from_body(body: dict) -> LaneQuota:
+    """Accept both the new reservation-aware shape and older quota payloads."""
+    used = int(body.get("used", body.get("accepted", 0)))
+    reserved = int(body.get("reserved", 0))
+    limit = int(body["limit"])
+    # The server's remaining value is already after reservations.  Older
+    # servers did not expose it, so calculate the conservative equivalent.
+    remaining = int(body.get("remaining", max(0, limit - used - reserved)))
+    return LaneQuota(
+        used=used,
+        reserved=reserved,
+        limit=limit,
+        remaining=remaining,
+        business_date=body.get("businessDate", ""),
+        resets_at=body.get("resetsAt"),
+    )

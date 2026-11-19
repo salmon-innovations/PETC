@@ -6,6 +6,7 @@ export interface CommissioningConfig {
   cloudUrl: string;
   cloudKey: string;
   centerId: string;
+  laneNumber: number;
   updateUrl: string;
   analyzer?: string;
   analyzerPort?: string;
@@ -45,6 +46,7 @@ export function parseCommissioningFile(contents: string, packaged: boolean): Com
   const cloudUrl = properties["petc.cloud.url"] || "";
   const cloudKey = properties["petc.cloud.key"] || "";
   const centerId = properties["petc.center.id"] || properties["petc.expected.center"] || "";
+  const laneNumber = Number(properties["petc.expected.lane"] || "0");
   const updateUrl = properties["petc.update.url"] || PROFILE_UPDATE_URLS[profile];
 
   if (packaged || profile !== "dev") {
@@ -55,6 +57,9 @@ export function parseCommissioningFile(contents: string, packaged: boolean): Com
     if (!centerId || ["dev-center", "mock-center"].includes(centerId.toLowerCase())) {
       throw new Error("petc.center.id must be an issued center UUID");
     }
+    if (!Number.isInteger(laneNumber) || laneNumber < 1) {
+      throw new Error("petc.expected.lane must be a positive lane number");
+    }
     validateHttpsUrl("petc.update.url", updateUrl);
   }
 
@@ -63,6 +68,7 @@ export function parseCommissioningFile(contents: string, packaged: boolean): Com
     cloudUrl,
     cloudKey,
     centerId,
+    laneNumber,
     updateUrl,
     analyzer: properties["petc.analyzer"],
     analyzerPort: properties["petc.analyzer.port"],

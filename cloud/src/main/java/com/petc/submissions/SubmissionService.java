@@ -2,7 +2,11 @@ package com.petc.submissions;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.petc.audit.AuditService;
+import com.petc.lanes.LaneQuotaExceededException;
+import com.petc.lanes.LaneQuotaService;
+import com.petc.lanes.LateSubmissionException;
 import com.petc.wallet.WalletService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -13,6 +17,9 @@ import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -28,17 +35,26 @@ public class SubmissionService {
     private final ObjectMapper mapper;
     private final WalletService wallet;
     private final AuditService audit;
+    private final LaneQuotaService quota;
 
+    @Autowired
     public SubmissionService(
             JdbcTemplate jdbc,
             ObjectMapper mapper,
             WalletService wallet,
-            AuditService audit
+            AuditService audit,
+            LaneQuotaService quota
     ) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.wallet = wallet;
         this.audit = audit;
+        this.quota = quota;
+    }
+
+    /** Compatibility constructor retained for focused release-era unit tests. */
+    SubmissionService(JdbcTemplate jdbc, ObjectMapper mapper, WalletService wallet, AuditService audit) {
+        this(jdbc, mapper, wallet, audit, null);
     }
 
     /**
@@ -54,16 +70,18 @@ public class SubmissionService {
      * than inheriting the exhausted one from the rejected attempt.
      */
     @Transactional
-    public String enqueue(String tenantId, String centerId, String testId, Map<String, Object> payload) {
+    public String enqueue(String tenantId, String laneId, String centerId,
+                          String testId, Map<String, Object> payload) {
         try {
+            requireTodayTest(payload);
             String payloadJson = mapper.writeValueAsString(payload);
             long quotedCharge = wallet.chargePerUploadCentavos(tenantId);
-            return jdbc.queryForObject("""
+            String submissionId = jdbc.queryForObject("""
                     INSERT INTO submissions
-                        (tenant_id, center_id, test_id, payload,
+                        (tenant_id, lane_id, center_id, test_id, payload,
                          charge_snapshot_centavos, price_snapshotted_at)
-                    VALUES (?::uuid, ?, ?, ?::jsonb, ?, now())
-                    ON CONFLICT (tenant_id, test_id) DO UPDATE
+                    VALUES (?::uuid, ?::uuid, ?, ?, ?::jsonb, ?, now())
+                    ON CONFLICT (lane_id, test_id) DO UPDATE
                         SET state = CASE
                                 WHEN submissions.state IN ('REJECTED','ACTION_REQUIRED','DEAD') THEN 'PENDING'
                                 ELSE submissions.state
@@ -103,8 +121,13 @@ public class SubmissionService {
                                 ELSE submissions.grace_released_at
                             END
                     RETURNING id::text
-                    """, String.class, tenantId, centerId, testId, payloadJson, quotedCharge);
+                    """, String.class, tenantId, laneId, centerId, testId, payloadJson, quotedCharge);
+            quota.reserve(tenantId, laneId, submissionId);
+            return submissionId;
         } catch (Exception e) {
+            if (e instanceof LateSubmissionException || e instanceof LaneQuotaExceededException) {
+                throw (RuntimeException) e;
+            }
             throw new RuntimeException("Failed to enqueue submission for test " + testId, e);
         }
     }
@@ -118,12 +141,13 @@ public class SubmissionService {
      * permissive. Dropping it reopens a cross-tenant read of certificate and
      * DERMALOG data.
      */
-    public Optional<SubmissionStatus> getStatus(String submissionId, String tenantId) {
+    public Optional<SubmissionStatus> getStatus(String submissionId, String tenantId, String laneId) {
         var rows = jdbc.queryForList("""
                 SELECT state, certificate_no, ltms_ref_no, rejection_reason,
                        or_no, dermalog_token, valid_from, valid_until
-                FROM submissions WHERE id = ?::uuid AND tenant_id = ?::uuid
-                """, submissionId, tenantId);
+                FROM submissions
+                WHERE id = ?::uuid AND tenant_id = ?::uuid AND lane_id = ?::uuid
+                """, submissionId, tenantId, laneId);
         if (rows.isEmpty()) return Optional.empty();
         var row = rows.get(0);
         return Optional.of(new SubmissionStatus(
@@ -233,6 +257,7 @@ public class SubmissionService {
         }
 
         completeAttempt(submissionId, "PASSED", null);
+        if (quota != null) quota.consume(submissionId, tenantId);
         wallet.chargeForAcceptance(tenantId, submissionId, seq, chargeCentavos);
         log.info("Submission {} accepted cert={} (acceptance #{})", submissionId, certificateNo, seq);
     }
@@ -277,6 +302,7 @@ public class SubmissionService {
                 submissionId, tenantId);
         if (seq == null) throw new IllegalStateException("LTMS response no longer owns the in-flight submission");
         completeAttempt(submissionId, state, null);
+        if (quota != null) quota.consume(submissionId, tenantId);
         wallet.chargeForAcceptance(tenantId, submissionId, seq, chargeCentavos);
         log.info("Submission {} accepted by LTMS state={} inbox={}", submissionId, state,
                 com.petc.ltms.LtmsRedactor.identifier(inboxId));
@@ -309,6 +335,9 @@ public class SubmissionService {
                 """, terminalState, errorMessage, errorCode, errorMessage, inboxId,
                 reasonsJson, terminalState, submissionId);
         if (updated > 0) completeAttempt(submissionId, terminalState, errorMessage);
+        if (updated > 0 && "ACTION_REQUIRED".equals(terminalState) && quota != null) {
+            quota.release(submissionId);
+        }
     }
 
     /**
@@ -346,6 +375,7 @@ public class SubmissionService {
                 """, reason, reason, submissionId);
         if (updated > 0) {
             completeAttempt(submissionId, "ACTION_REQUIRED", reason);
+            if (quota != null) quota.release(submissionId);
             log.info("Submission {} requires action reason={}", submissionId, reason);
         }
     }
@@ -360,6 +390,7 @@ public class SubmissionService {
                     """, submissionId);
             if (updated > 0) {
                 completeAttempt(submissionId, "DEAD", "Retry budget exhausted");
+                if (quota != null) quota.release(submissionId);
                 log.warn("Submission {} exhausted {} attempts — DEAD", submissionId, attempts);
             }
             return;
@@ -477,6 +508,35 @@ public class SubmissionService {
                    AND a.attempt_no = s.attempt_sequence
                    AND a.finished_at IS NULL
                 """, state, errorMessage, submissionId);
+    }
+
+    private void requireTodayTest(Map<String, Object> payload) {
+        Object raw = payload.get("testDatetime");
+        if (!(raw instanceof String value) || value.isBlank()) {
+            throw new LateSubmissionException("payload.testDatetime is required");
+        }
+        LocalDate testDate;
+        try {
+            testDate = Instant.parse(value).atZone(LaneQuotaService.BUSINESS_ZONE).toLocalDate();
+        } catch (Exception ignored) {
+            try {
+                testDate = OffsetDateTime.parse(value).atZoneSameInstant(LaneQuotaService.BUSINESS_ZONE).toLocalDate();
+            } catch (Exception ignoredAgain) {
+                try {
+                    testDate = ZonedDateTime.parse(value).withZoneSameInstant(LaneQuotaService.BUSINESS_ZONE).toLocalDate();
+                } catch (Exception ignoredThird) {
+                    try {
+                        testDate = LocalDateTime.parse(value).atZone(LaneQuotaService.BUSINESS_ZONE).toLocalDate();
+                    } catch (Exception invalid) {
+                        throw new LateSubmissionException("payload.testDatetime must be an ISO-8601 datetime");
+                    }
+                }
+            }
+        }
+        if (!LocalDate.now(LaneQuotaService.BUSINESS_ZONE).equals(testDate)) {
+            throw new LateSubmissionException(
+                    "Late submissions are not permitted; testDatetime must be today in Asia/Manila");
+        }
     }
 
     record SubmissionStatus(

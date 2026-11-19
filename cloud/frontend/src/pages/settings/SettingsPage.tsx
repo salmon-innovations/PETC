@@ -16,7 +16,7 @@ interface Settings {
 }
 
 const SECTIONS = [
-  { id: "billing", label: "Billing Rates" },
+  { id: "billing", label: "Billing Defaults" },
   { id: "retries", label: "Retry Policy" },
   { id: "centers", label: "Centers" },
   { id: "licenses", label: "API Keys" },
@@ -130,13 +130,13 @@ function BillingAndRetries({ section }: { section: "billing" | "retries" }) {
     <div className="bg-white rounded-xl shadow p-5">
       {section === "billing" ? (
         <>
-          <Row label="Charge per accepted CEC" hint="Debited when LTMS accepts a submission. Rejections are free.">
+          <Row label="Default charge per accepted CEC" hint="Used for new centers. Edit an existing center from its wallet page.">
             {input("charge", { inputMode: "decimal" })}
             <span className="ml-2 text-xs text-gray-500">
               {data && formatCentavos(data["wallet.charge_per_upload_centavos"])} currently
             </span>
           </Row>
-          <Row label="Low balance warning" hint="Centers below this are flagged in the portal and desktop app.">
+          <Row label="Default low balance warning" hint="Used for new centers. Each center can override it from its wallet page.">
             {input("lowBalance", { inputMode: "decimal" })}
           </Row>
           <Row
@@ -182,7 +182,7 @@ function BillingAndRetries({ section }: { section: "billing" | "retries" }) {
         </>
       )}
       {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
-      {saved && <p className="mt-3 text-xs text-green-600">Saved. Applies within 30 seconds.</p>}
+      {saved && <p className="mt-3 text-xs text-green-600">Saved.</p>}
     </div>
   );
 }

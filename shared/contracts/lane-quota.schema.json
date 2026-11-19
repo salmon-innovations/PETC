@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PETC Lane Daily Quota",
+  "description": "Response from GET /api/lanes/me/quota. Capacity resets at midnight Asia/Manila. A slot is reserved while LTMS processing is in flight, consumed only by an LTMS-accepted CEC, and released after REJECTED or DEAD. Same-test corrected retries are idempotent and do not consume another slot.",
+  "type": "object",
+  "required": ["laneId", "businessDate", "accepted", "reserved", "limit", "remaining", "resetsAt"],
+  "additionalProperties": false,
+  "properties": {
+    "laneId": { "type": "string", "minLength": 1 },
+    "businessDate": { "type": "string", "format": "date" },
+    "accepted": { "type": "integer", "minimum": 0, "description": "LTMS-accepted CECs today" },
+    "reserved": { "type": "integer", "minimum": 0, "description": "Active in-flight reservations" },
+    "limit": { "type": "integer", "minimum": 0, "description": "Administrator-configured daily limit; default 80" },
+    "remaining": { "type": "integer", "minimum": 0, "description": "Available slots after accepted and reserved counts" },
+    "resetsAt": { "type": "string", "format": "date-time", "description": "Next Asia/Manila midnight" }
+  }
+}

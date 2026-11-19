@@ -2,6 +2,7 @@ package com.petc.submissions;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.petc.audit.AuditService;
+import com.petc.lanes.LaneQuotaService;
 import com.petc.wallet.WalletService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,10 +24,11 @@ class SubmissionServiceTest {
     @Mock private JdbcTemplate jdbc;
     @Mock private WalletService wallet;
     @Mock private AuditService audit;
+    @Mock private LaneQuotaService quota;
 
     @Test
     void claimPending_locksTransitionsAndSnapshotsEachAttemptBeforeReturningWork() {
-        SubmissionService service = new SubmissionService(jdbc, new ObjectMapper(), wallet, audit);
+        SubmissionService service = new SubmissionService(jdbc, new ObjectMapper(), wallet, audit, quota);
 
         service.claimPending(7);
 
@@ -45,22 +47,25 @@ class SubmissionServiceTest {
 
     @Test
     void enqueue_snapshotsTheCentersEffectivePrice() {
-        SubmissionService service = new SubmissionService(jdbc, new ObjectMapper(), wallet, audit);
+        SubmissionService service = new SubmissionService(jdbc, new ObjectMapper(), wallet, audit, quota);
         when(wallet.chargePerUploadCentavos("22222222-2222-2222-2222-222222222222"))
                 .thenReturn(5_500L);
         when(jdbc.queryForObject(any(String.class), eq(String.class), any(Object[].class)))
                 .thenReturn("submission-1");
 
+        String testDatetime = java.time.ZonedDateTime.now(LaneQuotaService.BUSINESS_ZONE).toString();
         service.enqueue(
                 "22222222-2222-2222-2222-222222222222",
+                "11111111-1111-1111-1111-111111111111",
                 "center-1",
                 "test-1",
-                java.util.Map.of("testId", "test-1"));
+                java.util.Map.of("testId", "test-1", "testDatetime", testDatetime));
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(jdbc).queryForObject(
                 sql.capture(), eq(String.class),
                 eq("22222222-2222-2222-2222-222222222222"),
+                eq("11111111-1111-1111-1111-111111111111"),
                 eq("center-1"), eq("test-1"), any(String.class), eq(5_500L));
         assertThat(sql.getValue())
                 .contains("charge_snapshot_centavos")
@@ -69,7 +74,7 @@ class SubmissionServiceTest {
 
     @Test
     void expiredClaim_movesToReconcilingInsteadOfReturningItToDispatch() {
-        SubmissionService service = new SubmissionService(jdbc, new ObjectMapper(), wallet, audit);
+        SubmissionService service = new SubmissionService(jdbc, new ObjectMapper(), wallet, audit, quota);
         when(jdbc.update(any(String.class))).thenReturn(1);
 
         int moved = service.moveExpiredClaimsToReconciling();
@@ -85,7 +90,7 @@ class SubmissionServiceTest {
 
     @Test
     void definitiveRejection_onlyTransitionsAnOwnedInFlightClaim() {
-        SubmissionService service = new SubmissionService(jdbc, new ObjectMapper(), wallet, audit);
+        SubmissionService service = new SubmissionService(jdbc, new ObjectMapper(), wallet, audit, quota);
         when(jdbc.update(any(String.class), any(), any(), any())).thenReturn(0);
 
         service.markRejected("11111111-1111-1111-1111-111111111111", "bad payload");
@@ -100,7 +105,7 @@ class SubmissionServiceTest {
 
     @Test
     void acceptedSubmission_debitsThePriceSnapshottedAtDispatch() {
-        SubmissionService service = new SubmissionService(jdbc, new ObjectMapper(), wallet, audit);
+        SubmissionService service = new SubmissionService(jdbc, new ObjectMapper(), wallet, audit, quota);
         when(jdbc.queryForObject(any(String.class), eq(Integer.class),
                 any(Object[].class))).thenReturn(3);
 

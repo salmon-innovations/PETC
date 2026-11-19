@@ -20,9 +20,10 @@ class SubmissionsControllerTest {
 
     @Test
     void submitPersistsTheCenterIdDerivedFromTheValidatedKey() {
-        var context = new CenterKeyValidator.CenterContext("tenant-a", "center-a", "ACTIVE", null);
+        var context = new CenterKeyValidator.CenterContext(
+                "tenant-a", "center-a", "Center A", "lane-a", 1, true, 80, "ACTIVE", null);
         when(validator.validateContext("key-a")).thenReturn(context);
-        when(service.enqueue("tenant-a", "center-a", "test-a", Map.of("value", "x")))
+        when(service.enqueue("tenant-a", "lane-a", "center-a", "test-a", Map.of("value", "x")))
                 .thenReturn("submission-a");
         var controller = new SubmissionsController(service, validator);
 
@@ -31,6 +32,6 @@ class SubmissionsControllerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         verify(validator).requireMatchingCenter(context, "center-a");
-        verify(service).enqueue("tenant-a", "center-a", "test-a", Map.of("value", "x"));
+        verify(service).enqueue("tenant-a", "lane-a", "center-a", "test-a", Map.of("value", "x"));
     }
 }

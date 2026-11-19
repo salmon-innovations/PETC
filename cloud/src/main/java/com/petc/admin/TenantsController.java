@@ -6,11 +6,11 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -39,8 +39,11 @@ public class TenantsController {
                 SELECT t.id::text          AS id,
                        t.slug              AS slug,
                        t.name              AS name,
-                       (SELECT count(*) FROM center_licenses cl
-                         WHERE cl.tenant_id = t.id AND cl.active = true) AS active_licenses,
+                       (SELECT count(*) FROM lane_credentials lc
+                         JOIN lanes l ON l.id = lc.lane_id
+                         WHERE l.tenant_id = t.id AND l.active = true AND lc.active = true) AS active_licenses,
+                       (SELECT count(*) FROM lanes l
+                         WHERE l.tenant_id = t.id AND l.active = true) AS active_lane_count,
                        (SELECT max(s.created_at) FROM submissions s
                          WHERE s.tenant_id = t.id)                       AS last_sync
                 FROM tenants t
@@ -51,6 +54,7 @@ public class TenantsController {
                         rs.getString("slug"),
                         rs.getString("name"),
                         rs.getInt("active_licenses"),
+                        rs.getInt("active_lane_count"),
                         rs.getObject("last_sync", OffsetDateTime.class)
                 )
         );
@@ -58,13 +62,18 @@ public class TenantsController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @Transactional
     public CenterResponse create(@Valid @RequestBody CreateCenterRequest req) {
         try {
             var id = jdbc.queryForObject(
                     "INSERT INTO tenants (slug, name) VALUES (?, ?) RETURNING id::text",
                     String.class, req.slug(), req.name()
             );
-            return new CenterResponse(id, req.slug(), req.name(), 0, null);
+            jdbc.queryForObject("""
+                    INSERT INTO lanes (tenant_id, lane_number) VALUES (?::uuid, 1) RETURNING id::text
+                    """, String.class, id);
+            jdbc.update("INSERT INTO center_authorizations (tenant_id) VALUES (?::uuid)", id);
+            return new CenterResponse(id, req.slug(), req.name(), 0, 1, null);
         } catch (DuplicateKeyException e) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT, "A center with slug '" + req.slug() + "' already exists");
@@ -79,6 +88,7 @@ public class TenantsController {
             String slug,
             String name,
             int activeLicenses,
+            int activeLaneCount,
             OffsetDateTime lastSync
     ) {}
 

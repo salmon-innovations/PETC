@@ -55,7 +55,7 @@ Paths excluded from this manifest: build outputs (`build/`, `dist/`, `target/`, 
 | `renderer/src/pages/test/RunTestPage.tsx` | Run-test flow (start, capture readings, complete). |
 | `renderer/src/pages/upload/LtmsUploadPage.tsx` | Six-step upload wizard — the primary submission UI. |
 | `renderer/src/pages/history/HistoryPage.tsx` | Test history table with CEC print + `WAITING_FOR_LTMS` polling. |
-| `renderer/src/pages/analytics/AnalyticsPage.tsx` | Per-center analytics. |
+| `renderer/src/pages/analytics/AnalyticsPage.tsx` | Per-center analytics, with lane-aware operational context. |
 | `renderer/src/pages/settings/SettingsPage.tsx` | Analyser / camera / printer settings. |
 | `renderer/src/store/authStore.ts` | Zustand store for the logged-in operator. |
 | `renderer/src/types/index.ts` | Shared TS types mirroring the sidecar API. |
@@ -66,7 +66,7 @@ Paths excluded from this manifest: build outputs (`build/`, `dist/`, `target/`, 
 | Path | Description |
 |---|---|
 | `sidecar/petc/service.py` | Startup — wires analyser, camera, printer, gov client, sync threads. |
-| `sidecar/petc/cloud_client.py` | HTTP client for the cloud `/api/photos/presign`, `/api/submissions`, registry endpoints. |
+| `sidecar/petc/cloud_client.py` | HTTP client for lane profile/quota, `/api/photos/presign`, `/api/submissions`, and registry endpoints. |
 | `sidecar/petc/analyzer/base.py` | `Analyzer` protocol + `FuelType` + reading dataclasses. |
 | `sidecar/petc/analyzer/builder.py` | Constructs the configured analyser from settings. |
 | `sidecar/petc/analyzer/serial_base.py` | Common base for USB-Serial analysers. |
@@ -148,7 +148,9 @@ Paths excluded from this manifest: build outputs (`build/`, `dist/`, `target/`, 
 | `gov/MockGovRegistryClient.java` | Active when `petc.gov.mock=true` (the default). |
 | `gov/StradcomGovRegistryClient.java` | Stub for the real Stradcom integration; active when `petc.gov.mock=false`. |
 | `gov/VehicleInfo.java`, `DriverInfo.java`, `EmissionPayload.java`, `SubmissionResult.java` | Gov-side DTOs (records). |
-| `ingest/CenterKeyValidator.java` | `X-Center-Key` validation, tenant resolution, and DO 2023-008 authorization status/expiry rejection. |
+| `ingest/CenterKeyValidator.java` | `X-Center-Key` validation; trusted center/tenant and lane resolution; DO 2023-008 authorization status/expiry rejection. |
+| `lanes/LaneQuotaService.java` | Asia/Manila lane daily quota reservation, consumption on LTMS acceptance, and release on rejection/dead submission. |
+| `lanes/LaneQuotaExceededException.java`, `LateSubmissionException.java` | Structured enforcement errors for exhausted lane capacity and late submissions. |
 | `registry/RegistryController.java` | `/api/registry/vehicle/{plate}` and `/api/registry/driver/{lic}`. |
 | `photos/PhotosController.java` | `/api/photos/presign` — short-lived S3 PUT URL. |
 | `submissions/SubmissionsController.java` | `POST /api/submissions`, `GET /api/submissions/{id}`. |
@@ -164,6 +166,7 @@ Paths excluded from this manifest: build outputs (`build/`, `dist/`, `target/`, 
 | `db/migration/V2__submissions.sql` | `center_licenses`, `submissions` table + RLS policy. |
 | `db/migration/V3__submission_cec_fields.sql` | Adds `or_no`, `dermalog_token`, `valid_from`, `valid_until`. |
 | `db/migration/V4__center_authorization_status.sql` | Adds center authorization status, expiry, suspension/revocation metadata. |
+| `db/migration/V8__multi_lane_support.sql` | Creates numbered lanes, one-active-credential lane auth, Lane 1 migration, and reservation-aware daily quota tables. |
 
 ### `cloud/src/test/java/com/petc/`
 
@@ -198,6 +201,8 @@ Paths excluded from this manifest: build outputs (`build/`, `dist/`, `target/`, 
 | `shared/contracts/presign-response.schema.json` | `POST /api/photos/presign` response schema. |
 | `shared/contracts/submission-request.schema.json` | `POST /api/submissions` request schema. |
 | `shared/contracts/submission-status.schema.json` | `GET /api/submissions/{id}` response schema. |
+| `shared/contracts/lane-profile.schema.json` | `GET /api/lanes/me` authenticated center/lane profile. |
+| `shared/contracts/lane-quota.schema.json` | `GET /api/lanes/me/quota` Asia/Manila daily lane capacity. |
 | `shared/ui/` | Shared UI assets (icons, brand). |
 
 ---

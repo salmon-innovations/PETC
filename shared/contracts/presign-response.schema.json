@@ -6,7 +6,7 @@
   "required": ["s3Key", "uploadUrl"],
   "additionalProperties": false,
   "properties": {
-    "s3Key":     { "type": "string", "description": "Canonical S3 object key: tenants/{tenantId}/tests/{testId}/{photoId}.jpg" },
+    "s3Key":     { "type": "string", "description": "Canonical S3 object key: tenants/{tenantId}/lanes/{laneId}/tests/{testId}/{photoId}.jpg" },
     "uploadUrl": { "type": "string", "format": "uri", "description": "Presigned S3 PUT URL valid for the configured TTL (default 300s)" }
   }
 }

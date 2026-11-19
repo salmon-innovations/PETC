@@ -94,7 +94,7 @@ The desktop application is the source of truth at the center. Under the producti
 1. Sign in to Windows with an administrator account.
 2. Run the installer `Digiflash-PETC-Setup-<version>.exe` provided by Digiflash.
 3. Accept the license terms and proceed through the installer.
-4. When prompted, enter the **Center ID** and **Center API Key** issued by Digiflash.
+4. When prompted, enter the **Center ID** and **lane credential** issued by Digiflash. Each numbered lane has one active credential and one desktop installation.
 5. Choose the install location (default `C:\Program Files\Digiflash`) and complete the installer.
 6. The installer creates a desktop shortcut named **Digiflash PETC**.
 7. Reboot if prompted.
@@ -418,7 +418,7 @@ Pick the receipt printer and click **Print Test Page**.
 
 ### 10.5 Cloud
 
-Read-only view of the Center ID, the masked center API key, and the most recent sync timestamp. To change the API key, contact Digiflash support.
+Read-only view of the Center ID, authenticated lane number, masked lane credential, daily lane quota, and the most recent sync timestamp. The cloud derives the trusted center/lane identity from the credential. To rotate a lane credential, contact Digiflash support.
 
 ![Settings landing page](../../photos/manual/settings.png)
 
@@ -506,7 +506,8 @@ Yellow means the desktop is saving tests locally but the Digiflash cloud is not 
 | Term | Meaning |
 |---|---|
 | **CEC** | Certificate of Emission Compliance. The printed certificate issued to the vehicle owner after a passing test. |
-| **Center API Key** | A per-center credential that identifies the desktop application to the Digiflash cloud. |
+| **Lane credential (`X-Center-Key`)** | Credential for exactly one numbered lane desktop. It lets the cloud derive the center and lane; a center may have several lanes. |
+| **Daily lane limit** | Administrator-configurable daily cap, default 80 LTMS-accepted CECs per Asia/Manila day. In-flight submissions reserve capacity; rejected/dead submissions release it. |
 | **Encoder** | A PETC operator who runs tests but cannot manage other operators. |
 | **IRDS** | Stradcom Integrated Records and Document System. |
 | **LTMS** | Land Transportation Management System, operated by LTO. |

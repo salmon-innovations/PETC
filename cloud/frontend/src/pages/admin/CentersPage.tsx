@@ -14,7 +14,7 @@ interface CenterWallet {
   negative: boolean;
   blockedCount: number;
   chargePerUploadCentavos: number;
-  chargeOverrideCentavos: number | null;
+  lowBalanceThresholdCentavos: number;
 }
 
 interface Center {
@@ -22,6 +22,7 @@ interface Center {
   slug: string;
   name: string;
   activeLicenses: number;
+  activeLaneCount?: number;
   lastSync: string | null;
 }
 
@@ -34,17 +35,15 @@ type AddForm = z.infer<typeof addSchema>;
 export default function CentersPage() {
   const qc = useQueryClient();
 
-  const { data: centers = [] } = useQuery<Center[]>({
+  const centersQuery = useQuery<Center[]>({
     queryKey: ["centers"],
     queryFn: () => api.get<Center[]>("/tenants").then((r) => r.data),
   });
 
-  const { data: wallets = [] } = useQuery<CenterWallet[]>({
+  const walletsQuery = useQuery<CenterWallet[]>({
     queryKey: ["wallet-centers"],
     queryFn: () => api.get<CenterWallet[]>("/wallet/centers").then((r) => r.data),
   });
-  const walletByTenant = Object.fromEntries(wallets.map((w) => [w.tenantId, w]));
-
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } =
     useForm<AddForm>({ resolver: zodResolver(addSchema) });
 
@@ -52,6 +51,19 @@ export default function CentersPage() {
     mutationFn: (data: AddForm) => api.post("/tenants", data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["centers"] }); reset(); },
   });
+
+  if (centersQuery.isPending || walletsQuery.isPending) {
+    return <PageStatus message="Loading emission testing centers…" />;
+  }
+
+  if (centersQuery.isError || walletsQuery.isError) {
+    return <PageStatus error message="Unable to load centers from the cloud backend." />;
+  }
+
+  const centers = centersQuery.data;
+  const walletByTenant = Object.fromEntries(
+    walletsQuery.data.map((wallet) => [wallet.tenantId, wallet])
+  );
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
@@ -86,7 +98,7 @@ export default function CentersPage() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
             <tr>
-              {["Name", "Slug", "Price / CEC", "Balance", "Licenses", "Last Sync", ""].map((h) => (
+              {["Name", "Slug", "Price / CEC", "Balance", "Active lanes", "Last Sync", ""].map((h) => (
                 <th key={h} className="px-5 py-3 text-left font-semibold">{h}</th>
               ))}
             </tr>
@@ -102,9 +114,6 @@ export default function CentersPage() {
                   <td className="px-5 py-3 font-mono text-gray-500">{c.slug}</td>
                   <td className="px-5 py-3 text-gray-700">
                     {w ? formatCentavos(w.chargePerUploadCentavos) : "—"}
-                    {w?.chargeOverrideCentavos !== null && w?.chargeOverrideCentavos !== undefined && (
-                      <span className="block text-[10px] text-blue-600">custom</span>
-                    )}
                   </td>
                   <td className={clsx(
                     "px-5 py-3 font-medium",
@@ -115,13 +124,13 @@ export default function CentersPage() {
                       <span className="ml-2 text-xs text-amber-700">{w.blockedCount} held</span>
                     )}
                   </td>
-                  <td className="px-5 py-3">{c.activeLicenses}</td>
+                  <td className="px-5 py-3">{c.activeLaneCount ?? c.activeLicenses}</td>
                   <td className="px-5 py-3 text-gray-500">
                     {c.lastSync ? new Date(c.lastSync).toLocaleString() : "Never"}
                   </td>
                   <td className="px-5 py-3">
                     <Link to={`/centers/${c.id}`} className="text-blue-600 hover:underline text-xs">
-                      Wallet
+                      Manage
                     </Link>
                   </td>
                 </tr>
@@ -132,6 +141,22 @@ export default function CentersPage() {
             )}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+function PageStatus({ message, error = false }: { message: string; error?: boolean }) {
+  return (
+    <div className="max-w-4xl mx-auto p-6 space-y-6">
+      <h1 className="text-xl font-bold text-gray-800">Emission Testing Centers</h1>
+      <div
+        role={error ? "alert" : "status"}
+        className={error
+          ? "rounded-xl border border-red-300 bg-red-50 p-5 text-sm text-red-800"
+          : "rounded-xl border border-gray-200 bg-white p-5 text-sm text-gray-600"}
+      >
+        {message}
       </div>
     </div>
   );

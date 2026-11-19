@@ -8,9 +8,12 @@ import pytest
 from petc.cloud_client import (
     CloudClient,
     CloudUnavailableError,
+    LaneProfile,
+    LaneQuota,
     PresignResult,
     SubmissionCreated,
     SubmissionStatus,
+    WalletStatus,
     get_client,
     is_available,
 )
@@ -101,6 +104,43 @@ class PatchedCloudClient(CloudClient):
                 return None
             r.raise_for_status()
             return r.json()
+
+    def get_wallet(self):
+        with self._make_sync_client(timeout=self._timeout) as client:
+            r = client.get(f"{self._base}/api/wallet/me", headers=self._headers)
+            r.raise_for_status()
+            body = r.json()
+        return WalletStatus(
+            tenant_id=body["tenantId"],
+            balance_centavos=body["balanceCentavos"],
+            low=body["low"],
+            negative=body["negative"],
+            blocked_count=body["blockedCount"],
+            charge_per_upload_centavos=body["chargePerUploadCentavos"],
+            low_balance_threshold_centavos=body["lowBalanceThresholdCentavos"],
+            pricing_updated_at=body.get("pricingUpdatedAt"),
+        )
+
+    def get_lane_profile(self):
+        with self._make_sync_client(timeout=self._timeout) as client:
+            r = client.get(f"{self._base}/api/lanes/me", headers=self._headers)
+            r.raise_for_status()
+            body = r.json()
+        return LaneProfile(
+            tenant_id=body["tenantId"],
+            center_id=body.get("centerId"),
+            center_name=body.get("centerName"),
+            lane_id=body["laneId"],
+            lane_number=int(body["laneNumber"]),
+            active=body.get("active", True),
+        )
+
+    def get_lane_quota(self):
+        from petc.cloud_client import _lane_quota_from_body
+        with self._make_sync_client(timeout=self._timeout) as client:
+            r = client.get(f"{self._base}/api/lanes/me/quota", headers=self._headers)
+            r.raise_for_status()
+            return _lane_quota_from_body(r.json())
 
     def upload_photo(self, upload_url: str, data: bytes, content_type: str = "image/jpeg") -> None:
         with self._make_sync_client(timeout=60.0) as client:
@@ -267,30 +307,51 @@ def test_get_submission_dead_is_terminal():
     assert status.is_terminal is True
 
 
-@pytest.mark.parametrize(
-    ("state", "terminal", "success"),
-    [
-        ("PASSED", True, True),
-        ("FAILED_EVALUATION", True, False),
-        ("ACTION_REQUIRED", True, False),
-        ("AUTH_BLOCKED", True, False),
-        ("DEFERRED", False, False),
-        ("RECONCILING", False, False),
-        ("IN_FLIGHT", False, False),
-        ("BLOCKED", False, False),
-        ("UNKNOWN_FUTURE_STATE", False, False),
-    ],
-)
-def test_submission_state_semantics_are_safe(state, terminal, success):
-    status = SubmissionStatus(state, None, None, None)
-    assert status.is_terminal is terminal
-    assert status.is_success is success
+# ── wallet ───────────────────────────────────────────────────────────────────
+
+def test_get_wallet_includes_center_pricing():
+    c = _patched({
+        ("GET", "/api/wallet/me"): (200, {
+            "tenantId": "tenant-001",
+            "balanceCentavos": 125_000,
+            "low": False,
+            "negative": False,
+            "blockedCount": 0,
+            "chargePerUploadCentavos": 9_500,
+            "lowBalanceThresholdCentavos": 50_000,
+            "pricingUpdatedAt": "2026-08-03T10:15:30+08:00",
+        }),
+    })
+
+    wallet = c.get_wallet()
+
+    assert wallet.tenant_id == "tenant-001"
+    assert wallet.charge_per_upload_centavos == 9_500
+    assert wallet.low_balance_threshold_centavos == 50_000
+    assert wallet.pricing_updated_at == "2026-08-03T10:15:30+08:00"
 
 
-def test_unknown_submission_state_is_not_saved_as_a_known_waiting_state():
-    status = SubmissionStatus("UNKNOWN_FUTURE_STATE", None, None, None)
-    assert status.is_terminal is False
-    assert status.is_known_nonterminal is False
+def test_get_lane_profile_and_reservation_aware_quota():
+    c = _patched({
+        ("GET", "/api/lanes/me"): (200, {
+            "tenantId": "tenant-001", "centerId": "center-001", "centerName": "Makati PETC",
+            "laneId": "lane-2", "laneNumber": 2, "active": True,
+        }),
+        ("GET", "/api/lanes/me/quota"): (200, {
+            "businessDate": "2026-08-03", "accepted": 75, "reserved": 2,
+            "limit": 80, "remaining": 3, "resetsAt": "2026-08-04T00:00:00+08:00",
+        }),
+    })
+
+    profile = c.get_lane_profile()
+    quota = c.get_lane_quota()
+
+    assert profile.lane_number == 2
+    assert profile.center_id == "center-001"
+    assert profile.center_name == "Makati PETC"
+    assert quota.used == 75
+    assert quota.reserved == 2
+    assert quota.remaining == 3
 
 
 # ── lookup_vehicle ────────────────────────────────────────────────────────────

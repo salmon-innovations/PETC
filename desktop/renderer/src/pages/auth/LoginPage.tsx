@@ -1,7 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../store/authStore";
 
 const schema = z.object({
@@ -13,13 +13,14 @@ type FormValues = z.infer<typeof schema>;
 export default function LoginPage() {
   const login = useAuthStore((s) => s.login);
   const navigate = useNavigate();
+  const location = useLocation();
   const { register, handleSubmit, setError, formState: { errors, isSubmitting } } =
     useForm<FormValues>({ resolver: zodResolver(schema) });
 
   const onSubmit = async (values: FormValues) => {
     try {
       await login(values.email, values.password);
-      navigate("/test");
+      navigate(new URLSearchParams(location.search).get("diagnostics") === "1" ? "/settings" : "/test");
     } catch {
       setError("root", { message: "Invalid email or password" });
     }

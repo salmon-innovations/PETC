@@ -8,6 +8,7 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios";
 import type { AuthTokens } from "../types";
+import { reportBackendFailure } from "../store/backendAvailabilityStore";
 
 const api = axios.create({ baseURL: "/api", timeout: 15_000 });
 
@@ -44,6 +45,7 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const original = error.config!;
     if (error.response?.status !== 401 || (original as any)._retry) {
+      reportBackendFailure(error);
       return Promise.reject(error);
     }
     (original as any)._retry = true;

@@ -4,6 +4,7 @@
  * and cached — it never changes for the lifetime of the window.
  */
 import axios, { type AxiosInstance } from "axios";
+import { useAuthStore } from "../store/authStore";
 import type { SidecarStatus, VehicleInfo, DriverInfo, OwnerInfo, EmissionTestDetail, TestPhoto, InspectionPurpose } from "../types";
 
 let _client: AxiosInstance | null = null;
@@ -78,6 +79,7 @@ export type LtmsSubmissionState =
   | "DEAD"
   | "ACCEPTED"
   | "REJECTED"
+  | "EXPIRED"
   | "WAITING_FOR_LTMS";
 
 export function isLtmsSuccessState(state: string | null | undefined): boolean {
@@ -87,7 +89,8 @@ export function isLtmsSuccessState(state: string | null | undefined): boolean {
 export function isLtmsTerminalState(state: string | null | undefined): boolean {
   return state === "PASSED" || state === "ACCEPTED"
     || state === "FAILED_EVALUATION" || state === "ACTION_REQUIRED"
-    || state === "AUTH_BLOCKED" || state === "DEAD" || state === "REJECTED";
+    || state === "AUTH_BLOCKED" || state === "DEAD" || state === "REJECTED"
+    || state === "EXPIRED";
 }
 
 export function isLtmsNonterminalState(state: string | null | undefined): boolean {
@@ -99,8 +102,48 @@ export interface LtmsSubmitResponse {
   state: LtmsSubmissionState;
   certificateNo: string | null;
   rejectionReason: string | null;
+  statusMessage?: string | null;
   queued?: boolean;
   submissionId?: string;
+}
+
+export interface SidecarApiError {
+  code?: string;
+  message?: string;
+  used?: number;
+  reserved?: number;
+  limit?: number;
+  remaining?: number;
+  resetsAt?: string | null;
+}
+
+export interface CommissioningValidation {
+  identityValid: boolean;
+  ready: boolean;
+  reason: string;
+  centerId: string;
+  centerName: string | null;
+  laneId: string;
+  laneNumber: number;
+  laneActive: boolean;
+  walletBalanceCentavos: number;
+  walletChargePerUploadCentavos: number;
+  walletLow: boolean;
+  walletNegative: boolean;
+  quotaUsed: number;
+  quotaReserved: number;
+  quotaLimit: number;
+  quotaRemaining: number;
+  quotaBusinessDate: string;
+}
+
+export function sidecarErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const detail = error.response?.data?.detail;
+    if (typeof detail === "string") return detail;
+    if (detail?.message) return detail.message;
+  }
+  return "The request could not be completed. Check the sidecar and try again.";
 }
 
 export type AnalyzerType = "mock" | "serial_gas" | "serial_diesel" | "fty_opacimeter" | "fofen_gas" | "fofen_ascii" | "koeng_gas" | "koeng_diesel" | "cartesykj_gas";
@@ -153,7 +196,49 @@ export const sidecarClient = {
       walletNegative: data.wallet_negative ?? false,
       walletBlockedCount: data.wallet_blocked_count ?? 0,
       walletFetchedAt: data.wallet_fetched_at ?? null,
+      walletCenterId: data.wallet_center_id ?? null,
+      walletChargePerUploadCentavos: data.wallet_charge_per_upload_centavos ?? null,
+      walletLowBalanceThresholdCentavos: data.wallet_low_balance_threshold_centavos ?? null,
+      walletPricingUpdatedAt: data.wallet_pricing_updated_at ?? null,
+      centerId: data.center_id ?? null,
+      centerName: data.center_name ?? null,
+      laneId: data.lane_id ?? null,
+      laneNumber: data.lane_number ?? null,
+      laneActive: data.lane_active ?? null,
+      laneIdentityConflict: data.lane_identity_conflict ?? false,
+      laneQuotaUsed: data.lane_quota_used ?? null,
+      laneQuotaReserved: data.lane_quota_reserved ?? null,
+      laneQuotaLimit: data.lane_quota_limit ?? null,
+      laneQuotaRemaining: data.lane_quota_remaining ?? null,
+      laneQuotaBusinessDate: data.lane_quota_business_date ?? null,
+      laneQuotaResetsAt: data.lane_quota_resets_at ?? null,
+      laneQuotaFetchedAt: data.lane_quota_fetched_at ?? null,
+      configured: data.configured ?? false,
+      commissioningRequired: data.commissioning_required ?? true,
+      config: data.config ?? {},
+      readinessReady: data.readiness_ready ?? false,
+      readinessReason: data.readiness_reason ?? "PETC commissioning is required",
     };
+  },
+
+  async validateCommissioning(params: { cloudUrl: string; cloudKey: string; expectedCenter: string; expectedLane: string }) {
+    const c = await client();
+    const token = await window.petcBridge.getCommissioningToken();
+    const { data } = await c.post("/commissioning/validate", {
+      cloud_url: params.cloudUrl, cloud_key: params.cloudKey,
+      expected_center: params.expectedCenter, expected_lane: params.expectedLane,
+    }, { headers: commissioningHeaders(token) });
+    return data as CommissioningValidation;
+  },
+
+  async saveCommissioning(params: { cloudUrl: string; cloudKey: string; expectedCenter: string; expectedLane: string }) {
+    const c = await client();
+    const token = await window.petcBridge.getCommissioningToken();
+    const { data } = await c.post("/commissioning/save", {
+      cloud_url: params.cloudUrl, cloud_key: params.cloudKey,
+      expected_center: params.expectedCenter, expected_lane: params.expectedLane, confirmed: true,
+    }, { headers: commissioningHeaders(token) });
+    return data as { saved: boolean; validation: CommissioningValidation };
   },
 
   async startTest(params: {
@@ -327,3 +412,8 @@ export const sidecarClient = {
     return data;
   },
 };
+
+function commissioningHeaders(capability: string): Record<string, string> {
+  const session = useAuthStore.getState().token;
+  return { "X-PETC-Commissioning-Token": capability, ...(session ? { Authorization: `Bearer ${session}` } : {}) };
+}

@@ -167,8 +167,9 @@ Two distinct ingress paths terminate on the Application Load Balancer:
 
 - **Source**: any DOTr-accredited PETC running the Digiflash desktop client.
 - **Protocol**: HTTPS, TLS 1.2 or newer, validated certificate (AWS Certificate Manager).
-- **Authentication**: `X-Center-Key` header carrying the per-center API key. The cloud validates the key (bcrypt-hashed at rest) and resolves it to a `tenant_id`.
+- **Authentication**: `X-Center-Key` header carrying the credential for one numbered lane desktop. The cloud validates the credential (bcrypt-hashed at rest) and derives its `tenant_id` and `lane_id`; clients cannot choose either identity. A center can operate multiple lanes but each lane has one active credential.
 - **Endpoints used**:
+  - `GET /api/lanes/me` and `GET /api/lanes/me/quota` — resolve trusted lane identity and daily capacity.
   - `POST /api/photos/presign` — request a presigned S3 PUT URL.
   - `POST /api/submissions` — enqueue a test bundle for LTMS submission.
   - `GET /api/submissions/{id}` — poll for the LTMS result.
