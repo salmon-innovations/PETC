@@ -29,6 +29,13 @@ if (!isDev) {
 let sidecarProcess: ChildProcess | null = null;
 let commissioningConfig: CommissioningConfig | null = null;
 
+function applicationIcon(): string {
+  if (isDev) {
+    return path.join(__dirname, "..", "..", "..", "SoftwareIcon", "PETC.png");
+  }
+  return path.join(process.resourcesPath, "PETC.png");
+}
+
 function sidecarBinary(): string {
   if (isDev) {
     // In dev: prefer the local venv created for sidecar dependencies.
@@ -38,10 +45,10 @@ function sidecarBinary(): string {
       : path.join(desktopRoot, ".venv", "bin", "python");
     return fs.existsSync(venvPython) ? venvPython : (process.platform === "win32" ? "python" : "python3");
   }
-  // In production: PyInstaller-frozen directory bundle inside resources/petc-sidecar/
-  // The COLLECT() in petc_sidecar.spec names the directory "petc"; the exe inside is "petc".
+  // In production: electron-builder copies the contents of sidecar/dist/petc
+  // directly into resources/petc-sidecar/.
   const exe = process.platform === "win32" ? "petc.exe" : "petc";
-  return path.join(process.resourcesPath, "petc-sidecar", "petc", exe);
+  return path.join(process.resourcesPath, "petc-sidecar", exe);
 }
 
 function sidecarArgs(): string[] {
@@ -56,7 +63,7 @@ function spawnSidecar(): void {
   const args = sidecarArgs();
   const cwd = isDev
     ? path.join(__dirname, "..", "..", "sidecar")
-    : path.join(process.resourcesPath, "petc-sidecar", "petc");
+    : path.join(process.resourcesPath, "petc-sidecar");
 
   log.info(`Spawning sidecar: ${bin} ${args.join(" ")} (cwd: ${cwd})`);
 
@@ -145,12 +152,16 @@ function createWindow(): void {
     height: 800,
     minWidth: 1024,
     minHeight: 640,
+    icon: applicationIcon(),
     title: "PETC — Emission Testing",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // Fits the dense workstation interface while keeping normal browser
+      // zoom keyboard controls available for accessibility.
+      zoomFactor: 0.85,
     },
   });
 
@@ -158,7 +169,9 @@ function createWindow(): void {
     mainWindow.loadURL("http://localhost:5173");
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
+    // electron-builder places renderer/dist at the root of the packaged app.
+    // app.getAppPath() remains correct regardless of the compiled main.js path.
+    mainWindow.loadFile(path.join(app.getAppPath(), "index.html"));
   }
 
   mainWindow.on("closed", () => {

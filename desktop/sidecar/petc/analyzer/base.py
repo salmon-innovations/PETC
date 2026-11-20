@@ -27,7 +27,7 @@ class GasReading:
 
 @dataclass
 class DieselReading:
-    opacity_pct: float
+    opacity_pct: Optional[float]
     k_value: float
     rpm: Optional[int] = None
     boost_kpa: Optional[float] = None
@@ -41,6 +41,7 @@ class AnalyzerResult:
     captured_at: datetime = field(default_factory=datetime.utcnow)
     serial_no: str = ""
     pass_fail: Optional[bool] = None
+    capture_sequence: Optional[dict] = None
 
 
 class Analyzer(abc.ABC):
@@ -71,6 +72,10 @@ class Analyzer(abc.ABC):
     @abc.abstractmethod
     def abort_test(self, session_token: str) -> None:
         """Cancel an in-progress test."""
+
+    def live_result(self, session_token: str) -> Optional[AnalyzerResult]:
+        """Return the latest available result without consuming the session."""
+        return None
 
     @property
     @abc.abstractmethod

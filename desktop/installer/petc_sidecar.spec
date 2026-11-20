@@ -5,7 +5,9 @@
 from pathlib import Path
 
 block_cipher = None
-sidecar_dir = Path(SPECPATH).parent / 'sidecar'
+# SPECPATH is the desktop/installer directory because this spec lives there.
+desktop_dir = Path(SPECPATH).resolve().parent
+sidecar_dir = desktop_dir / 'sidecar'
 
 a = Analysis(
     [str(sidecar_dir / 'launcher.py')],
@@ -61,7 +63,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    icon=str(desktop_dir / 'build' / 'PETC.ico'),
 )
 
 # Directory bundle — electron main.ts reads resources/petc-sidecar/petc (or petc.exe on Windows)

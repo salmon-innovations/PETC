@@ -1,6 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  CloudArrowUp,
+  CheckCircle,
+  XCircle,
+  ArrowLeft,
+  ArrowRight,
+  Camera,
+  MagnifyingGlass,
+  Car,
+  Printer,
+  WarningCircle,
+  Check,
+} from "@phosphor-icons/react";
 import { isLtmsNonterminalState, isLtmsSuccessState, sidecarClient, type LtmsSubmitResponse, type VehicleLookupResponse } from "../../api/sidecarClient";
 import { useAuthStore } from "../../store/authStore";
 import { INSPECTION_PURPOSE_LABELS, type Classification, type DotrVehicleGroup, type EmissionTest, type EmissionTestDetail, type FuelType, type InspectionPurpose, type OwnerInfo, type TestPhoto, type VehicleInfo } from "../../types";
@@ -9,6 +23,7 @@ import { CameraStream, type CameraStreamHandle } from "../../components/CameraSt
 import { TestListFilters } from "../../components/TestListFilters";
 import { useSearchParams } from "react-router-dom";
 import { EMPTY_TEST_FILTERS, filterEmissionTests, type TestListFilterState } from "../../utils/testFilters";
+import { triggerAlert } from "../../store/alertStore";
 
 type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
 type PhotoType = TestPhoto["photoType"];
@@ -79,7 +94,7 @@ export default function LtmsUploadPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTestId = searchParams.get("testId");
 
-  const { data: pending = [] } = useQuery<EmissionTest[]>({
+  const { data: pending = [], isLoading } = useQuery<EmissionTest[]>({
     queryKey: ["tests", "pending-ltms"],
     queryFn: async () => {
       const base = await window.petcBridge.getSidecarUrl();
@@ -116,57 +131,121 @@ export default function LtmsUploadPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-5">
-      <div>
-        <h1 className="text-xl font-bold text-gray-800">LTMS Upload Queue</h1>
-        <p className="text-sm text-gray-500">Completed local tests waiting for registry submission.</p>
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className="max-w-5xl mx-auto p-6 md:p-8 space-y-6 text-slate-800"
+    >
+      {/* Page Header */}
+      <div className="flex items-center gap-4">
+        <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shadow-sm flex-shrink-0">
+          <CloudArrowUp size={28} weight="fill" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">LTMS Upload Queue</h1>
+          <p className="text-sm text-slate-500 font-medium">Completed local emission tests queued for official registry submission.</p>
+        </div>
       </div>
 
-      <TestListFilters filters={filters} onChange={setFilters} />
+      <div className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-sm">
+        <TestListFilters filters={filters} onChange={setFilters} />
+      </div>
 
       {pending.length > 0 && (
-        <p className="text-xs text-gray-500">
-          Showing {filteredPending.length} of {pending.length} pending tests
-        </p>
+        <div className="flex items-center justify-between px-1">
+          <p className="text-sm font-semibold text-slate-600">
+            Showing <span className="text-blue-600 font-bold">{filteredPending.length}</span> of {pending.length} pending submissions
+          </p>
+        </div>
       )}
 
-      {pending.length === 0 ? (
-        <div className="bg-white rounded-lg shadow px-6 py-12 text-center text-gray-500">
-          No tests pending LTMS submission.
+      {isLoading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-pulse"
+            >
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <div className="h-7 w-28 bg-slate-200 rounded-lg" />
+                  <div className="h-6 w-16 bg-slate-100 rounded-md" />
+                </div>
+                <div className="h-4 w-52 bg-slate-100 rounded-md" />
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="h-7 w-20 bg-slate-100 rounded-full" />
+                <div className="h-10 w-32 bg-slate-200 rounded-2xl" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : pending.length === 0 ? (
+        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm px-6 py-16 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 mx-auto mb-3 shadow-inner">
+            <CheckCircle size={32} weight="fill" />
+          </div>
+          <p className="text-base font-bold text-slate-800">All Tests Submitted</p>
+          <p className="text-sm text-slate-400 mt-1 max-w-sm mx-auto">There are no pending tests awaiting LTMS registry upload.</p>
         </div>
       ) : filteredPending.length === 0 ? (
-        <div className="bg-white rounded-lg shadow px-6 py-12 text-center text-gray-500">
-          No pending tests match the selected filters.
+        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm px-6 py-16 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mx-auto mb-3 shadow-inner">
+            <Car size={32} />
+          </div>
+          <p className="text-base font-bold text-slate-800">No Matching Pending Tests</p>
+          <p className="text-sm text-slate-400 mt-1 max-w-sm mx-auto">Try clearing or adjusting your search filters above.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow divide-y">
+        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm divide-y divide-slate-100 overflow-hidden">
           {filteredPending.map((test) => (
-            <div key={test.id} className="flex items-center justify-between px-5 py-3">
-              <div>
-                <p className="font-semibold text-sm text-gray-800">{test.plateNumber}</p>
-                <p className="text-xs text-gray-500">
-                  {test.fuelType} · {INSPECTION_PURPOSE_LABELS[test.inspectionPurpose]} · {test.startedAt ? new Date(test.startedAt).toLocaleString() : "No date"}
+            <div key={test.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-6 py-4 hover:bg-slate-50/80 transition-colors">
+              <div className="space-y-1">
+                <div className="flex items-center gap-3">
+                  <span className="font-extrabold text-lg text-slate-900 tracking-wide font-mono bg-slate-100 px-3 py-0.5 rounded-lg border border-slate-200">
+                    {test.plateNumber}
+                  </span>
+                  <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200 uppercase">
+                    {test.fuelType}
+                  </span>
+                </div>
+                <p className="text-sm text-slate-600 font-medium">
+                  {INSPECTION_PURPOSE_LABELS[test.inspectionPurpose]} · {test.startedAt ? new Date(test.startedAt).toLocaleString() : "No date"}
                 </p>
               </div>
               <div className="flex items-center gap-3">
                 <span className={clsx(
-                  "rounded-full px-2 py-0.5 text-xs font-medium",
-                  test.passFail ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                  "rounded-full px-3 py-1 text-xs font-extrabold flex items-center gap-1.5 border shadow-xs",
+                  test.passFail
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                    : "bg-red-50 text-red-700 border-red-300"
                 )}>
-                  {test.passFail ? "PASS" : "FAIL"}
+                  {test.passFail ? (
+                    <>
+                      <CheckCircle size={15} weight="fill" />
+                      PASS
+                    </>
+                  ) : (
+                    <>
+                      <XCircle size={15} weight="fill" />
+                      FAIL
+                    </>
+                  )}
                 </span>
                 <button
                   onClick={() => openWizard(test)}
-                  className="rounded-md bg-blue-600 px-3 py-1.5 text-xs text-white font-medium hover:bg-blue-700"
+                  className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-700 transition-all shadow-sm cursor-pointer min-h-[42px]"
                 >
-                  Open Wizard
+                  <span>Open Wizard</span>
+                  <ArrowRight size={16} weight="bold" />
                 </button>
               </div>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -234,9 +313,14 @@ function UploadWizard({ test, onDone, onCancel }: { test: EmissionTest; onDone: 
 
   const submitMutation = useMutation<LtmsSubmitResponse>({
     mutationFn: () => sidecarClient.submitUpload(payload),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      triggerAlert.success("LTMS Submission Sent", `Test record for ${test.plateNumber} transmitted to LTMS (${res.state})`);
       qc.invalidateQueries({ queryKey: ["tests", "pending-ltms"] });
       qc.invalidateQueries({ queryKey: ["test-detail", test.id] });
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Failed to transmit test record";
+      triggerAlert.error("LTMS Upload Failed", msg);
     },
   });
 
@@ -244,101 +328,138 @@ function UploadWizard({ test, onDone, onCancel }: { test: EmissionTest; onDone: 
   const goBack = () => setStep((current) => Math.max(1, current - 1) as WizardStep);
 
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <button onClick={onCancel} className="text-sm text-gray-500 hover:text-gray-700">Back</button>
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className="max-w-5xl mx-auto p-6 md:p-8 space-y-6 text-slate-800"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-2">
+        <div className="flex items-center gap-3.5">
+          <button
+            onClick={onCancel}
+            className="flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer shadow-xs min-h-[42px]"
+          >
+            <ArrowLeft size={18} weight="bold" />
+            <span>Back to Queue</span>
+          </button>
           <div>
-            <h1 className="text-xl font-bold text-gray-800">LTMS Upload - {test.plateNumber}</h1>
-            <p className="text-xs text-gray-500">
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight">LTMS Upload</h1>
+              <span className="font-mono font-extrabold text-base bg-blue-50 text-blue-800 border border-blue-200 px-3 py-0.5 rounded-lg">
+                {test.plateNumber}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
               {INSPECTION_PURPOSE_LABELS[test.inspectionPurpose]} · {requiresManualEntry
-                ? "New registration: no registry lookup; manually encode vehicle and owner data."
+                ? "New registration: manual encoding required."
                 : lookupStatusText(lookup, lookupMutation.isPending)}
             </p>
           </div>
         </div>
+
         {requiresManualEntry ? (
-          <span className="rounded-md bg-amber-100 px-3 py-1.5 text-xs font-medium text-amber-800">
-            Manual encoding required
+          <span className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-2 text-xs font-bold text-amber-800">
+            Manual Encoding Mode
           </span>
         ) : (
           <button
             onClick={() => lookupMutation.mutate(vehicle.plateNo)}
             disabled={lookupMutation.isPending}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors shadow-xs cursor-pointer min-h-[42px]"
           >
-            {lookupMutation.isPending ? "Looking up..." : "Lookup Plate"}
+            <MagnifyingGlass size={16} weight="bold" />
+            <span>{lookupMutation.isPending ? "Looking up…" : "Re-query Registry"}</span>
           </button>
         )}
       </div>
 
-      <div className="grid grid-cols-6 gap-2">
+      {/* Step Indicator Bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 bg-slate-100/80 p-2 rounded-2xl border border-slate-200">
         {STEP_LABELS.map((label, index) => {
           const number = (index + 1) as WizardStep;
+          const isActive = step === number;
+          const isDone = number < step;
+
           return (
             <button
               key={label}
               onClick={() => setStep(number)}
               className={clsx(
-                "rounded-md py-2 text-xs font-semibold",
-                step === number ? "bg-blue-600 text-white" : number < step ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+                "flex items-center justify-center gap-1.5 rounded-xl py-2.5 px-3 text-xs font-bold transition-all min-h-[40px] cursor-pointer",
+                isActive
+                  ? "bg-blue-600 text-white shadow-md"
+                  : isDone
+                    ? "bg-emerald-100 text-emerald-800 border border-emerald-200 hover:bg-emerald-200/60"
+                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
               )}
             >
-              {number}. {label}
+              {isDone && <Check size={14} weight="bold" />}
+              <span>{number}. {label}</span>
             </button>
           );
         })}
       </div>
 
-      {step === 1 && (
-        <VehicleStep
-          vehicle={vehicle}
-          lookup={lookup}
-          requiresManualEntry={requiresManualEntry}
-          onChange={setVehicle}
-          onNext={goNext}
-        />
-      )}
-      {step === 2 && <OwnerStep owner={owner} onChange={setOwner} onBack={goBack} onNext={goNext} />}
-      {step === 3 && (
-        <ResultsStep
-          fuelType={vehicle.fuelType}
-          readings={detail?.readings ?? {}}
-          flags={engineFlags}
-          verdict={verdict}
-          onChange={setEngineFlags}
-          onBack={goBack}
-          onNext={goNext}
-        />
-      )}
-      {step === 4 && (
-        <TechnicianStep
-          technician={technician}
-          onChange={setTechnician}
-          onBack={goBack}
-          onNext={goNext}
-        />
-      )}
-      {step === 5 && (
-        <PhotosStep
-          testId={test.id}
-          photos={detail?.photos ?? []}
-          onBack={goBack}
-          onNext={goNext}
-        />
-      )}
-      {step === 6 && (
-        <ReviewStep
-          payload={payload}
-          result={submitMutation.data}
-          isPending={submitMutation.isPending}
-          isError={submitMutation.isError}
-          onBack={goBack}
-          onDone={onDone}
-          onSubmit={() => submitMutation.mutate()}
-        />
-      )}
-    </div>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={step}
+          initial={{ opacity: 0, x: 8 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -8 }}
+          transition={{ duration: 0.2 }}
+        >
+          {step === 1 && (
+            <VehicleStep
+              vehicle={vehicle}
+              lookup={lookup}
+              requiresManualEntry={requiresManualEntry}
+              onChange={setVehicle}
+              onNext={goNext}
+            />
+          )}
+          {step === 2 && <OwnerStep owner={owner} onChange={setOwner} onBack={goBack} onNext={goNext} />}
+          {step === 3 && (
+            <ResultsStep
+              fuelType={vehicle.fuelType}
+              readings={detail?.readings ?? {}}
+              flags={engineFlags}
+              verdict={verdict}
+              onChange={setEngineFlags}
+              onBack={goBack}
+              onNext={goNext}
+            />
+          )}
+          {step === 4 && (
+            <TechnicianStep
+              technician={technician}
+              onChange={setTechnician}
+              onBack={goBack}
+              onNext={goNext}
+            />
+          )}
+          {step === 5 && (
+            <PhotosStep
+              testId={test.id}
+              photos={detail?.photos ?? []}
+              onBack={goBack}
+              onNext={goNext}
+            />
+          )}
+          {step === 6 && (
+            <ReviewStep
+              payload={payload}
+              result={submitMutation.data}
+              isPending={submitMutation.isPending}
+              isError={submitMutation.isError}
+              onBack={goBack}
+              onDone={onDone}
+              onSubmit={() => submitMutation.mutate()}
+            />
+          )}
+        </motion.div>
+      </AnimatePresence>
+    </motion.div>
   );
 }
 
@@ -354,17 +475,17 @@ function VehicleStep({ vehicle, lookup, requiresManualEntry, onChange, onNext }:
     && (requiresManualEntry || vehicle.plateNo);
 
   return (
-    <section className="bg-white rounded-lg shadow p-5 space-y-4">
-      <StepHeading title={requiresManualEntry ? "Step 1 - Manual Vehicle Details" : "Step 1 - Plate Lookup + Vehicle Details"} />
+    <section className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-7 space-y-6">
+      <StepHeading title={requiresManualEntry ? "Step 1 - Manual Vehicle Encoding" : "Step 1 - Plate Verification & Vehicle Specs"} />
       {requiresManualEntry && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Initial registration is treated as not yet available in LTMS or Stradcom. Enter the vehicle details manually.
-          The fuel type remains the value selected when the emission test started.
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 font-medium leading-relaxed">
+          <WarningCircle size={20} weight="fill" className="text-amber-600 flex-shrink-0 mt-0.5" />
+          <span>Initial registration is treated as not yet available in LTMS or Stradcom. Encode the vehicle details manually. The fuel type remains as tested.</span>
         </div>
       )}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
         <TextField label="Plate No" value={vehicle.plateNo} onChange={(value) => set("plateNo", value.toUpperCase())} />
-        <TextField label="MV No" value={vehicle.mvNo} onChange={(value) => set("mvNo", value)} badge={badgeFor("mvNo", vehicle.mvNo, lookup?.vehicle?.mvNo)} />
+        <TextField label="MV File No" value={vehicle.mvNo} onChange={(value) => set("mvNo", value)} badge={badgeFor("mvNo", vehicle.mvNo, lookup?.vehicle?.mvNo)} />
         <TextField label="Engine No" value={vehicle.engineNo} onChange={(value) => set("engineNo", value)} badge={badgeFor("engineNo", vehicle.engineNo, lookup?.vehicle?.engineNo)} />
         <TextField label="Chassis No" value={vehicle.chassisNo} onChange={(value) => set("chassisNo", value)} badge={badgeFor("chassisNo", vehicle.chassisNo, lookup?.vehicle?.chassisNo)} />
         <SelectField label="OR Type" value={vehicle.orType} options={["MVRR", "MVRS"]} onChange={(value) => set("orType", value)} badge={badgeFor("orType", vehicle.orType, lookup?.vehicle?.orType)} />
@@ -401,21 +522,21 @@ function OwnerStep({ owner, onChange, onBack, onNext }: {
     : owner.lastName && owner.firstName && owner.address && owner.city;
 
   return (
-    <section className="bg-white rounded-lg shadow p-5 space-y-4">
-      <StepHeading title="Step 2 - Vehicle Owner" />
+    <section className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-7 space-y-6">
+      <StepHeading title="Step 2 - Registered Vehicle Owner" />
       <Segment label="Owner Type" value={owner.ownerType} options={["INDIVIDUAL", "ORGANIZATION"]} onChange={(value) => set("ownerType", value as OwnerForm["ownerType"])} />
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {owner.ownerType === "INDIVIDUAL" ? (
           <>
             <TextField label="Last Name" value={owner.lastName} onChange={(value) => set("lastName", value.toUpperCase())} />
             <TextField label="First Name" value={owner.firstName} onChange={(value) => set("firstName", value.toUpperCase())} />
-            <TextField label="Middle" value={owner.middleName} onChange={(value) => set("middleName", value.toUpperCase())} />
+            <TextField label="Middle Name" value={owner.middleName} onChange={(value) => set("middleName", value.toUpperCase())} />
           </>
         ) : (
-          <TextField label="Organization" value={owner.organization} onChange={(value) => set("organization", value.toUpperCase())} />
+          <TextField label="Organization / Entity Name" value={owner.organization} onChange={(value) => set("organization", value.toUpperCase())} />
         )}
-        <TextField label="Address" value={owner.address} onChange={(value) => set("address", value)} />
-        <TextField label="City" value={owner.city} onChange={(value) => set("city", value)} />
+        <TextField label="Street Address" value={owner.address} onChange={(value) => set("address", value)} />
+        <TextField label="City / Municipality" value={owner.city} onChange={(value) => set("city", value)} />
       </div>
       <FooterNav nextDisabled={!valid} onBack={onBack} onNext={onNext} />
     </section>
@@ -434,17 +555,20 @@ function ResultsStep({ fuelType, readings, flags, verdict, onChange, onBack, onN
   const set = <K extends keyof EngineFlags>(key: K, value: EngineFlags[K]) => onChange({ ...flags, [key]: value });
 
   return (
-    <section className="bg-white rounded-lg shadow p-5 space-y-4">
-      <StepHeading title="Step 3 - Engine Flags + Emission Test Results" />
-      <div className="grid grid-cols-3 gap-4">
-        <Segment label="Turbo" value={flags.turbo} options={["TURBO", "NON_TURBO"]} onChange={(value) => set("turbo", value as EngineFlags["turbo"])} />
+    <section className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-7 space-y-6">
+      <StepHeading title="Step 3 - Engine Flags & Emission Test Results" />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+        <Segment label="Turbo Setup" value={flags.turbo} options={["TURBO", "NON_TURBO"]} onChange={(value) => set("turbo", value as EngineFlags["turbo"])} />
         <Segment label="Aspiration" value={flags.aspiration} options={["ELEVATION", "N_ASPIRATED"]} onChange={(value) => set("aspiration", value as EngineFlags["aspiration"])} />
         <Segment label="Condition" value={flags.condition} options={["REBUILT", "CONVENTIONAL"]} onChange={(value) => set("condition", value as EngineFlags["condition"])} />
       </div>
       <ReadingsGrid readings={readings} />
-      <div className={clsx("rounded-md border px-4 py-3", verdict.pass ? "bg-green-50 border-green-200 text-green-800" : "bg-red-50 border-red-200 text-red-800")}>
-        <p className="font-semibold">{fuelType} verdict: {verdict.label}</p>
-        {verdict.reasons.length > 0 && <p className="text-sm">{verdict.reasons.join("; ")}</p>}
+      <div className={clsx("rounded-2xl border px-5 py-4", verdict.pass ? "bg-emerald-50 border-emerald-200 text-emerald-900" : "bg-red-50 border-red-200 text-red-900")}>
+        <div className="flex items-center gap-2">
+          {verdict.pass ? <CheckCircle size={20} weight="fill" className="text-emerald-600" /> : <XCircle size={20} weight="fill" className="text-red-600" />}
+          <p className="font-extrabold text-base">{fuelType} Verdict: {verdict.label}</p>
+        </div>
+        {verdict.reasons.length > 0 && <p className="text-sm mt-1 font-medium text-slate-700">{verdict.reasons.join("; ")}</p>}
       </div>
       <FooterNav onBack={onBack} onNext={onNext} />
     </section>
@@ -461,12 +585,12 @@ function TechnicianStep({ technician, onChange, onBack, onNext }: {
   const valid = technician.technicianName && technician.tesdaCertNo && technician.certificationNo;
 
   return (
-    <section className="bg-white rounded-lg shadow p-5 space-y-4">
-      <StepHeading title="Step 4 - Technician / Certification" />
-      <div className="grid grid-cols-3 gap-4">
+    <section className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-7 space-y-6">
+      <StepHeading title="Step 4 - Authorized Testing Technician" />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
         <TextField label="Technician Name" value={technician.technicianName} onChange={(value) => set("technicianName", value)} />
         <TextField label="TESDA Cert. No" value={technician.tesdaCertNo} onChange={(value) => set("tesdaCertNo", value)} />
-        <TextField label="Certification No" value={technician.certificationNo} onChange={(value) => set("certificationNo", value)} />
+        <TextField label="Center Cert. No" value={technician.certificationNo} onChange={(value) => set("certificationNo", value)} />
       </div>
       <FooterNav nextDisabled={!valid} onBack={onBack} onNext={onNext} />
     </section>
@@ -491,42 +615,54 @@ function PhotosStep({ testId, photos, onBack, onNext }: {
     },
     onSuccess: () => {
       setStatus("Photo saved ✓");
+      triggerAlert.success("Photo Uploaded", "Vehicle photo saved and linked to test");
       qc.invalidateQueries({ queryKey: ["test-detail", testId] });
     },
-    onError: (err: any) => setStatus(`Failed: ${err?.message ?? "upload error"}`),
+    onError: (err: any) => {
+      const msg = err?.message ?? "Upload error";
+      setStatus(`Failed: ${msg}`);
+      triggerAlert.error("Photo Upload Error", msg);
+    },
   });
 
   const hasFront = photos.some((photo) => photo.photoType === "FRONT");
 
   return (
-    <section className="bg-white rounded-lg shadow p-5 space-y-4">
-      <StepHeading title="Step 5 - Photos" />
+    <section className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-7 space-y-6">
+      <StepHeading title="Step 5 - Vehicle Verification Photos" />
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-3">
-          <CameraStream ref={cameraRef} />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+        <div className="space-y-4">
+          <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-sm">
+            <CameraStream ref={cameraRef} />
+          </div>
           <div className="flex items-center gap-3">
             <button
               onClick={() => captureMutation.mutate("FRONT")}
               disabled={captureMutation.isPending}
-              className="rounded-md bg-blue-600 text-white px-4 py-1.5 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 text-white px-5 py-3 text-sm font-bold hover:bg-blue-700 disabled:opacity-50 min-h-[44px] shadow-sm cursor-pointer"
             >
-              {captureMutation.isPending ? "Saving…" : hasFront ? "Retake photo" : "Take photo"}
+              <Camera size={18} weight="bold" />
+              <span>{captureMutation.isPending ? "Capturing…" : hasFront ? "Retake Vehicle Photo" : "Capture Photo"}</span>
             </button>
             {status && (
-              <span className={clsx("text-xs", status.startsWith("Failed") ? "text-red-600" : "text-green-700")}>
+              <span className={clsx("text-xs font-bold", status.startsWith("Failed") ? "text-red-600" : "text-emerald-700")}>
                 {status}
               </span>
             )}
           </div>
         </div>
 
-        <div className="space-y-2">
-          <p className="text-sm font-semibold text-gray-700">Vehicle photo</p>
+        <div className="space-y-3">
+          <p className="text-sm font-bold text-slate-800">Attached Verification Photos</p>
           {photos.filter((p) => p.photoType === "FRONT").length === 0 ? (
-            <p className="text-xs text-gray-500">No photo yet — use the camera on the left.</p>
+            <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-8 text-center">
+              <Camera size={32} className="text-slate-400 mx-auto mb-2" />
+              <p className="text-sm font-bold text-slate-600">No vehicle photo recorded</p>
+              <p className="text-xs text-slate-400 mt-0.5">Use the live camera preview to snap the vehicle rear and license plate.</p>
+            </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-3">
               {photos.filter((p) => p.photoType === "FRONT").map((photo) => (
                 <PhotoThumb key={photo.id} photoId={photo.id} />
               ))}
@@ -548,10 +684,12 @@ function PhotoThumb({ photoId }: { photoId: string }) {
     return () => { cancelled = true; };
   }, [photoId]);
   return (
-    <div className="aspect-square rounded border border-gray-200 bg-gray-100 overflow-hidden">
+    <div className="aspect-square rounded-2xl border border-slate-200 bg-slate-100 overflow-hidden shadow-xs">
       {src ? (
         <img src={src} alt="Captured photo" className="w-full h-full object-cover" />
-      ) : null}
+      ) : (
+        <div className="w-full h-full flex items-center justify-center text-xs text-slate-400">Loading…</div>
+      )}
     </div>
   );
 }
@@ -576,56 +714,81 @@ function ReviewStep({ payload, result, isPending, isError, onBack, onDone, onSub
     }
     if (isLtmsNonterminalState(result.state)) {
       return (
-        <section className="rounded-lg shadow p-8 text-center space-y-3 bg-blue-50 border border-blue-200">
-          <p className="text-xl font-bold text-blue-800">{result.state} — awaiting LTMS response</p>
-          <p className="text-sm text-blue-700">
-            The test has been submitted to the cloud. LTMS is processing the request.
-            The CEC certificate will become available in <strong>History</strong> once approved.
+        <section className="rounded-3xl shadow-md p-8 text-center space-y-4 bg-blue-50 border border-blue-200">
+          <div className="w-16 h-16 rounded-2xl bg-blue-100 flex items-center justify-center text-blue-600 mx-auto shadow-inner">
+            <CloudArrowUp size={32} weight="fill" />
+          </div>
+          <p className="text-xl font-black text-blue-900">{result.state} — Awaiting LTMS Registry</p>
+          <p className="text-sm text-blue-700 max-w-md mx-auto leading-relaxed">
+            The test has been transmitted to cloud sync. LTMS is validating the transaction.
+            The official CEC certificate will appear automatically in <strong>Test History</strong> once confirmed.
           </p>
-          <button onClick={onDone} className="rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700">Go to History</button>
+          <button onClick={onDone} className="rounded-2xl bg-blue-600 px-8 py-3 text-sm font-bold text-white hover:bg-blue-700 min-h-[44px] cursor-pointer shadow-md">
+            Go to Test History
+          </button>
         </section>
       );
     }
     return (
-      <section className="rounded-lg shadow p-8 text-center space-y-3 bg-red-50 border border-red-200">
-        <p className="text-xl font-bold">{result.state.replaceAll("_", " ")}</p>
-        {result.rejectionReason && <p className="text-sm text-red-700">{result.rejectionReason}</p>}
-        <button onClick={onDone} className="rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700">Done</button>
+      <section className="rounded-3xl shadow-md p-8 text-center space-y-4 bg-red-50 border border-red-200">
+        <div className="w-16 h-16 rounded-2xl bg-red-100 flex items-center justify-center text-red-600 mx-auto shadow-inner">
+          <WarningCircle size={32} weight="fill" />
+        </div>
+        <p className="text-xl font-black text-red-900">{result.state.replaceAll("_", " ")}</p>
+        {result.rejectionReason && <p className="text-sm text-red-700 max-w-md mx-auto">{result.rejectionReason}</p>}
+        <button onClick={onDone} className="rounded-2xl bg-blue-600 px-8 py-3 text-sm font-bold text-white hover:bg-blue-700 min-h-[44px] cursor-pointer shadow-md">
+          Return to Queue
+        </button>
       </section>
     );
   }
 
   return (
-    <section className="bg-white rounded-lg shadow p-5 space-y-4">
-      <StepHeading title="Step 6 - Review & Submit" />
-      <div className="grid grid-cols-2 gap-4 text-sm">
-        <SummaryBlock title="Vehicle" rows={[
+    <section className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-7 space-y-6">
+      <StepHeading title="Step 6 - Review Summary & Confirm Transmission" />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-sm">
+        <SummaryBlock title="Vehicle Specifications" rows={[
           ["Purpose", INSPECTION_PURPOSE_LABELS[purpose]],
-          ["Plate", vehicle.plateNo],
+          ["Plate No", vehicle.plateNo],
           ["Vehicle", `${vehicle.yearModel} ${vehicle.make} ${vehicle.series}`],
-          ["Fuel", vehicle.fuelType],
+          ["Fuel Type", vehicle.fuelType],
           ["DOTr Group", vehicle.dotrVehicleGroup],
           ["Classification", vehicle.classification],
           ["Engine / Chassis", `${vehicle.engineNo} / ${vehicle.chassisNo}`],
         ]} />
-        <SummaryBlock title="Owner" rows={[
+        <SummaryBlock title="Owner Information" rows={[
           ["Type", owner.ownerType],
           ["Name", owner.ownerType === "ORGANIZATION" ? owner.organization : `${owner.firstName} ${owner.middleName} ${owner.lastName}`],
           ["Address", `${owner.address}, ${owner.city}`],
         ]} />
-        <SummaryBlock title="Verdict" rows={[
-          ["Result", verdict.label],
-          ["Reason", verdict.reasons.length ? verdict.reasons.join("; ") : "Within configured mock limits"],
+        <SummaryBlock title="Inspection Result" rows={[
+          ["Overall Verdict", verdict.label],
+          ["Evaluation Basis", verdict.reasons.length ? verdict.reasons.join("; ") : "Within regulatory emission thresholds"],
         ]} />
-        <SummaryBlock title="Photos" rows={[
-          ["Attached", `${(payload.photos as TestPhoto[]).length}`],
+        <SummaryBlock title="Attached Media" rows={[
+          ["Photos Attached", `${(payload.photos as TestPhoto[]).length} file(s)`],
         ]} />
       </div>
-      {isError && <p className="text-sm text-red-600">Submission failed before it reached the sidecar.</p>}
-      <div className="flex justify-between">
-        <button onClick={onBack} disabled={isPending} className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50">Back</button>
-        <button onClick={onSubmit} disabled={isPending} className="rounded-md bg-green-600 px-6 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
-          {isPending ? "Submitting..." : "Submit to LTMS"}
+      {isError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+          Submission failed before it reached the sidecar service. Verify connection in Settings.
+        </div>
+      )}
+      <div className="flex justify-between items-center pt-2">
+        <button
+          onClick={onBack}
+          disabled={isPending}
+          className="rounded-2xl border border-slate-300 bg-white px-6 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 min-h-[44px] cursor-pointer"
+        >
+          Back
+        </button>
+        <button
+          onClick={onSubmit}
+          disabled={isPending}
+          className="inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-8 py-3 text-base font-black text-white hover:bg-emerald-500 disabled:opacity-50 min-h-[48px] shadow-lg cursor-pointer"
+        >
+          <CloudArrowUp size={20} weight="fill" />
+          <span>{isPending ? "Transmitting…" : "Transmit to LTMS"}</span>
         </button>
       </div>
     </section>
@@ -655,37 +818,38 @@ function CecPreviewAndPrint({ submissionId, certificateNo, onDone }: {
   });
 
   return (
-    <section className="bg-white rounded-lg shadow overflow-hidden">
-      <div className="flex items-center justify-between gap-4 border-b border-gray-200 bg-green-50 px-5 py-3">
+    <section className="bg-white rounded-3xl border border-slate-200/90 shadow-md overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-emerald-200 bg-emerald-50 px-6 py-4">
         <div>
-          <p className="text-sm font-bold text-green-800">CEC issued — review before printing</p>
+          <p className="text-base font-black text-emerald-900">Certificate of Emission Compliance Issued</p>
           {certificateNo && (
-            <p className="text-xs text-green-700">Certificate No: <strong>{certificateNo}</strong></p>
+            <p className="text-xs text-emerald-700 font-bold">Certificate No: {certificateNo}</p>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          {printStatus === "printed" && <span className="text-xs text-green-700">Sent to printer ✓</span>}
-          {printStatus === "error" && <span className="text-xs text-red-600">Print failed</span>}
+        <div className="flex items-center gap-2.5">
+          {printStatus === "printed" && <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1 rounded-md">Sent to printer ✓</span>}
+          {printStatus === "error" && <span className="text-xs font-bold text-red-600 bg-red-100 px-3 py-1 rounded-md">Print failed</span>}
           <button
             onClick={() => printMutation.mutate()}
             disabled={printMutation.isPending}
-            className="rounded-md bg-blue-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-2xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50 min-h-[40px] cursor-pointer shadow-sm"
           >
-            {printMutation.isPending ? "Printing…" : "Print CEC ×2"}
+            <Printer size={16} weight="bold" />
+            <span>{printMutation.isPending ? "Printing…" : "Print CEC ×2"}</span>
           </button>
           <button
             onClick={onDone}
-            className="rounded-md border border-gray-300 px-4 py-1.5 text-xs font-medium hover:bg-gray-50"
+            className="rounded-2xl border border-slate-300 bg-white px-5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 min-h-[40px] cursor-pointer"
           >
             Done
           </button>
         </div>
       </div>
-      <div className="h-[70vh] bg-gray-100">
+      <div className="h-[70vh] bg-slate-100">
         {pdfUrl ? (
           <iframe src={pdfUrl} title="CEC preview" className="w-full h-full border-0" />
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-gray-500">Loading CEC PDF…</div>
+          <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Loading Certificate PDF…</div>
         )}
       </div>
     </section>
@@ -693,7 +857,7 @@ function CecPreviewAndPrint({ submissionId, certificateNo, onDone }: {
 }
 
 function StepHeading({ title }: { title: string }) {
-  return <h2 className="text-sm font-bold uppercase tracking-wide text-gray-700">{title}</h2>;
+  return <h2 className="text-base font-black tracking-tight text-slate-900">{title}</h2>;
 }
 
 function TextField({ label, value, type = "text", badge, onChange }: {
@@ -704,12 +868,24 @@ function TextField({ label, value, type = "text", badge, onChange }: {
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block space-y-1">
-      <span className="flex items-center gap-2 text-xs font-medium text-gray-600">
-        {label}
-        {badge && <span className={clsx("rounded-full px-1.5 py-0.5 text-[10px]", badge === "Edited" ? "bg-yellow-100 text-yellow-700" : "bg-blue-100 text-blue-700")}>{badge}</span>}
+    <label className="block space-y-1.5">
+      <span className="flex items-center justify-between text-sm font-bold text-slate-700">
+        <span>{label}</span>
+        {badge && (
+          <span className={clsx(
+            "rounded-md px-2 py-0.5 text-[10px] font-extrabold uppercase",
+            badge === "Edited" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+          )}>
+            {badge}
+          </span>
+        )}
       </span>
-      <input type={type} value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[46px] shadow-xs"
+      />
     </label>
   );
 }
@@ -722,12 +898,23 @@ function SelectField({ label, value, options, badge, onChange }: {
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block space-y-1">
-      <span className="flex items-center gap-2 text-xs font-medium text-gray-600">
-        {label}
-        {badge && <span className={clsx("rounded-full px-1.5 py-0.5 text-[10px]", badge === "Edited" ? "bg-yellow-100 text-yellow-700" : "bg-blue-100 text-blue-700")}>{badge}</span>}
+    <label className="block space-y-1.5">
+      <span className="flex items-center justify-between text-sm font-bold text-slate-700">
+        <span>{label}</span>
+        {badge && (
+          <span className={clsx(
+            "rounded-md px-2 py-0.5 text-[10px] font-extrabold uppercase",
+            badge === "Edited" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+          )}>
+            {badge}
+          </span>
+        )}
       </span>
-      <select value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[46px] shadow-xs"
+      >
         <option value="">Select...</option>
         {options.map((option) => <option key={option} value={option}>{option}</option>)}
       </select>
@@ -742,15 +929,18 @@ function Segment({ label, value, options, onChange }: {
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="space-y-1">
-      <p className="text-xs font-medium text-gray-600">{label}</p>
-      <div className="flex rounded-md border border-gray-300 p-0.5">
+    <div className="space-y-1.5">
+      <p className="text-sm font-bold text-slate-700">{label}</p>
+      <div className="flex rounded-xl border border-slate-300 bg-slate-100/70 p-1">
         {options.map((option) => (
           <button
             key={option}
             type="button"
             onClick={() => onChange(option)}
-            className={clsx("flex-1 rounded px-2 py-1.5 text-xs font-semibold", value === option ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-50")}
+            className={clsx(
+              "flex-1 rounded-lg px-2.5 py-2 text-xs font-extrabold transition-all cursor-pointer",
+              value === option ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
+            )}
           >
             {option.replace(/_/g, ".")}
           </button>
@@ -766,9 +956,23 @@ function FooterNav({ nextDisabled = false, onBack, onNext }: {
   onNext: () => void;
 }) {
   return (
-    <div className="flex justify-between pt-2">
-      {onBack ? <button onClick={onBack} className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50">Back</button> : <span />}
-      <button onClick={onNext} disabled={nextDisabled} className="rounded-md bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">Next</button>
+    <div className="flex justify-between items-center pt-3 border-t border-slate-100">
+      {onBack ? (
+        <button
+          onClick={onBack}
+          className="rounded-2xl border border-slate-300 bg-white px-6 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 min-h-[44px] cursor-pointer"
+        >
+          Back
+        </button>
+      ) : <span />}
+      <button
+        onClick={onNext}
+        disabled={nextDisabled}
+        className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-8 py-3 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50 min-h-[44px] shadow-sm cursor-pointer"
+      >
+        <span>Continue</span>
+        <ArrowRight size={16} weight="bold" />
+      </button>
     </div>
   );
 }
@@ -776,13 +980,13 @@ function FooterNav({ nextDisabled = false, onBack, onNext }: {
 function ReadingsGrid({ readings }: { readings: Record<string, number | null | undefined> }) {
   const entries = Object.entries(readings);
   return (
-    <div className="grid grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       {entries.length === 0 ? (
-        <p className="col-span-4 text-sm text-gray-500">No analyzer readings found for this test.</p>
+        <p className="col-span-4 text-sm text-slate-500 font-medium">No analyzer readings found for this test.</p>
       ) : entries.map(([key, value]) => (
-        <div key={key} className="rounded-md border border-gray-200 px-3 py-2">
-          <p className="text-[11px] uppercase text-gray-500">{key.replace(/_/g, " ")}</p>
-          <p className="font-mono text-sm font-semibold text-gray-800">{value ?? "N/A"}</p>
+        <div key={key} className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{key.replace(/_/g, " ")}</p>
+          <p className="font-mono text-base font-black text-slate-800 mt-0.5">{value ?? "N/A"}</p>
         </div>
       ))}
     </div>
@@ -791,13 +995,13 @@ function ReadingsGrid({ readings }: { readings: Record<string, number | null | u
 
 function SummaryBlock({ title, rows }: { title: string; rows: [string, string][] }) {
   return (
-    <div className="rounded-md border border-gray-200 p-3">
-      <p className="mb-2 text-xs font-bold uppercase text-gray-500">{title}</p>
-      <dl className="space-y-1">
+    <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
+      <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">{title}</p>
+      <dl className="space-y-2">
         {rows.map(([label, value]) => (
-          <div key={label} className="flex justify-between gap-4">
-            <dt className="text-gray-500">{label}</dt>
-            <dd className="text-right font-medium text-gray-800">{value || "N/A"}</dd>
+          <div key={label} className="flex justify-between gap-4 text-sm">
+            <dt className="text-slate-500 font-medium">{label}</dt>
+            <dd className="text-right font-bold text-slate-800">{value || "N/A"}</dd>
           </div>
         ))}
       </dl>
@@ -839,9 +1043,9 @@ function badgeFor(_field: string, value: string, original?: string | number): "F
 }
 
 function lookupStatusText(lookup: VehicleLookupResponse | null, pending: boolean): string {
-  if (pending) return "Looking up registry data...";
-  if (!lookup) return "Mock lookup has not run yet.";
-  if (!lookup.found) return "Plate not found. Complete the fields manually.";
-  if (lookup.source === "LTMS_CACHE") return `From LTMS cache (${lookup.fetchedAt ? new Date(lookup.fetchedAt).toLocaleString() : "cached"})`;
-  return "From LTMS mock registry.";
+  if (pending) return "Querying registry database…";
+  if (!lookup) return "Lookup pending.";
+  if (!lookup.found) return "Record not found in registry. Encode fields manually.";
+  if (lookup.source === "LTMS_CACHE") return `Loaded from cache (${lookup.fetchedAt ? new Date(lookup.fetchedAt).toLocaleString() : "cached"})`;
+  return "Loaded from LTMS registry.";
 }

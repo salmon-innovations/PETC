@@ -10,8 +10,8 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    "noEmit": true,
+    "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src", "../electron/bridge.d.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]

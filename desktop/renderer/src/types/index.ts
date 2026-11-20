@@ -17,6 +17,8 @@ export interface User {
   role: Role;
   tesdaCertNo?: string;
   certificationNo?: string;
+  avatarColor?: string;
+  avatarUrl?: string | null;
 }
 
 export interface VehicleInfo {

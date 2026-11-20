@@ -12,8 +12,11 @@
     "build:renderer": "cd renderer && npm run build",
     "build:electron": "tsc -p electron/tsconfig.json",
     "electron": "electron .",
-    "pack": "electron-builder --config installer/electron-builder.yml --dir",
-    "dist": "electron-builder --config installer/electron-builder.yml"
+    "build:icon": ".venv\\Scripts\\python.exe tools\\create_windows_icon.py",
+    "build:sidecar": ".venv\\Scripts\\python.exe -m PyInstaller --noconfirm --clean --distpath sidecar\\dist --workpath sidecar\\build installer\\petc_sidecar.spec",
+    "package:prepare": "npm run build && npm run build:icon && npm run build:sidecar",
+    "pack": "npm run package:prepare && electron-builder --config installer/electron-builder.yml --dir",
+    "dist": "npm run package:prepare && electron-builder --config installer/electron-builder.yml --win"
   },
   "dependencies": {
     "electron-log": "^5.2.0",

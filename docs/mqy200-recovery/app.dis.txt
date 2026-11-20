@@ -1,0 +1,3181 @@
+   0           RESUME                   0
+
+   1           LOAD_SMALL_INT           0
+               LOAD_CONST               1 (None)
+               IMPORT_NAME              0 (os)
+               STORE_NAME               0 (os)
+
+   2           LOAD_SMALL_INT           0
+               LOAD_CONST               1 (None)
+               IMPORT_NAME              1 (sys)
+               STORE_NAME               1 (sys)
+
+   3           LOAD_SMALL_INT           0
+               LOAD_CONST               1 (None)
+               IMPORT_NAME              2 (time)
+               STORE_NAME               2 (time)
+
+   4           LOAD_SMALL_INT           0
+               LOAD_CONST               1 (None)
+               IMPORT_NAME              3 (threading)
+               STORE_NAME               3 (threading)
+
+   5           LOAD_SMALL_INT           0
+               LOAD_CONST               2 (('date',))
+               IMPORT_NAME              4 (datetime)
+               IMPORT_FROM              5 (date)
+               STORE_NAME               5 (date)
+               POP_TOP
+
+   6           LOAD_SMALL_INT           0
+               LOAD_CONST               1 (None)
+               IMPORT_NAME              6 (tkinter)
+               STORE_NAME               7 (tk)
+
+   7           LOAD_SMALL_INT           0
+               LOAD_CONST               3 (('ttk', 'messagebox'))
+               IMPORT_NAME              6 (tkinter)
+               IMPORT_FROM              8 (ttk)
+               STORE_NAME               8 (ttk)
+               IMPORT_FROM              9 (messagebox)
+               STORE_NAME               9 (messagebox)
+               POP_TOP
+
+   9           NOP
+
+  10   L1:     LOAD_SMALL_INT           0
+               LOAD_CONST               1 (None)
+               IMPORT_NAME             10 (serial)
+               STORE_NAME              10 (serial)
+
+  11           LOAD_SMALL_INT           0
+               LOAD_CONST               4 (('list_ports',))
+               IMPORT_NAME             11 (serial.tools)
+               IMPORT_FROM             12 (list_ports)
+               STORE_NAME              12 (list_ports)
+               POP_TOP
+
+  16   L2:     LOAD_SMALL_INT           0
+               LOAD_CONST               5 (('SET_REALTIME', 'START_CALIBRATION', 'GET_DATA', 'parse_k_response'))
+               IMPORT_NAME             14 (mqy200_protocol)
+               IMPORT_FROM             15 (SET_REALTIME)
+               STORE_NAME              15 (SET_REALTIME)
+               IMPORT_FROM             16 (START_CALIBRATION)
+               STORE_NAME              16 (START_CALIBRATION)
+               IMPORT_FROM             17 (GET_DATA)
+               STORE_NAME              17 (GET_DATA)
+               IMPORT_FROM             18 (parse_k_response)
+               STORE_NAME              18 (parse_k_response)
+               POP_TOP
+
+  17           LOAD_SMALL_INT           0
+               LOAD_CONST               6 (('SerialConnection',))
+               IMPORT_NAME             19 (serial_win)
+               IMPORT_FROM             20 (SerialConnection)
+               STORE_NAME              20 (SerialConnection)
+               POP_TOP
+
+  19           LOAD_CONST               7 ('#101010')
+               STORE_NAME              21 (BG)
+
+  20           LOAD_CONST               8 ('#181818')
+               STORE_NAME              22 (PANEL)
+
+  21           LOAD_CONST               9 ('#F2F2F2')
+               STORE_NAME              23 (FG)
+
+  22           LOAD_CONST              10 ('#A7A7A7')
+               STORE_NAME              24 (MUTED)
+
+  23           LOAD_CONST              11 ('#16843A')
+               STORE_NAME              25 (GREEN)
+
+  24           LOAD_CONST              12 ('#B3261E')
+               STORE_NAME              26 (RED)
+
+  25           LOAD_CONST              13 ('#C88719')
+               STORE_NAME              27 (AMBER)
+
+  26           LOAD_CONST              14 ('#2867C7')
+               STORE_NAME              28 (BLUE)
+
+  28           LOAD_BUILD_CLASS
+               PUSH_NULL
+               LOAD_CONST              15 (<code object MQY200App at 0x000002907FB631B0, file "app.py", line 28>)
+               MAKE_FUNCTION
+               LOAD_CONST              16 ('MQY200App')
+               LOAD_NAME                7 (tk)
+               LOAD_ATTR               58 (Tk)
+               CALL                     3
+               STORE_NAME              30 (MQY200App)
+
+ 414           LOAD_NAME               31 (__name__)
+               LOAD_CONST              17 ('__main__')
+               COMPARE_OP              88 (bool(==))
+               POP_JUMP_IF_FALSE       24 (to L3)
+               NOT_TAKEN
+
+ 415           LOAD_NAME               30 (MQY200App)
+               PUSH_NULL
+               CALL                     0
+               LOAD_ATTR               65 (mainloop + NULL|self)
+               CALL                     0
+               POP_TOP
+               LOAD_CONST               1 (None)
+               RETURN_VALUE
+
+ 414   L3:     LOAD_CONST               1 (None)
+               RETURN_VALUE
+
+  --   L4:     PUSH_EXC_INFO
+
+  12           LOAD_NAME               13 (ImportError)
+               CHECK_EXC_MATCH
+               POP_JUMP_IF_FALSE        8 (to L6)
+               NOT_TAKEN
+               POP_TOP
+
+  13           LOAD_CONST               1 (None)
+               STORE_NAME              10 (serial)
+
+  14           LOAD_CONST               1 (None)
+               STORE_NAME              12 (list_ports)
+       L5:     POP_EXCEPT
+               JUMP_BACKWARD_NO_INTERRUPT 100 (to L2)
+
+  12   L6:     RERAISE                  0
+
+  --   L7:     COPY                     3
+               POP_EXCEPT
+               RERAISE                  1
+ExceptionTable:
+  L1 to L2 -> L4 [0]
+  L4 to L5 -> L7 [1] lasti
+  L6 to L7 -> L7 [1] lasti
+
+Disassembly of <code object MQY200App at 0x000002907FB631B0, file "app.py", line 28>:
+  --           MAKE_CELL                0 (__class__)
+               MAKE_CELL                1 (__classdict__)
+
+  28           RESUME                   0
+               LOAD_NAME                0 (__name__)
+               STORE_NAME               1 (__module__)
+               LOAD_CONST               0 ('MQY200App')
+               STORE_NAME               2 (__qualname__)
+               LOAD_SMALL_INT          28
+               STORE_NAME               3 (__firstlineno__)
+               LOAD_LOCALS
+               STORE_DEREF              1 (__classdict__)
+
+  29           LOAD_FAST_BORROW         0 (__class__)
+               BUILD_TUPLE              1
+               LOAD_CONST               1 (<code object __init__ at 0x000002900006ECD0, file "app.py", line 29>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   8 (closure)
+               STORE_NAME               4 (__init__)
+
+  64           LOAD_CONST               2 (<code object build_ui at 0x000002900006FAF0, file "app.py", line 64>)
+               MAKE_FUNCTION
+               STORE_NAME               5 (build_ui)
+
+ 153           LOAD_CONST               3 (<code object refresh_ports at 0x000002900007C5F0, file "app.py", line 153>)
+               MAKE_FUNCTION
+               STORE_NAME               6 (refresh_ports)
+
+ 176           LOAD_CONST               4 (<code object toggle_connection at 0x0000029000070C60, file "app.py", line 176>)
+               MAKE_FUNCTION
+               STORE_NAME               7 (toggle_connection)
+
+ 199           LOAD_CONST               5 (<code object perform_test at 0x000002907FF180A0, file "app.py", line 199>)
+               MAKE_FUNCTION
+               STORE_NAME               8 (perform_test)
+
+ 229           LOAD_CONST               6 (<code object run_sequence at 0x000002907FF245E0, file "app.py", line 229>)
+               MAKE_FUNCTION
+               STORE_NAME               9 (run_sequence)
+
+ 285           LOAD_CONST               7 (<code object collect_realtime_samples at 0x00000290000714D0, file "app.py", line 285>)
+               MAKE_FUNCTION
+               STORE_NAME              10 (collect_realtime_samples)
+
+ 312           LOAD_CONST               8 (<code object get_test_result at 0x000002907FF25320, file "app.py", line 312>)
+               MAKE_FUNCTION
+               STORE_NAME              11 (get_test_result)
+
+ 356           LOAD_CONST               9 (<code object cancel_test at 0x000002907FF184C0, file "app.py", line 356>)
+               MAKE_FUNCTION
+               STORE_NAME              12 (cancel_test)
+
+ 374           LOAD_CONST              10 (<code object sleep_cancelable at 0x000002900023D070, file "app.py", line 374>)
+               MAKE_FUNCTION
+               STORE_NAME              13 (sleep_cancelable)
+
+ 382           LOAD_CONST              11 (<code object ui_status at 0x00000290002C5680, file "app.py", line 382>)
+               MAKE_FUNCTION
+               STORE_NAME              14 (ui_status)
+
+ 385           LOAD_CONST              12 (<code object ui at 0x00000290002E8330, file "app.py", line 385>)
+               MAKE_FUNCTION
+               STORE_NAME              15 (ui)
+
+ 388           LOAD_CONST              13 (<code object append_result at 0x00000290002C5790, file "app.py", line 388>)
+               MAKE_FUNCTION
+               STORE_NAME              16 (append_result)
+
+ 396           LOAD_CONST              14 (<code object clear_results at 0x000002907FBA6EB0, file "app.py", line 396>)
+               MAKE_FUNCTION
+               STORE_NAME              17 (clear_results)
+
+ 401           LOAD_CONST              15 (<code object poll_connection at 0x0000029000003400, file "app.py", line 401>)
+               MAKE_FUNCTION
+               STORE_NAME              18 (poll_connection)
+
+ 407           LOAD_CONST              16 (<code object on_close at 0x000002907FE66FA0, file "app.py", line 407>)
+               MAKE_FUNCTION
+               STORE_NAME              19 (on_close)
+               LOAD_CONST              17 (('accepted_results', 'average_var', 'big_counter', 'cancel_btn', 'cancel_requested', 'conn', 'connect_btn', 'connected_port', 'connection_var', 'counter_var', 'current_readings', 'final_average', 'k_var', 'message_var', 'perform_btn', 'port_combo', 'port_map', 'port_var', 'result_btn', 'result_ready', 'result_text', 'running', 'sample_threads', 'status_var', 'test_no', 'test_results', 'test_vars', 'tests_var'))
+               STORE_NAME              20 (__static_attributes__)
+               LOAD_FAST_BORROW         1 (__classdict__)
+               STORE_NAME              21 (__classdictcell__)
+               LOAD_FAST_BORROW         0 (__class__)
+               COPY                     1
+               STORE_NAME              22 (__classcell__)
+               RETURN_VALUE
+
+Disassembly of <code object __init__ at 0x000002900006ECD0, file "app.py", line 29>:
+  --           COPY_FREE_VARS           1
+
+  29           RESUME                   0
+
+  30           LOAD_GLOBAL              0 (super)
+               LOAD_DEREF               2 (__class__)
+               LOAD_FAST_BORROW         0 (self)
+               LOAD_SUPER_ATTR          5 (__init__ + NULL|self)
+               CALL                     0
+               POP_TOP
+
+  31           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR                5 (title + NULL|self)
+               LOAD_CONST               0 ('CARTESY MQY-200 Simple Integration')
+               CALL                     1
+               POP_TOP
+
+  32           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR                7 (geometry + NULL|self)
+               LOAD_CONST               1 ('1000x720')
+               CALL                     1
+               POP_TOP
+
+  33           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR                9 (minsize + NULL|self)
+               LOAD_CONST               2 (900)
+               LOAD_CONST               3 (650)
+               CALL                     2
+               POP_TOP
+
+  34           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               11 (configure + NULL|self)
+               LOAD_GLOBAL             12 (BG)
+               LOAD_CONST               4 (('bg',))
+               CALL_KW                  1
+               POP_TOP
+
+  35           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               15 (protocol + NULL|self)
+               LOAD_CONST               5 ('WM_DELETE_WINDOW')
+               LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               16 (on_close)
+               CALL                     2
+               POP_TOP
+
+  37           LOAD_GLOBAL             19 (SerialConnection + NULL)
+               CALL                     0
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              10 (conn)
+
+  38           LOAD_CONST               6 (False)
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              11 (running)
+
+  39           LOAD_CONST               6 (False)
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              12 (cancel_requested)
+
+  40           LOAD_SMALL_INT           0
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              13 (test_no)
+
+  41           BUILD_LIST               0
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              14 (current_readings)
+
+  42           BUILD_LIST               0
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              15 (sample_threads)
+
+  43           BUILD_LIST               0
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              16 (test_results)
+
+  44           LOAD_CONST               7 (None)
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              17 (final_average)
+
+  45           LOAD_CONST               6 (False)
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              18 (result_ready)
+
+  46           BUILD_LIST               0
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              19 (accepted_results)
+
+  47           LOAD_CONST               7 (None)
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              20 (connected_port)
+
+  48           BUILD_MAP                0
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              21 (port_map)
+
+  50           LOAD_GLOBAL             44 (tk)
+               LOAD_ATTR               46 (StringVar)
+               PUSH_NULL
+               CALL                     0
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              24 (port_var)
+
+  51           LOAD_GLOBAL             44 (tk)
+               LOAD_ATTR               46 (StringVar)
+               PUSH_NULL
+               LOAD_CONST               8 ('DISCONNECTED')
+               LOAD_CONST               9 (('value',))
+               CALL_KW                  1
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              25 (connection_var)
+
+  52           LOAD_GLOBAL             44 (tk)
+               LOAD_ATTR               46 (StringVar)
+               PUSH_NULL
+               LOAD_CONST              10 ('IDLE')
+               LOAD_CONST               9 (('value',))
+               CALL_KW                  1
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              26 (status_var)
+
+  53           LOAD_GLOBAL             44 (tk)
+               LOAD_ATTR               46 (StringVar)
+               PUSH_NULL
+               LOAD_CONST              11 ('Ready.')
+               LOAD_CONST               9 (('value',))
+               CALL_KW                  1
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              27 (message_var)
+
+  54           LOAD_GLOBAL             44 (tk)
+               LOAD_ATTR               46 (StringVar)
+               PUSH_NULL
+               LOAD_CONST              12 ('--')
+               LOAD_CONST               9 (('value',))
+               CALL_KW                  1
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              28 (counter_var)
+
+  55           LOAD_GLOBAL             44 (tk)
+               LOAD_ATTR               46 (StringVar)
+               PUSH_NULL
+               LOAD_CONST              13 ('0.00')
+               LOAD_CONST               9 (('value',))
+               CALL_KW                  1
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              29 (k_var)
+
+  56           LOAD_GLOBAL             44 (tk)
+               LOAD_ATTR               46 (StringVar)
+               PUSH_NULL
+               LOAD_CONST              14 ('0 / 6')
+               LOAD_CONST               9 (('value',))
+               CALL_KW                  1
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              30 (tests_var)
+
+  57           LOAD_GLOBAL             44 (tk)
+               LOAD_ATTR               46 (StringVar)
+               PUSH_NULL
+               LOAD_CONST              15 ('--.--')
+               LOAD_CONST               9 (('value',))
+               CALL_KW                  1
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              31 (average_var)
+
+  58           LOAD_GLOBAL             65 (range + NULL)
+               LOAD_SMALL_INT           6
+               CALL                     1
+               GET_ITER
+               LOAD_FAST_AND_CLEAR      1 (_)
+               SWAP                     2
+       L1:     BUILD_LIST               0
+               SWAP                     2
+       L2:     FOR_ITER                26 (to L3)
+               STORE_FAST               1 (_)
+               LOAD_GLOBAL             44 (tk)
+               LOAD_ATTR               46 (StringVar)
+               PUSH_NULL
+               LOAD_CONST              15 ('--.--')
+               LOAD_CONST               9 (('value',))
+               CALL_KW                  1
+               LIST_APPEND              2
+               JUMP_BACKWARD           28 (to L2)
+       L3:     END_FOR
+               POP_ITER
+       L4:     SWAP                     2
+               STORE_FAST               1 (_)
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR              33 (test_vars)
+
+  60           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               69 (build_ui + NULL|self)
+               CALL                     0
+               POP_TOP
+
+  61           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               71 (refresh_ports + NULL|self)
+               CALL                     0
+               POP_TOP
+
+  62           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               73 (after + NULL|self)
+               LOAD_SMALL_INT         250
+               LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               74 (poll_connection)
+               CALL                     2
+               POP_TOP
+               LOAD_CONST               7 (None)
+               RETURN_VALUE
+
+  --   L5:     SWAP                     2
+               POP_TOP
+
+  58           SWAP                     2
+               STORE_FAST               1 (_)
+               RERAISE                  0
+ExceptionTable:
+  L1 to L4 -> L5 [2]
+
+Disassembly of <code object build_ui at 0x000002900006FAF0, file "app.py", line 64>:
+ 64           RESUME                   0
+
+ 65           LOAD_GLOBAL              0 (ttk)
+              LOAD_ATTR                2 (Style)
+              PUSH_NULL
+              LOAD_FAST_BORROW         0 (self)
+              CALL                     1
+              STORE_FAST               1 (style)
+
+ 66           LOAD_FAST_BORROW         1 (style)
+              LOAD_ATTR                5 (theme_use + NULL|self)
+              LOAD_CONST               0 ('clam')
+              CALL                     1
+              POP_TOP
+
+ 67           LOAD_FAST_BORROW         1 (style)
+              LOAD_ATTR                7 (configure + NULL|self)
+              LOAD_CONST               1 ('TCombobox')
+              LOAD_CONST               2 ('#242424')
+              LOAD_CONST               2 ('#242424')
+              LOAD_GLOBAL              8 (FG)
+              LOAD_SMALL_INT           3
+              LOAD_CONST               3 (('fieldbackground', 'background', 'foreground', 'padding'))
+              CALL_KW                  5
+              POP_TOP
+
+ 68           LOAD_FAST_BORROW         1 (style)
+              LOAD_ATTR               11 (map + NULL|self)
+              LOAD_CONST               1 ('TCombobox')
+              LOAD_CONST              71 (('readonly', '#242424'))
+              BUILD_LIST               1
+              LOAD_CONST               4 ('readonly')
+              LOAD_GLOBAL              8 (FG)
+              BUILD_TUPLE              2
+              BUILD_LIST               1
+              LOAD_CONST              71 (('readonly', '#242424'))
+              BUILD_LIST               1
+              LOAD_CONST               4 ('readonly')
+              LOAD_GLOBAL              8 (FG)
+              BUILD_TUPLE              2
+              BUILD_LIST               1
+              LOAD_CONST               5 (('fieldbackground', 'foreground', 'selectbackground', 'selectforeground'))
+              CALL_KW                  5
+              POP_TOP
+
+ 70           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               14 (Label)
+              PUSH_NULL
+              LOAD_FAST_BORROW         0 (self)
+              LOAD_CONST               6 ('MQY-200 SIMPLE INTEGRATION')
+              LOAD_GLOBAL             16 (BG)
+              LOAD_GLOBAL              8 (FG)
+
+ 71           LOAD_CONST              72 (('Segoe UI', 20, 'bold'))
+
+ 70           LOAD_CONST               7 (('text', 'bg', 'fg', 'font'))
+              CALL_KW                  5
+
+ 71           LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              73 ((10, 2))
+              LOAD_CONST               8 (('pady',))
+              CALL_KW                  1
+              POP_TOP
+
+ 72           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               14 (Label)
+              PUSH_NULL
+              LOAD_FAST_BORROW_LOAD_FAST_BORROW 0 (self, self)
+              LOAD_ATTR               20 (connection_var)
+              LOAD_GLOBAL             16 (BG)
+              LOAD_CONST               9 ('#66E58A')
+
+ 73           LOAD_CONST              74 (('Segoe UI', 12, 'bold'))
+
+ 72           LOAD_CONST              10 (('textvariable', 'bg', 'fg', 'font'))
+              CALL_KW                  5
+
+ 73           LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              75 ((0, 8))
+              LOAD_CONST               8 (('pady',))
+              CALL_KW                  1
+              POP_TOP
+
+ 75           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               22 (Frame)
+              PUSH_NULL
+              LOAD_FAST_BORROW         0 (self)
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_SMALL_INT          14
+              LOAD_SMALL_INT          10
+              LOAD_CONST              11 (('bg', 'padx', 'pady'))
+              CALL_KW                  4
+              STORE_FAST               2 (top)
+
+ 76           LOAD_FAST_BORROW         2 (top)
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              12 ('x')
+              LOAD_SMALL_INT          18
+              LOAD_CONST              13 (('fill', 'padx'))
+              CALL_KW                  2
+              POP_TOP
+
+ 77           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               14 (Label)
+              PUSH_NULL
+              LOAD_FAST_BORROW         2 (top)
+              LOAD_CONST              14 ('SERIAL PORT')
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_GLOBAL             26 (MUTED)
+
+ 78           LOAD_CONST              76 (('Segoe UI', 10, 'bold'))
+
+ 77           LOAD_CONST               7 (('text', 'bg', 'fg', 'font'))
+              CALL_KW                  5
+
+ 78           LOAD_ATTR               29 (grid + NULL|self)
+              LOAD_SMALL_INT           0
+              LOAD_SMALL_INT           0
+              LOAD_CONST              15 ('w')
+              LOAD_CONST              16 (('row', 'column', 'sticky'))
+              CALL_KW                  3
+              POP_TOP
+
+ 79           LOAD_GLOBAL              0 (ttk)
+              LOAD_ATTR               30 (Combobox)
+              PUSH_NULL
+              LOAD_FAST_BORROW_LOAD_FAST_BORROW 32 (top, self)
+              LOAD_ATTR               32 (port_var)
+              LOAD_CONST               4 ('readonly')
+              LOAD_SMALL_INT          48
+              LOAD_SMALL_INT           0
+              LOAD_CONST              17 (('textvariable', 'state', 'width', 'takefocus'))
+              CALL_KW                  5
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR              17 (port_combo)
+
+ 80           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               34 (port_combo)
+              LOAD_ATTR               29 (grid + NULL|self)
+              LOAD_SMALL_INT           1
+              LOAD_SMALL_INT           0
+              LOAD_CONST              77 ((0, 10))
+              LOAD_CONST              78 ((5, 0))
+              LOAD_CONST              15 ('w')
+              LOAD_CONST              18 (('row', 'column', 'padx', 'pady', 'sticky'))
+              CALL_KW                  5
+              POP_TOP
+
+ 81           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               36 (Button)
+              PUSH_NULL
+              LOAD_FAST_BORROW         2 (top)
+              LOAD_CONST              19 ('REFRESH')
+              LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               38 (refresh_ports)
+              LOAD_CONST              20 ('#333333')
+              LOAD_GLOBAL              8 (FG)
+
+ 82           LOAD_CONST              21 ('#444444')
+              LOAD_GLOBAL              8 (FG)
+              LOAD_CONST              22 ('flat')
+              LOAD_SMALL_INT          16
+              LOAD_SMALL_INT           7
+
+ 81           LOAD_CONST              23 (('text', 'command', 'bg', 'fg', 'activebackground', 'activeforeground', 'relief', 'padx', 'pady'))
+              CALL_KW                 10
+
+ 82           LOAD_ATTR               29 (grid + NULL|self)
+              LOAD_SMALL_INT           1
+              LOAD_SMALL_INT           1
+              LOAD_CONST              78 ((5, 0))
+              LOAD_CONST              24 (('row', 'column', 'pady'))
+              CALL_KW                  3
+              POP_TOP
+
+ 83           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               36 (Button)
+              PUSH_NULL
+              LOAD_FAST_BORROW         2 (top)
+              LOAD_CONST              25 ('CONNECT')
+              LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               40 (toggle_connection)
+
+ 84           LOAD_GLOBAL             42 (GREEN)
+              LOAD_CONST              26 ('white')
+              LOAD_GLOBAL             42 (GREEN)
+
+ 85           LOAD_CONST              26 ('white')
+              LOAD_CONST              22 ('flat')
+              LOAD_SMALL_INT          22
+              LOAD_SMALL_INT           8
+
+ 86           LOAD_CONST              76 (('Segoe UI', 10, 'bold'))
+
+ 83           LOAD_CONST              27 (('text', 'command', 'bg', 'fg', 'activebackground', 'activeforeground', 'relief', 'padx', 'pady', 'font'))
+              CALL_KW                 11
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR              22 (connect_btn)
+
+ 87           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               44 (connect_btn)
+              LOAD_ATTR               29 (grid + NULL|self)
+              LOAD_SMALL_INT           1
+              LOAD_SMALL_INT           2
+              LOAD_SMALL_INT          18
+              LOAD_CONST              78 ((5, 0))
+              LOAD_CONST              28 (('row', 'column', 'padx', 'pady'))
+              CALL_KW                  4
+              POP_TOP
+
+ 88           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               14 (Label)
+              PUSH_NULL
+              LOAD_FAST_BORROW_LOAD_FAST_BORROW 32 (top, self)
+              LOAD_ATTR               46 (status_var)
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_GLOBAL             26 (MUTED)
+
+ 89           LOAD_CONST              79 (('Segoe UI', 10))
+
+ 88           LOAD_CONST              10 (('textvariable', 'bg', 'fg', 'font'))
+              CALL_KW                  5
+
+ 89           LOAD_ATTR               29 (grid + NULL|self)
+              LOAD_SMALL_INT           1
+              LOAD_SMALL_INT           3
+              LOAD_CONST              29 ('e')
+              LOAD_CONST              16 (('row', 'column', 'sticky'))
+              CALL_KW                  3
+              POP_TOP
+
+ 90           LOAD_FAST_BORROW         2 (top)
+              LOAD_ATTR               49 (columnconfigure + NULL|self)
+              LOAD_SMALL_INT           3
+              LOAD_SMALL_INT           1
+              LOAD_CONST              30 (('weight',))
+              CALL_KW                  2
+              POP_TOP
+
+ 92           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               22 (Frame)
+              PUSH_NULL
+              LOAD_FAST_BORROW         0 (self)
+              LOAD_GLOBAL             16 (BG)
+              LOAD_CONST              31 (('bg',))
+              CALL_KW                  2
+              STORE_FAST               3 (center)
+
+ 93           LOAD_FAST_BORROW         3 (center)
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              32 ('both')
+              LOAD_CONST              33 (True)
+              LOAD_SMALL_INT          18
+              LOAD_SMALL_INT          10
+              LOAD_CONST              34 (('fill', 'expand', 'padx', 'pady'))
+              CALL_KW                  4
+              POP_TOP
+
+ 95           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               22 (Frame)
+              PUSH_NULL
+              LOAD_FAST_BORROW         3 (center)
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_SMALL_INT          16
+              LOAD_SMALL_INT          10
+              LOAD_CONST              11 (('bg', 'padx', 'pady'))
+              CALL_KW                  4
+              STORE_FAST               4 (status_panel)
+
+ 96           LOAD_FAST_BORROW         4 (status_panel)
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              12 ('x')
+              LOAD_CONST              35 (('fill',))
+              CALL_KW                  1
+              POP_TOP
+
+ 97           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               14 (Label)
+              PUSH_NULL
+              LOAD_FAST_BORROW         4 (status_panel)
+              LOAD_CONST              36 ('STATUS')
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_GLOBAL             26 (MUTED)
+              LOAD_CONST              76 (('Segoe UI', 10, 'bold'))
+              LOAD_CONST               7 (('text', 'bg', 'fg', 'font'))
+              CALL_KW                  5
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              15 ('w')
+              LOAD_CONST              37 (('anchor',))
+              CALL_KW                  1
+              POP_TOP
+
+ 98           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               14 (Label)
+              PUSH_NULL
+              LOAD_FAST_BORROW_LOAD_FAST_BORROW 64 (status_panel, self)
+              LOAD_ATTR               50 (message_var)
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_GLOBAL              8 (FG)
+
+ 99           LOAD_CONST              80 (('Segoe UI', 17, 'bold'))
+              LOAD_CONST              38 (860)
+              LOAD_CONST              39 ('left')
+
+ 98           LOAD_CONST              40 (('textvariable', 'bg', 'fg', 'font', 'wraplength', 'justify'))
+              CALL_KW                  7
+
+ 99           LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              15 ('w')
+              LOAD_CONST              81 ((5, 10))
+              LOAD_CONST              41 (('anchor', 'pady'))
+              CALL_KW                  2
+              POP_TOP
+
+100           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               22 (Frame)
+              PUSH_NULL
+              LOAD_FAST_BORROW         4 (status_panel)
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_CONST              31 (('bg',))
+              CALL_KW                  2
+              STORE_FAST               5 (row)
+
+101           LOAD_FAST_BORROW         5 (row)
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              12 ('x')
+              LOAD_CONST              35 (('fill',))
+              CALL_KW                  1
+              POP_TOP
+
+102           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               14 (Label)
+              PUSH_NULL
+              LOAD_FAST_BORROW_LOAD_FAST_BORROW 80 (row, self)
+              LOAD_ATTR               52 (counter_var)
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_GLOBAL              8 (FG)
+
+103           LOAD_CONST              82 (('Segoe UI', 34, 'bold'))
+              LOAD_SMALL_INT           4
+
+102           LOAD_CONST              42 (('textvariable', 'bg', 'fg', 'font', 'width'))
+              CALL_KW                  6
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR              27 (big_counter)
+
+104           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               54 (big_counter)
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              39 ('left')
+              LOAD_CONST              43 (('side',))
+              CALL_KW                  1
+              POP_TOP
+
+105           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               14 (Label)
+              PUSH_NULL
+              LOAD_FAST_BORROW         5 (row)
+              LOAD_CONST              44 ('COUNTDOWN')
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_GLOBAL             26 (MUTED)
+              LOAD_CONST              76 (('Segoe UI', 10, 'bold'))
+              LOAD_CONST               7 (('text', 'bg', 'fg', 'font'))
+              CALL_KW                  5
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              39 ('left')
+              LOAD_SMALL_INT          12
+              LOAD_CONST              45 (('side', 'padx'))
+              CALL_KW                  2
+              POP_TOP
+
+106           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               14 (Label)
+              PUSH_NULL
+              LOAD_FAST_BORROW         5 (row)
+              LOAD_CONST              46 ('CURRENT K')
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_GLOBAL             26 (MUTED)
+              LOAD_CONST              76 (('Segoe UI', 10, 'bold'))
+              LOAD_CONST               7 (('text', 'bg', 'fg', 'font'))
+              CALL_KW                  5
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              39 ('left')
+              LOAD_CONST              83 ((80, 8))
+              LOAD_CONST              45 (('side', 'padx'))
+              CALL_KW                  2
+              POP_TOP
+
+107           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               14 (Label)
+              PUSH_NULL
+              LOAD_FAST_BORROW_LOAD_FAST_BORROW 80 (row, self)
+              LOAD_ATTR               56 (k_var)
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_CONST              47 ('#FFFFFF')
+              LOAD_CONST              84 (('Segoe UI', 25, 'bold'))
+              LOAD_CONST              10 (('textvariable', 'bg', 'fg', 'font'))
+              CALL_KW                  5
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              39 ('left')
+              LOAD_CONST              43 (('side',))
+              CALL_KW                  1
+              POP_TOP
+
+108           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               14 (Label)
+              PUSH_NULL
+              LOAD_FAST_BORROW         5 (row)
+              LOAD_CONST              48 ('TEST')
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_GLOBAL             26 (MUTED)
+              LOAD_CONST              76 (('Segoe UI', 10, 'bold'))
+              LOAD_CONST               7 (('text', 'bg', 'fg', 'font'))
+              CALL_KW                  5
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              39 ('left')
+              LOAD_CONST              85 ((70, 8))
+              LOAD_CONST              45 (('side', 'padx'))
+              CALL_KW                  2
+              POP_TOP
+
+109           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               14 (Label)
+              PUSH_NULL
+              LOAD_FAST_BORROW_LOAD_FAST_BORROW 80 (row, self)
+              LOAD_ATTR               58 (tests_var)
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_GLOBAL              8 (FG)
+              LOAD_CONST              86 (('Segoe UI', 16, 'bold'))
+              LOAD_CONST              10 (('textvariable', 'bg', 'fg', 'font'))
+              CALL_KW                  5
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              39 ('left')
+              LOAD_CONST              43 (('side',))
+              CALL_KW                  1
+              POP_TOP
+
+111           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               22 (Frame)
+              PUSH_NULL
+              LOAD_FAST_BORROW         3 (center)
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_SMALL_INT          16
+              LOAD_SMALL_INT          10
+              LOAD_CONST              11 (('bg', 'padx', 'pady'))
+              CALL_KW                  4
+              STORE_FAST               6 (results)
+
+112           LOAD_FAST_BORROW         6 (results)
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              32 ('both')
+              LOAD_CONST              33 (True)
+              LOAD_CONST              87 ((14, 0))
+              LOAD_CONST              49 (('fill', 'expand', 'pady'))
+              CALL_KW                  3
+              POP_TOP
+
+113           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               14 (Label)
+              PUSH_NULL
+              LOAD_FAST_BORROW         6 (results)
+              LOAD_CONST              50 ('6 TEST RESULTS')
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_GLOBAL             26 (MUTED)
+
+114           LOAD_CONST              76 (('Segoe UI', 10, 'bold'))
+
+113           LOAD_CONST               7 (('text', 'bg', 'fg', 'font'))
+              CALL_KW                  5
+
+114           LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              15 ('w')
+              LOAD_CONST              37 (('anchor',))
+              CALL_KW                  1
+              POP_TOP
+
+116           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               22 (Frame)
+              PUSH_NULL
+              LOAD_FAST_BORROW         6 (results)
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_CONST              31 (('bg',))
+              CALL_KW                  2
+              STORE_FAST               7 (tests_grid)
+
+117           LOAD_FAST_BORROW         7 (tests_grid)
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              12 ('x')
+              LOAD_CONST              88 ((5, 7))
+              LOAD_CONST              51 (('fill', 'pady'))
+              CALL_KW                  2
+              POP_TOP
+
+118           LOAD_GLOBAL             61 (range + NULL)
+              LOAD_SMALL_INT           6
+              CALL                     1
+              GET_ITER
+      L1:     FOR_ITER               200 (to L4)
+              STORE_FAST               8 (i)
+
+119           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               22 (Frame)
+              PUSH_NULL
+              LOAD_FAST_BORROW         7 (tests_grid)
+              LOAD_CONST              52 ('#0C0C0C')
+              LOAD_SMALL_INT          10
+              LOAD_SMALL_INT           8
+
+120           LOAD_SMALL_INT           1
+              LOAD_CONST              53 ('#2A2A2A')
+
+119           LOAD_CONST              54 (('bg', 'padx', 'pady', 'highlightthickness', 'highlightbackground'))
+              CALL_KW                  6
+              STORE_FAST               9 (card)
+
+121           LOAD_FAST                9 (card)
+              LOAD_ATTR               29 (grid + NULL|self)
+              LOAD_SMALL_INT           0
+              LOAD_FAST                8 (i)
+              LOAD_CONST              55 ('nsew')
+              LOAD_FAST_BORROW         8 (i)
+              LOAD_SMALL_INT           0
+              COMPARE_OP              88 (bool(==))
+              POP_JUMP_IF_FALSE        3 (to L2)
+              NOT_TAKEN
+              LOAD_SMALL_INT           0
+              JUMP_FORWARD             1 (to L3)
+      L2:     LOAD_SMALL_INT           5
+      L3:     LOAD_SMALL_INT           0
+              BUILD_TUPLE              2
+              LOAD_CONST              56 (('row', 'column', 'sticky', 'padx'))
+              CALL_KW                  4
+              POP_TOP
+
+122           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               14 (Label)
+              PUSH_NULL
+              LOAD_FAST_BORROW         9 (card)
+              LOAD_CONST              57 ('TEST ')
+              LOAD_FAST_BORROW         8 (i)
+              LOAD_SMALL_INT           1
+              BINARY_OP                0 (+)
+              FORMAT_SIMPLE
+              BUILD_STRING             2
+              LOAD_CONST              52 ('#0C0C0C')
+              LOAD_GLOBAL             26 (MUTED)
+
+123           LOAD_CONST              89 (('Segoe UI', 9, 'bold'))
+
+122           LOAD_CONST               7 (('text', 'bg', 'fg', 'font'))
+              CALL_KW                  5
+
+123           LOAD_ATTR               19 (pack + NULL|self)
+              CALL                     0
+              POP_TOP
+
+124           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               14 (Label)
+              PUSH_NULL
+              LOAD_FAST_BORROW_LOAD_FAST_BORROW 144 (card, self)
+              LOAD_ATTR               62 (test_vars)
+              LOAD_FAST_BORROW         8 (i)
+              BINARY_OP               26 ([])
+              LOAD_CONST              52 ('#0C0C0C')
+              LOAD_GLOBAL              8 (FG)
+
+125           LOAD_CONST              90 (('Consolas', 13, 'bold'))
+
+124           LOAD_CONST              10 (('textvariable', 'bg', 'fg', 'font'))
+              CALL_KW                  5
+
+125           LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              91 ((4, 0))
+              LOAD_CONST               8 (('pady',))
+              CALL_KW                  1
+              POP_TOP
+
+126           LOAD_FAST_BORROW         7 (tests_grid)
+              LOAD_ATTR               49 (columnconfigure + NULL|self)
+              LOAD_FAST_BORROW         8 (i)
+              LOAD_SMALL_INT           1
+              LOAD_CONST              30 (('weight',))
+              CALL_KW                  2
+              POP_TOP
+              JUMP_BACKWARD          202 (to L1)
+
+118   L4:     END_FOR
+              POP_ITER
+
+128           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               64 (Text)
+              PUSH_NULL
+              LOAD_FAST_BORROW         6 (results)
+              LOAD_SMALL_INT           3
+              LOAD_CONST              52 ('#0C0C0C')
+              LOAD_CONST              58 ('#DDF6DF')
+              LOAD_GLOBAL              8 (FG)
+
+129           LOAD_CONST              22 ('flat')
+              LOAD_CONST              92 (('Consolas', 10))
+              LOAD_CONST              59 ('disabled')
+
+128           LOAD_CONST              60 (('height', 'bg', 'fg', 'insertbackground', 'relief', 'font', 'state'))
+              CALL_KW                  8
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR              33 (result_text)
+
+130           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               66 (result_text)
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              32 ('both')
+              LOAD_CONST              33 (True)
+              LOAD_CONST              93 ((0, 6))
+              LOAD_CONST              49 (('fill', 'expand', 'pady'))
+              CALL_KW                  3
+              POP_TOP
+
+131           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               22 (Frame)
+              PUSH_NULL
+              LOAD_FAST_BORROW         6 (results)
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_CONST              31 (('bg',))
+              CALL_KW                  2
+              STORE_FAST              10 (bottom_result)
+
+132           LOAD_FAST_BORROW        10 (bottom_result)
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              12 ('x')
+              LOAD_CONST              35 (('fill',))
+              CALL_KW                  1
+              POP_TOP
+
+133           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               14 (Label)
+              PUSH_NULL
+              LOAD_FAST_BORROW        10 (bottom_result)
+              LOAD_CONST              61 ('TOTAL AVERAGE')
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_GLOBAL             26 (MUTED)
+
+134           LOAD_CONST              76 (('Segoe UI', 10, 'bold'))
+
+133           LOAD_CONST               7 (('text', 'bg', 'fg', 'font'))
+              CALL_KW                  5
+
+134           LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              39 ('left')
+              LOAD_CONST              43 (('side',))
+              CALL_KW                  1
+              POP_TOP
+
+135           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               14 (Label)
+              PUSH_NULL
+              LOAD_FAST_BORROW_LOAD_FAST_BORROW 160 (bottom_result, self)
+              LOAD_ATTR               68 (average_var)
+              LOAD_GLOBAL             24 (PANEL)
+              LOAD_CONST              47 ('#FFFFFF')
+
+136           LOAD_CONST              94 (('Segoe UI', 21, 'bold'))
+
+135           LOAD_CONST              10 (('textvariable', 'bg', 'fg', 'font'))
+              CALL_KW                  5
+
+136           LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              39 ('left')
+              LOAD_SMALL_INT          14
+              LOAD_CONST              45 (('side', 'padx'))
+              CALL_KW                  2
+              POP_TOP
+
+138           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               22 (Frame)
+              PUSH_NULL
+              LOAD_FAST_BORROW         0 (self)
+              LOAD_GLOBAL             16 (BG)
+              LOAD_CONST              31 (('bg',))
+              CALL_KW                  2
+              STORE_FAST              11 (actions)
+
+139           LOAD_FAST_BORROW        11 (actions)
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              62 ('bottom')
+              LOAD_CONST              12 ('x')
+              LOAD_SMALL_INT          18
+              LOAD_CONST              95 ((4, 10))
+              LOAD_CONST              63 (('side', 'fill', 'padx', 'pady'))
+              CALL_KW                  4
+              POP_TOP
+
+140           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               36 (Button)
+              PUSH_NULL
+              LOAD_FAST_BORROW        11 (actions)
+              LOAD_CONST              64 ('PERFORM TEST')
+              LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               70 (perform_test)
+
+141           LOAD_GLOBAL             72 (BLUE)
+              LOAD_CONST              26 ('white')
+              LOAD_GLOBAL             72 (BLUE)
+              LOAD_CONST              26 ('white')
+
+142           LOAD_CONST              22 ('flat')
+              LOAD_SMALL_INT          16
+              LOAD_SMALL_INT          10
+              LOAD_CONST              76 (('Segoe UI', 10, 'bold'))
+
+140           LOAD_CONST              27 (('text', 'command', 'bg', 'fg', 'activebackground', 'activeforeground', 'relief', 'padx', 'pady', 'font'))
+              CALL_KW                 11
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR              37 (perform_btn)
+
+143           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               74 (perform_btn)
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              39 ('left')
+              LOAD_CONST              33 (True)
+              LOAD_CONST              12 ('x')
+              LOAD_CONST              93 ((0, 6))
+              LOAD_CONST              65 (('side', 'expand', 'fill', 'padx'))
+              CALL_KW                  4
+              POP_TOP
+
+144           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               36 (Button)
+              PUSH_NULL
+              LOAD_FAST_BORROW        11 (actions)
+              LOAD_CONST              66 ('GET TEST RESULT')
+              LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               76 (get_test_result)
+
+145           LOAD_CONST              20 ('#333333')
+              LOAD_CONST              67 ('#777777')
+              LOAD_CONST              20 ('#333333')
+              LOAD_CONST              67 ('#777777')
+
+146           LOAD_CONST              22 ('flat')
+              LOAD_SMALL_INT          16
+              LOAD_SMALL_INT          10
+              LOAD_CONST              76 (('Segoe UI', 10, 'bold'))
+              LOAD_CONST              59 ('disabled')
+
+144           LOAD_CONST              68 (('text', 'command', 'bg', 'fg', 'activebackground', 'activeforeground', 'relief', 'padx', 'pady', 'font', 'state'))
+              CALL_KW                 12
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR              39 (result_btn)
+
+147           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               78 (result_btn)
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              39 ('left')
+              LOAD_CONST              33 (True)
+              LOAD_CONST              12 ('x')
+              LOAD_SMALL_INT           6
+              LOAD_CONST              65 (('side', 'expand', 'fill', 'padx'))
+              CALL_KW                  4
+              POP_TOP
+
+148           LOAD_GLOBAL             12 (tk)
+              LOAD_ATTR               36 (Button)
+              PUSH_NULL
+              LOAD_FAST_BORROW        11 (actions)
+              LOAD_CONST              69 ('CANCEL')
+              LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               80 (cancel_test)
+
+149           LOAD_GLOBAL             82 (AMBER)
+              LOAD_CONST              26 ('white')
+              LOAD_GLOBAL             82 (AMBER)
+              LOAD_CONST              26 ('white')
+
+150           LOAD_CONST              22 ('flat')
+              LOAD_SMALL_INT          16
+              LOAD_SMALL_INT          10
+              LOAD_CONST              76 (('Segoe UI', 10, 'bold'))
+
+148           LOAD_CONST              27 (('text', 'command', 'bg', 'fg', 'activebackground', 'activeforeground', 'relief', 'padx', 'pady', 'font'))
+              CALL_KW                 11
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR              42 (cancel_btn)
+
+151           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               84 (cancel_btn)
+              LOAD_ATTR               19 (pack + NULL|self)
+              LOAD_CONST              39 ('left')
+              LOAD_CONST              33 (True)
+              LOAD_CONST              12 ('x')
+              LOAD_CONST              96 ((6, 0))
+              LOAD_CONST              65 (('side', 'expand', 'fill', 'padx'))
+              CALL_KW                  4
+              POP_TOP
+              LOAD_CONST              70 (None)
+              RETURN_VALUE
+
+Disassembly of <code object refresh_ports at 0x000002900007C5F0, file "app.py", line 153>:
+153           RESUME                   0
+
+154           LOAD_GLOBAL              0 (list_ports)
+              POP_JUMP_IF_NOT_NONE    45 (to L1)
+              NOT_TAKEN
+
+155           BUILD_LIST               0
+              LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                2 (port_combo)
+              LOAD_CONST               1 ('values')
+              STORE_SUBSCR
+
+156           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                4 (status_var)
+              LOAD_ATTR                7 (set + NULL|self)
+              LOAD_CONST               2 ('pyserial not installed')
+              CALL                     1
+              POP_TOP
+
+157           LOAD_CONST               0 (None)
+              RETURN_VALUE
+
+158   L1:     LOAD_GLOBAL              9 (list + NULL)
+              LOAD_GLOBAL              0 (list_ports)
+              LOAD_ATTR               10 (comports)
+              PUSH_NULL
+              CALL                     0
+              CALL                     1
+              STORE_FAST               1 (found)
+
+159           BUILD_MAP                0
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR               6 (port_map)
+
+160           BUILD_LIST               0
+              STORE_FAST               2 (displays)
+
+161           LOAD_FAST_BORROW         1 (found)
+              GET_ITER
+      L2:     FOR_ITER               196 (to L8)
+              STORE_FAST               3 (p)
+
+162           LOAD_FAST_BORROW         3 (p)
+              LOAD_ATTR               14 (description)
+              COPY                     1
+              TO_BOOL
+              POP_JUMP_IF_TRUE         3 (to L3)
+              NOT_TAKEN
+              POP_TOP
+              LOAD_CONST               3 ('')
+      L3:     LOAD_ATTR               17 (strip + NULL|self)
+              CALL                     0
+              STORE_FAST               4 (desc)
+
+163           LOAD_FAST_BORROW         4 (desc)
+              TO_BOOL
+              POP_JUMP_IF_FALSE       22 (to L4)
+              NOT_TAKEN
+              LOAD_FAST_BORROW         4 (desc)
+              LOAD_ATTR               19 (lower + NULL|self)
+              CALL                     0
+              LOAD_CONST               9 (frozenset({'n/a', 'unknown'}))
+              CONTAINS_OP              0 (in)
+              POP_JUMP_IF_FALSE       23 (to L6)
+              NOT_TAKEN
+
+164   L4:     LOAD_FAST_BORROW         3 (p)
+              LOAD_ATTR               20 (hwid)
+              COPY                     1
+              TO_BOOL
+              POP_JUMP_IF_TRUE         3 (to L5)
+              NOT_TAKEN
+              POP_TOP
+              LOAD_CONST               4 ('Serial Port')
+      L5:     STORE_FAST               4 (desc)
+
+165   L6:     LOAD_FAST_BORROW         3 (p)
+              LOAD_ATTR               22 (device)
+              FORMAT_SIMPLE
+              LOAD_CONST               5 (' — ')
+              LOAD_FAST_BORROW         4 (desc)
+              FORMAT_SIMPLE
+              BUILD_STRING             3
+              STORE_FAST               5 (display)
+
+167           LOAD_FAST_BORROW_LOAD_FAST_BORROW 80 (display, self)
+              LOAD_ATTR               12 (port_map)
+              CONTAINS_OP              0 (in)
+              POP_JUMP_IF_FALSE       32 (to L7)
+              NOT_TAKEN
+
+168           LOAD_FAST_BORROW         3 (p)
+              LOAD_ATTR               22 (device)
+              FORMAT_SIMPLE
+              LOAD_CONST               5 (' — ')
+              LOAD_FAST_BORROW         4 (desc)
+              FORMAT_SIMPLE
+              LOAD_CONST               6 (' [')
+              LOAD_FAST_BORROW         3 (p)
+              LOAD_ATTR               20 (hwid)
+              FORMAT_SIMPLE
+              LOAD_CONST               7 (']')
+              BUILD_STRING             6
+              STORE_FAST               5 (display)
+
+169   L7:     LOAD_FAST_BORROW         3 (p)
+              LOAD_ATTR               22 (device)
+              LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               12 (port_map)
+              LOAD_FAST_BORROW         5 (display)
+              STORE_SUBSCR
+
+170           LOAD_FAST_BORROW         2 (displays)
+              LOAD_ATTR               25 (append + NULL|self)
+              LOAD_FAST_BORROW         5 (display)
+              CALL                     1
+              POP_TOP
+              JUMP_BACKWARD          198 (to L2)
+
+161   L8:     END_FOR
+              POP_ITER
+
+171           LOAD_FAST_BORROW_LOAD_FAST_BORROW 32 (displays, self)
+              LOAD_ATTR                2 (port_combo)
+              LOAD_CONST               1 ('values')
+              STORE_SUBSCR
+
+172           LOAD_FAST_BORROW         2 (displays)
+              TO_BOOL
+              POP_JUMP_IF_FALSE       66 (to L9)
+              NOT_TAKEN
+              LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               26 (port_var)
+              LOAD_ATTR               29 (get + NULL|self)
+              CALL                     0
+              LOAD_FAST_BORROW         2 (displays)
+              CONTAINS_OP              1 (not in)
+              POP_JUMP_IF_FALSE       35 (to L9)
+              NOT_TAKEN
+
+173           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               26 (port_var)
+              LOAD_ATTR                7 (set + NULL|self)
+              LOAD_FAST_BORROW         2 (displays)
+              LOAD_SMALL_INT           0
+              BINARY_OP               26 ([])
+              CALL                     1
+              POP_TOP
+
+174   L9:     LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                4 (status_var)
+              LOAD_ATTR                7 (set + NULL|self)
+              LOAD_GLOBAL             31 (len + NULL)
+              LOAD_FAST_BORROW         2 (displays)
+              CALL                     1
+              FORMAT_SIMPLE
+              LOAD_CONST               8 (' port(s) found')
+              BUILD_STRING             2
+              CALL                     1
+              POP_TOP
+              LOAD_CONST               0 (None)
+              RETURN_VALUE
+
+Disassembly of <code object toggle_connection at 0x0000029000070C60, file "app.py", line 176>:
+ 176            RESUME                   0
+
+ 177            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                0 (conn)
+                LOAD_ATTR                2 (connected)
+                TO_BOOL
+                POP_JUMP_IF_FALSE      128 (to L1)
+                NOT_TAKEN
+
+ 178            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                0 (conn)
+                LOAD_ATTR                5 (disconnect + NULL|self)
+                CALL                     0
+                POP_TOP
+
+ 179            LOAD_CONST               0 (None)
+                LOAD_FAST_BORROW         0 (self)
+                STORE_ATTR               3 (connected_port)
+
+ 180            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                8 (connection_var)
+                LOAD_ATTR               11 (set + NULL|self)
+                LOAD_CONST               1 ('DISCONNECTED')
+                CALL                     1
+                POP_TOP
+
+ 181            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR               12 (connect_btn)
+                LOAD_ATTR               15 (configure + NULL|self)
+                LOAD_CONST               2 ('CONNECT')
+                LOAD_GLOBAL             16 (GREEN)
+                LOAD_GLOBAL             16 (GREEN)
+                LOAD_CONST               3 (('text', 'bg', 'activebackground'))
+                CALL_KW                  3
+                POP_TOP
+
+ 182            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR               18 (status_var)
+                LOAD_ATTR               11 (set + NULL|self)
+                LOAD_CONST               4 ('Disconnected')
+                CALL                     1
+                POP_TOP
+
+ 183            LOAD_CONST               0 (None)
+                RETURN_VALUE
+
+ 184    L1:     LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR               20 (port_var)
+                LOAD_ATTR               23 (get + NULL|self)
+                CALL                     0
+                LOAD_ATTR               25 (strip + NULL|self)
+                CALL                     0
+                STORE_FAST               1 (display)
+
+ 185            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR               26 (port_map)
+                LOAD_ATTR               23 (get + NULL|self)
+                LOAD_FAST_BORROW_LOAD_FAST_BORROW 17 (display, display)
+                LOAD_ATTR               29 (split + NULL|self)
+                LOAD_CONST               5 (' — ')
+                LOAD_SMALL_INT           1
+                CALL                     2
+                LOAD_SMALL_INT           0
+                BINARY_OP               26 ([])
+                LOAD_ATTR               25 (strip + NULL|self)
+                CALL                     0
+                CALL                     2
+                STORE_FAST               2 (port)
+
+ 186            LOAD_FAST_BORROW         2 (port)
+                TO_BOOL
+                POP_JUMP_IF_TRUE        26 (to L2)
+                NOT_TAKEN
+
+ 187            LOAD_GLOBAL             30 (messagebox)
+                LOAD_ATTR               32 (showwarning)
+                PUSH_NULL
+                LOAD_CONST               6 ('MQY-200')
+                LOAD_CONST               7 ('Select a COM port first.')
+                CALL                     2
+                POP_TOP
+
+ 188            LOAD_CONST               0 (None)
+                RETURN_VALUE
+
+ 189    L2:     NOP
+
+ 190    L3:     LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                0 (conn)
+                LOAD_ATTR               35 (connect + NULL|self)
+                LOAD_FAST_BORROW         2 (port)
+                LOAD_CONST               8 (9600)
+                CALL                     2
+                POP_TOP
+
+ 191            LOAD_FAST_BORROW_LOAD_FAST_BORROW 32 (port, self)
+                STORE_ATTR               3 (connected_port)
+
+ 192            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                8 (connection_var)
+                LOAD_ATTR               11 (set + NULL|self)
+                LOAD_CONST               9 ('CONNECTED: ')
+                LOAD_FAST_BORROW         1 (display)
+                FORMAT_SIMPLE
+                BUILD_STRING             2
+                CALL                     1
+                POP_TOP
+
+ 193            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR               12 (connect_btn)
+                LOAD_ATTR               15 (configure + NULL|self)
+                LOAD_CONST              10 ('DISCONNECT')
+                LOAD_GLOBAL             36 (RED)
+                LOAD_GLOBAL             36 (RED)
+                LOAD_CONST               3 (('text', 'bg', 'activebackground'))
+                CALL_KW                  3
+                POP_TOP
+
+ 194            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR               18 (status_var)
+                LOAD_ATTR               11 (set + NULL|self)
+                LOAD_CONST              11 ('Connected @ 9600 8N1')
+                CALL                     1
+                POP_TOP
+        L4:     LOAD_CONST               0 (None)
+                RETURN_VALUE
+
+  --    L5:     PUSH_EXC_INFO
+
+ 195            LOAD_GLOBAL             38 (Exception)
+                CHECK_EXC_MATCH
+                POP_JUMP_IF_FALSE       68 (to L9)
+                NOT_TAKEN
+                STORE_FAST               3 (exc)
+
+ 196    L6:     LOAD_GLOBAL             30 (messagebox)
+                LOAD_ATTR               40 (showerror)
+                PUSH_NULL
+                LOAD_CONST              12 ('Connection failed')
+                LOAD_CONST              13 ('Could not open ')
+                LOAD_FAST                2 (port)
+                FORMAT_SIMPLE
+                LOAD_CONST              14 ('.\n\n')
+                LOAD_FAST                3 (exc)
+                FORMAT_SIMPLE
+                BUILD_STRING             4
+                CALL                     2
+                POP_TOP
+
+ 197            LOAD_FAST                0 (self)
+                LOAD_ATTR               18 (status_var)
+                LOAD_ATTR               11 (set + NULL|self)
+                LOAD_CONST              12 ('Connection failed')
+                CALL                     1
+                POP_TOP
+        L7:     POP_EXCEPT
+                LOAD_CONST               0 (None)
+                STORE_FAST               3 (exc)
+                DELETE_FAST              3 (exc)
+                LOAD_CONST               0 (None)
+                RETURN_VALUE
+
+  --    L8:     LOAD_CONST               0 (None)
+                STORE_FAST               3 (exc)
+                DELETE_FAST              3 (exc)
+                RERAISE                  1
+
+ 195    L9:     RERAISE                  0
+
+  --   L10:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L3 to L4 -> L5 [0]
+  L5 to L6 -> L10 [1] lasti
+  L6 to L7 -> L8 [1] lasti
+  L8 to L10 -> L10 [1] lasti
+
+Disassembly of <code object perform_test at 0x000002907FF180A0, file "app.py", line 199>:
+199           RESUME                   0
+
+203           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                0 (perform_btn)
+              LOAD_ATTR                3 (configure + NULL|self)
+              LOAD_CONST               0 ('#333333')
+              LOAD_CONST               1 ('#FFFFFF')
+
+204           LOAD_CONST               0 ('#333333')
+              LOAD_CONST               1 ('#FFFFFF')
+
+203           LOAD_CONST               2 (('bg', 'fg', 'activebackground', 'activeforeground'))
+              CALL_KW                  4
+              POP_TOP
+
+205           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                4 (running)
+              TO_BOOL
+              POP_JUMP_IF_FALSE       30 (to L1)
+              NOT_TAKEN
+
+207           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                6 (message_var)
+              LOAD_ATTR                9 (set + NULL|self)
+              LOAD_CONST               3 ('Test already running — use CANCEL to reset.')
+              CALL                     1
+              POP_TOP
+
+208           LOAD_CONST               4 (None)
+              RETURN_VALUE
+
+209   L1:     LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               10 (conn)
+              LOAD_ATTR               12 (connected)
+              TO_BOOL
+              POP_JUMP_IF_TRUE        26 (to L2)
+              NOT_TAKEN
+
+210           LOAD_GLOBAL             14 (messagebox)
+              LOAD_ATTR               16 (showwarning)
+              PUSH_NULL
+              LOAD_CONST               5 ('MQY-200')
+              LOAD_CONST               6 ('Connect to the selected COM port first.')
+              CALL                     2
+              POP_TOP
+
+211           LOAD_CONST               4 (None)
+              RETURN_VALUE
+
+212   L2:     LOAD_CONST               7 (True)
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR               2 (running)
+
+213           LOAD_CONST               8 (False)
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR               9 (cancel_requested)
+
+214           LOAD_CONST               8 (False)
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR              10 (result_ready)
+
+215           LOAD_CONST               4 (None)
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR              11 (final_average)
+
+216           LOAD_SMALL_INT           0
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR              12 (test_no)
+
+217           BUILD_LIST               0
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR              13 (test_results)
+
+218           BUILD_LIST               0
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR              14 (current_readings)
+
+219           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               30 (sample_threads)
+              LOAD_ATTR               33 (clear + NULL|self)
+              CALL                     0
+              POP_TOP
+
+220           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               34 (average_var)
+              LOAD_ATTR                9 (set + NULL|self)
+              LOAD_CONST               9 ('--.--')
+              CALL                     1
+              POP_TOP
+
+221           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               36 (tests_var)
+              LOAD_ATTR                9 (set + NULL|self)
+              LOAD_CONST              10 ('0 / 6')
+              CALL                     1
+              POP_TOP
+
+222           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               38 (k_var)
+              LOAD_ATTR                9 (set + NULL|self)
+              LOAD_CONST              11 ('0.00')
+              CALL                     1
+              POP_TOP
+
+223           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               40 (test_vars)
+              GET_ITER
+      L3:     FOR_ITER                20 (to L4)
+              STORE_FAST               1 (v)
+
+224           LOAD_FAST_BORROW         1 (v)
+              LOAD_ATTR                9 (set + NULL|self)
+              LOAD_CONST               9 ('--.--')
+              CALL                     1
+              POP_TOP
+              JUMP_BACKWARD           22 (to L3)
+
+223   L4:     END_FOR
+              POP_ITER
+
+225           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               43 (clear_results + NULL|self)
+              CALL                     0
+              POP_TOP
+
+226           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               44 (result_btn)
+              LOAD_ATTR                3 (configure + NULL|self)
+              LOAD_CONST              12 ('disabled')
+              LOAD_CONST               0 ('#333333')
+              LOAD_CONST              13 ('#777777')
+              LOAD_CONST              14 (('state', 'bg', 'fg'))
+              CALL_KW                  3
+              POP_TOP
+
+227           LOAD_GLOBAL             46 (threading)
+              LOAD_ATTR               48 (Thread)
+              PUSH_NULL
+              LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               50 (run_sequence)
+              LOAD_CONST               7 (True)
+              LOAD_CONST              15 (('target', 'daemon'))
+              CALL_KW                  2
+              LOAD_ATTR               53 (start + NULL|self)
+              CALL                     0
+              POP_TOP
+              LOAD_CONST               4 (None)
+              RETURN_VALUE
+
+Disassembly of <code object run_sequence at 0x000002907FF245E0, file "app.py", line 229>:
+  --            MAKE_CELL                0 (self)
+                MAKE_CELL                6 (test)
+
+ 229            RESUME                   0
+
+ 230            NOP
+
+ 231    L1:     LOAD_DEREF               0 (self)
+                LOAD_ATTR                1 (ui_status + NULL|self)
+                LOAD_CONST               0 ('REAL-TIME MODE / CALIBRATING...')
+                CALL                     1
+                POP_TOP
+
+ 232            LOAD_DEREF               0 (self)
+                LOAD_ATTR                2 (conn)
+                LOAD_ATTR                5 (write + NULL|self)
+                LOAD_GLOBAL              6 (SET_REALTIME)
+                CALL                     1
+                POP_TOP
+
+ 233            LOAD_DEREF               0 (self)
+                LOAD_ATTR                9 (sleep_cancelable + NULL|self)
+                LOAD_CONST               1 (2.0)
+                CALL                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE        32 (to L3)
+                NOT_TAKEN
+        L2:     NOP
+
+ 282            LOAD_CONST               2 (False)
+                LOAD_DEREF               0 (self)
+                STORE_ATTR               5 (running)
+
+ 283            LOAD_DEREF               0 (self)
+                LOAD_ATTR               13 (ui + NULL|self)
+                LOAD_FAST_BORROW         0 (self)
+                BUILD_TUPLE              1
+                LOAD_CONST               3 (<code object <lambda> at 0x00000290002C4F10, file "app.py", line 283>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+                CALL                     1
+                POP_TOP
+                LOAD_CONST               4 (None)
+                RETURN_VALUE
+
+ 234    L3:     LOAD_DEREF               0 (self)
+                LOAD_ATTR                2 (conn)
+                LOAD_ATTR               15 (read_available + NULL|self)
+                CALL                     0
+                POP_TOP
+
+ 235            LOAD_DEREF               0 (self)
+                LOAD_ATTR                2 (conn)
+                LOAD_ATTR                5 (write + NULL|self)
+                LOAD_GLOBAL             16 (START_CALIBRATION)
+                CALL                     1
+                POP_TOP
+
+ 236            LOAD_DEREF               0 (self)
+                LOAD_ATTR                9 (sleep_cancelable + NULL|self)
+                LOAD_CONST               5 (5.0)
+                CALL                     1
+                TO_BOOL
+                POP_JUMP_IF_TRUE        32 (to L5)
+        L4:     NOT_TAKEN
+                NOP
+
+ 282            LOAD_CONST               2 (False)
+                LOAD_DEREF               0 (self)
+                STORE_ATTR               5 (running)
+
+ 283            LOAD_DEREF               0 (self)
+                LOAD_ATTR               13 (ui + NULL|self)
+                LOAD_FAST_BORROW         0 (self)
+                BUILD_TUPLE              1
+                LOAD_CONST               3 (<code object <lambda> at 0x00000290002C4F10, file "app.py", line 283>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+                CALL                     1
+                POP_TOP
+                LOAD_CONST               4 (None)
+                RETURN_VALUE
+
+ 237    L5:     LOAD_DEREF               0 (self)
+                LOAD_ATTR                2 (conn)
+                LOAD_ATTR               15 (read_available + NULL|self)
+                CALL                     0
+                POP_TOP
+
+ 238            LOAD_GLOBAL             19 (range + NULL)
+                LOAD_SMALL_INT           1
+                LOAD_SMALL_INT           7
+                CALL                     2
+                GET_ITER
+        L6:     EXTENDED_ARG             2
+                FOR_ITER               523 (to L25)
+                STORE_DEREF              6 (test)
+
+ 239            LOAD_DEREF               0 (self)
+                LOAD_ATTR               20 (cancel_requested)
+                TO_BOOL
+                POP_JUMP_IF_FALSE       32 (to L8)
+                NOT_TAKEN
+                POP_TOP
+
+ 282    L7:     LOAD_CONST               2 (False)
+                LOAD_DEREF               0 (self)
+                STORE_ATTR               5 (running)
+
+ 283            LOAD_DEREF               0 (self)
+                LOAD_ATTR               13 (ui + NULL|self)
+                LOAD_FAST_BORROW         0 (self)
+                BUILD_TUPLE              1
+                LOAD_CONST               3 (<code object <lambda> at 0x00000290002C4F10, file "app.py", line 283>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+                CALL                     1
+                POP_TOP
+                LOAD_CONST               4 (None)
+                RETURN_VALUE
+
+ 240    L8:     LOAD_DEREF               6 (test)
+                LOAD_DEREF               0 (self)
+                STORE_ATTR              11 (test_no)
+
+ 241            BUILD_LIST               0
+                LOAD_DEREF               0 (self)
+                STORE_ATTR              12 (current_readings)
+
+ 242            LOAD_DEREF               0 (self)
+                LOAD_ATTR               13 (ui + NULL|self)
+                LOAD_FAST_BORROW         0 (self)
+                LOAD_FAST_BORROW         6 (test)
+                BUILD_TUPLE              2
+                LOAD_CONST               6 (<code object <lambda> at 0x00000290002C5020, file "app.py", line 242>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+                CALL                     1
+                POP_TOP
+
+ 246            LOAD_GLOBAL             26 (threading)
+                LOAD_ATTR               28 (Thread)
+                PUSH_NULL
+                LOAD_DEREF               0 (self)
+                LOAD_ATTR               30 (collect_realtime_samples)
+                LOAD_CONST               7 (True)
+                LOAD_CONST               8 (('target', 'daemon'))
+                CALL_KW                  2
+                STORE_FAST               1 (sampler)
+
+ 247            LOAD_FAST_BORROW         1 (sampler)
+                BUILD_LIST               1
+                LOAD_DEREF               0 (self)
+                STORE_ATTR              16 (sample_threads)
+
+ 248            LOAD_FAST_BORROW         1 (sampler)
+                LOAD_ATTR               35 (start + NULL|self)
+                CALL                     0
+                POP_TOP
+
+ 249            LOAD_GLOBAL             19 (range + NULL)
+                LOAD_SMALL_INT          10
+                LOAD_CONST              26 (-1)
+                LOAD_CONST              26 (-1)
+                CALL                     3
+                GET_ITER
+        L9:     FOR_ITER               174 (to L17)
+                STORE_FAST               2 (remaining)
+
+ 250            LOAD_DEREF               0 (self)
+                LOAD_ATTR               20 (cancel_requested)
+                TO_BOOL
+                POP_JUMP_IF_FALSE       33 (to L11)
+                NOT_TAKEN
+                POP_TOP
+                POP_TOP
+
+ 282   L10:     LOAD_CONST               2 (False)
+                LOAD_DEREF               0 (self)
+                STORE_ATTR               5 (running)
+
+ 283            LOAD_DEREF               0 (self)
+                LOAD_ATTR               13 (ui + NULL|self)
+                LOAD_FAST_BORROW         0 (self)
+                BUILD_TUPLE              1
+                LOAD_CONST               3 (<code object <lambda> at 0x00000290002C4F10, file "app.py", line 283>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+                CALL                     1
+                POP_TOP
+                LOAD_CONST               4 (None)
+                RETURN_VALUE
+
+ 251   L11:     LOAD_FAST_BORROW         2 (remaining)
+                LOAD_SMALL_INT           6
+                COMPARE_OP             188 (bool(>=))
+                POP_JUMP_IF_FALSE       19 (to L12)
+                NOT_TAKEN
+
+ 252            LOAD_DEREF               0 (self)
+                LOAD_ATTR                1 (ui_status + NULL|self)
+                LOAD_CONST               9 ('READY — PLEASE ACCELERATE PEDAL')
+                CALL                     1
+                POP_TOP
+                JUMP_FORWARD            17 (to L13)
+
+ 254   L12:     LOAD_DEREF               0 (self)
+                LOAD_ATTR                1 (ui_status + NULL|self)
+                LOAD_CONST              10 ('RELEASE THE PEDAL')
+                CALL                     1
+                POP_TOP
+
+ 255   L13:     LOAD_DEREF               0 (self)
+                LOAD_ATTR               13 (ui + NULL|self)
+                LOAD_FAST_BORROW         2 (remaining)
+                BUILD_TUPLE              1
+                LOAD_FAST_BORROW         0 (self)
+                BUILD_TUPLE              1
+                LOAD_CONST              11 (<code object <lambda> at 0x00000290002C5130, file "app.py", line 255>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+                SET_FUNCTION_ATTRIBUTE   1 (defaults)
+                CALL                     1
+                POP_TOP
+
+ 256            LOAD_DEREF               0 (self)
+                LOAD_ATTR                9 (sleep_cancelable + NULL|self)
+                LOAD_CONST              12 (1.0)
+                CALL                     1
+                TO_BOOL
+       L14:     POP_JUMP_IF_FALSE        3 (to L15)
+                NOT_TAKEN
+                JUMP_BACKWARD          144 (to L9)
+       L15:     POP_TOP
+                POP_TOP
+
+ 282   L16:     LOAD_CONST               2 (False)
+                LOAD_DEREF               0 (self)
+                STORE_ATTR               5 (running)
+
+ 283            LOAD_DEREF               0 (self)
+                LOAD_ATTR               13 (ui + NULL|self)
+                LOAD_FAST_BORROW         0 (self)
+                BUILD_TUPLE              1
+                LOAD_CONST               3 (<code object <lambda> at 0x00000290002C4F10, file "app.py", line 283>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+                CALL                     1
+                POP_TOP
+                LOAD_CONST               4 (None)
+                RETURN_VALUE
+
+ 249   L17:     END_FOR
+                POP_ITER
+
+ 257            LOAD_FAST_BORROW         1 (sampler)
+                LOAD_ATTR               37 (is_alive + NULL|self)
+                CALL                     0
+                TO_BOOL
+                POP_JUMP_IF_FALSE       19 (to L20)
+       L18:     NOT_TAKEN
+
+ 258   L19:     LOAD_FAST_BORROW         1 (sampler)
+                LOAD_ATTR               39 (join + NULL|self)
+                LOAD_CONST              13 (1.5)
+                LOAD_CONST              14 (('timeout',))
+                CALL_KW                  1
+                POP_TOP
+
+ 259   L20:     BUILD_LIST               0
+                LOAD_DEREF               0 (self)
+                STORE_ATTR              16 (sample_threads)
+
+ 260            LOAD_DEREF               0 (self)
+                LOAD_ATTR               24 (current_readings)
+                TO_BOOL
+                POP_JUMP_IF_FALSE       22 (to L23)
+       L21:     NOT_TAKEN
+       L22:     LOAD_GLOBAL             41 (max + NULL)
+                LOAD_DEREF               0 (self)
+                LOAD_ATTR               24 (current_readings)
+                CALL                     1
+                JUMP_FORWARD             1 (to L24)
+       L23:     LOAD_CONST              15 (0.0)
+       L24:     STORE_FAST               3 (test_max)
+
+ 261            LOAD_DEREF               0 (self)
+                LOAD_ATTR               42 (test_results)
+                LOAD_ATTR               45 (append + NULL|self)
+                LOAD_FAST_BORROW         3 (test_max)
+                CALL                     1
+                POP_TOP
+
+ 262            LOAD_DEREF               0 (self)
+                LOAD_ATTR               47 (append_result + NULL|self)
+                LOAD_CONST              16 ('Test ')
+                LOAD_DEREF               6 (test)
+                FORMAT_SIMPLE
+                LOAD_CONST              17 (': MAX K = ')
+                LOAD_FAST_BORROW         3 (test_max)
+                LOAD_CONST              18 ('.2f')
+                FORMAT_WITH_SPEC
+                BUILD_STRING             4
+                CALL                     1
+                POP_TOP
+
+ 263            LOAD_DEREF               0 (self)
+                LOAD_ATTR               13 (ui + NULL|self)
+                LOAD_DEREF               6 (test)
+                LOAD_FAST_BORROW         3 (test_max)
+                BUILD_TUPLE              2
+                LOAD_FAST_BORROW         0 (self)
+                BUILD_TUPLE              1
+                LOAD_CONST              19 (<code object <lambda> at 0x000002907FE48750, file "app.py", line 263>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+                SET_FUNCTION_ATTRIBUTE   1 (defaults)
+                CALL                     1
+                POP_TOP
+
+ 264            LOAD_DEREF               0 (self)
+                LOAD_ATTR               13 (ui + NULL|self)
+                LOAD_FAST_BORROW         0 (self)
+                BUILD_TUPLE              1
+                LOAD_CONST              20 (<code object <lambda> at 0x00000290002C5240, file "app.py", line 264>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+                CALL                     1
+                POP_TOP
+                EXTENDED_ARG             2
+                JUMP_BACKWARD          526 (to L6)
+
+ 238   L25:     END_FOR
+                POP_ITER
+
+ 267            LOAD_GLOBAL             49 (sum + NULL)
+                LOAD_DEREF               0 (self)
+                LOAD_ATTR               42 (test_results)
+                CALL                     1
+                LOAD_CONST              21 (6.0)
+                BINARY_OP               11 (/)
+                STORE_FAST               4 (avg)
+
+ 268            LOAD_GLOBAL             51 (round + NULL)
+                LOAD_FAST_BORROW         4 (avg)
+                LOAD_SMALL_INT           2
+                CALL                     2
+                LOAD_DEREF               0 (self)
+                STORE_ATTR              26 (final_average)
+
+ 269            LOAD_DEREF               0 (self)
+                LOAD_ATTR               13 (ui + NULL|self)
+                LOAD_FAST_BORROW         0 (self)
+                BUILD_TUPLE              1
+                LOAD_CONST              22 (<code object <lambda> at 0x00000290002C5350, file "app.py", line 269>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+                CALL                     1
+                POP_TOP
+
+ 276            LOAD_CONST               7 (True)
+                LOAD_DEREF               0 (self)
+                STORE_ATTR              27 (result_ready)
+
+ 277            LOAD_DEREF               0 (self)
+                LOAD_ATTR                1 (ui_status + NULL|self)
+                LOAD_CONST              23 ('6 TESTS COMPLETE — GET TEST RESULT AVAILABLE')
+                CALL                     1
+                POP_TOP
+
+ 278            LOAD_DEREF               0 (self)
+                LOAD_ATTR               13 (ui + NULL|self)
+                LOAD_FAST_BORROW         0 (self)
+                BUILD_TUPLE              1
+                LOAD_CONST              24 (<code object <lambda> at 0x000002907FDF5B30, file "app.py", line 278>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+                CALL                     1
+                POP_TOP
+
+ 282   L26:     LOAD_CONST               2 (False)
+                LOAD_DEREF               0 (self)
+                STORE_ATTR               5 (running)
+
+ 283            LOAD_DEREF               0 (self)
+                LOAD_ATTR               13 (ui + NULL|self)
+                LOAD_FAST_BORROW         0 (self)
+                BUILD_TUPLE              1
+                LOAD_CONST               3 (<code object <lambda> at 0x00000290002C4F10, file "app.py", line 283>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+                CALL                     1
+                POP_TOP
+                LOAD_CONST               4 (None)
+                RETURN_VALUE
+
+  --   L27:     PUSH_EXC_INFO
+
+ 279            LOAD_GLOBAL             56 (Exception)
+                CHECK_EXC_MATCH
+                POP_JUMP_IF_FALSE       31 (to L31)
+                NOT_TAKEN
+                STORE_FAST               5 (exc)
+
+ 280   L28:     LOAD_DEREF               0 (self)
+                LOAD_ATTR                1 (ui_status + NULL|self)
+                LOAD_CONST              25 ('ERROR: ')
+                LOAD_FAST                5 (exc)
+                FORMAT_SIMPLE
+                BUILD_STRING             2
+                CALL                     1
+                POP_TOP
+       L29:     POP_EXCEPT
+                LOAD_CONST               4 (None)
+                STORE_FAST               5 (exc)
+                DELETE_FAST              5 (exc)
+                JUMP_BACKWARD_NO_INTERRUPT 66 (to L26)
+
+  --   L30:     LOAD_CONST               4 (None)
+                STORE_FAST               5 (exc)
+                DELETE_FAST              5 (exc)
+                RERAISE                  1
+
+ 279   L31:     RERAISE                  0
+
+  --   L32:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+       L33:     PUSH_EXC_INFO
+
+ 282            LOAD_CONST               2 (False)
+                LOAD_DEREF               0 (self)
+                STORE_ATTR               5 (running)
+
+ 283            LOAD_DEREF               0 (self)
+                LOAD_ATTR               13 (ui + NULL|self)
+                LOAD_FAST                0 (self)
+                BUILD_TUPLE              1
+                LOAD_CONST               3 (<code object <lambda> at 0x00000290002C4F10, file "app.py", line 283>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+                CALL                     1
+                POP_TOP
+                RERAISE                  0
+
+  --   L34:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L1 to L2 -> L27 [0]
+  L3 to L4 -> L27 [0]
+  L5 to L7 -> L27 [0]
+  L8 to L10 -> L27 [0]
+  L11 to L14 -> L27 [0]
+  L15 to L16 -> L27 [0]
+  L17 to L18 -> L27 [0]
+  L19 to L21 -> L27 [0]
+  L22 to L26 -> L27 [0]
+  L27 to L28 -> L32 [1] lasti
+  L28 to L29 -> L30 [1] lasti
+  L29 to L30 -> L33 [0]
+  L30 to L32 -> L32 [1] lasti
+  L32 to L33 -> L33 [0]
+  L33 to L34 -> L34 [1] lasti
+
+Disassembly of <code object <lambda> at 0x00000290002C4F10, file "app.py", line 283>:
+  --           COPY_FREE_VARS           1
+
+ 283           RESUME                   0
+               LOAD_DEREF               0 (self)
+               LOAD_ATTR                0 (counter_var)
+               LOAD_ATTR                3 (set + NULL|self)
+               LOAD_CONST               0 ('--')
+               CALL                     1
+               RETURN_VALUE
+
+Disassembly of <code object <lambda> at 0x00000290002C5020, file "app.py", line 242>:
+  --           COPY_FREE_VARS           2
+
+ 242           RESUME                   0
+               LOAD_DEREF               0 (self)
+               LOAD_ATTR                0 (tests_var)
+               LOAD_ATTR                3 (set + NULL|self)
+               LOAD_DEREF               1 (test)
+               FORMAT_SIMPLE
+               LOAD_CONST               0 (' / 6')
+               BUILD_STRING             2
+               CALL                     1
+               RETURN_VALUE
+
+Disassembly of <code object <lambda> at 0x00000290002C5130, file "app.py", line 255>:
+  --           COPY_FREE_VARS           1
+
+ 255           RESUME                   0
+               LOAD_DEREF               1 (self)
+               LOAD_ATTR                0 (counter_var)
+               LOAD_ATTR                3 (set + NULL|self)
+               LOAD_FAST_BORROW         0 (r)
+               LOAD_CONST               0 ('02d')
+               FORMAT_WITH_SPEC
+               CALL                     1
+               RETURN_VALUE
+
+Disassembly of <code object <lambda> at 0x000002907FE48750, file "app.py", line 263>:
+  --           COPY_FREE_VARS           1
+
+ 263           RESUME                   0
+               LOAD_DEREF               2 (self)
+               LOAD_ATTR                0 (test_vars)
+               LOAD_FAST_BORROW         0 (t)
+               LOAD_SMALL_INT           1
+               BINARY_OP               10 (-)
+               BINARY_OP               26 ([])
+               LOAD_ATTR                3 (set + NULL|self)
+               LOAD_FAST_BORROW         1 (v)
+               LOAD_CONST               1 ('.2f')
+               FORMAT_WITH_SPEC
+               CALL                     1
+               RETURN_VALUE
+
+Disassembly of <code object <lambda> at 0x00000290002C5240, file "app.py", line 264>:
+  --           COPY_FREE_VARS           1
+
+ 264           RESUME                   0
+               LOAD_DEREF               0 (self)
+               LOAD_ATTR                0 (k_var)
+               LOAD_ATTR                3 (set + NULL|self)
+               LOAD_CONST               0 ('0.00')
+               CALL                     1
+               RETURN_VALUE
+
+Disassembly of <code object <lambda> at 0x00000290002C5350, file "app.py", line 269>:
+  --           COPY_FREE_VARS           1
+
+ 269           RESUME                   0
+               LOAD_DEREF               0 (self)
+               LOAD_ATTR                0 (average_var)
+               LOAD_ATTR                3 (set + NULL|self)
+               LOAD_CONST               0 ('--.--')
+               CALL                     1
+               RETURN_VALUE
+
+Disassembly of <code object <lambda> at 0x000002907FDF5B30, file "app.py", line 278>:
+  --           COPY_FREE_VARS           1
+
+ 278           RESUME                   0
+               LOAD_DEREF               0 (self)
+               LOAD_ATTR                0 (result_btn)
+               LOAD_ATTR                3 (configure + NULL|self)
+               LOAD_CONST               0 ('normal')
+               LOAD_GLOBAL              4 (GREEN)
+               LOAD_CONST               1 ('white')
+               LOAD_CONST               2 (('state', 'bg', 'fg'))
+               CALL_KW                  3
+               RETURN_VALUE
+
+Disassembly of <code object collect_realtime_samples at 0x00000290000714D0, file "app.py", line 285>:
+  --            MAKE_CELL                0 (self)
+
+ 285            RESUME                   0
+
+ 288            LOAD_GLOBAL              1 (range + NULL)
+                LOAD_SMALL_INT           5
+                CALL                     1
+                GET_ITER
+        L1:     EXTENDED_ARG             1
+                FOR_ITER               373 (to L13)
+                STORE_FAST               1 (second)
+
+ 289            LOAD_DEREF               0 (self)
+                LOAD_ATTR                2 (cancel_requested)
+                TO_BOOL
+                POP_JUMP_IF_FALSE        4 (to L2)
+                NOT_TAKEN
+
+ 290            POP_TOP
+                LOAD_CONST               1 (None)
+                RETURN_VALUE
+
+ 291    L2:     LOAD_GLOBAL              4 (time)
+                LOAD_ATTR                4 (time)
+                PUSH_NULL
+                CALL                     0
+                STORE_FAST               2 (second_start)
+
+ 292            LOAD_GLOBAL              1 (range + NULL)
+                LOAD_SMALL_INT           5
+                CALL                     1
+                GET_ITER
+        L3:     FOR_ITER               245 (to L11)
+                STORE_FAST               3 (_)
+
+ 293            LOAD_DEREF               0 (self)
+                LOAD_ATTR                2 (cancel_requested)
+                TO_BOOL
+                POP_JUMP_IF_FALSE        5 (to L4)
+                NOT_TAKEN
+
+ 294            POP_TOP
+                POP_TOP
+                LOAD_CONST               1 (None)
+                RETURN_VALUE
+
+ 295    L4:     NOP
+
+ 296    L5:     LOAD_DEREF               0 (self)
+                LOAD_ATTR                6 (conn)
+                LOAD_ATTR                9 (request + NULL|self)
+                LOAD_GLOBAL             10 (GET_DATA)
+                LOAD_CONST               2 (0.0)
+                LOAD_SMALL_INT          10
+                LOAD_CONST               3 (0.45)
+                LOAD_CONST               4 (('expected', 'timeout'))
+                CALL_KW                  4
+                STORE_FAST               4 (raw)
+
+ 297            LOAD_GLOBAL             13 (parse_k_response + NULL)
+                LOAD_FAST_BORROW         4 (raw)
+                CALL                     1
+                STORE_FAST               5 (reading)
+
+ 298            LOAD_FAST_BORROW         5 (reading)
+                TO_BOOL
+                POP_JUMP_IF_FALSE       73 (to L7)
+                NOT_TAKEN
+
+ 299            LOAD_DEREF               0 (self)
+                LOAD_ATTR               14 (current_readings)
+                LOAD_ATTR               17 (append + NULL|self)
+                LOAD_FAST_BORROW         5 (reading)
+                LOAD_ATTR               18 (k)
+                CALL                     1
+                POP_TOP
+
+ 300            LOAD_DEREF               0 (self)
+                LOAD_ATTR               21 (ui + NULL|self)
+                LOAD_FAST_BORROW         5 (reading)
+                LOAD_ATTR               18 (k)
+                BUILD_TUPLE              1
+                LOAD_FAST_BORROW         0 (self)
+                BUILD_TUPLE              1
+                LOAD_CONST               5 (<code object <lambda> at 0x00000290002C5460, file "app.py", line 300>)
+                MAKE_FUNCTION
+                SET_FUNCTION_ATTRIBUTE   8 (closure)
+                SET_FUNCTION_ATTRIBUTE   1 (defaults)
+                CALL                     1
+                POP_TOP
+        L6:     JUMP_FORWARD            49 (to L9)
+
+ 302    L7:     LOAD_DEREF               0 (self)
+                LOAD_ATTR               23 (append_result + NULL|self)
+                LOAD_CONST               6 ('INVALID RX: ')
+                LOAD_FAST_BORROW         4 (raw)
+                LOAD_ATTR               25 (hex + NULL|self)
+                CALL                     0
+                LOAD_ATTR               27 (upper + NULL|self)
+                CALL                     0
+                FORMAT_SIMPLE
+                BUILD_STRING             2
+                CALL                     1
+                POP_TOP
+        L8:     NOP
+
+ 305    L9:     LOAD_DEREF               0 (self)
+                LOAD_ATTR                2 (cancel_requested)
+                TO_BOOL
+                POP_JUMP_IF_FALSE        5 (to L10)
+                NOT_TAKEN
+
+ 306            POP_TOP
+                POP_TOP
+                LOAD_CONST               1 (None)
+                RETURN_VALUE
+
+ 307   L10:     LOAD_GLOBAL              4 (time)
+                LOAD_ATTR               30 (sleep)
+                PUSH_NULL
+                LOAD_CONST               8 (0.2)
+                CALL                     1
+                POP_TOP
+                JUMP_BACKWARD          247 (to L3)
+
+ 292   L11:     END_FOR
+                POP_ITER
+
+ 308            LOAD_CONST               9 (1.0)
+                LOAD_GLOBAL              4 (time)
+                LOAD_ATTR                4 (time)
+                PUSH_NULL
+                CALL                     0
+                LOAD_FAST_BORROW         2 (second_start)
+                BINARY_OP               10 (-)
+                BINARY_OP               10 (-)
+                STORE_FAST               7 (remaining)
+
+ 309            LOAD_FAST_BORROW         7 (remaining)
+                LOAD_SMALL_INT           0
+                COMPARE_OP             148 (bool(>))
+                POP_JUMP_IF_TRUE         4 (to L12)
+                NOT_TAKEN
+                EXTENDED_ARG             1
+                JUMP_BACKWARD          351 (to L1)
+
+ 310   L12:     LOAD_GLOBAL              4 (time)
+                LOAD_ATTR               30 (sleep)
+                PUSH_NULL
+                LOAD_FAST_BORROW         7 (remaining)
+                CALL                     1
+                POP_TOP
+                EXTENDED_ARG             1
+                JUMP_BACKWARD          376 (to L1)
+
+ 288   L13:     END_FOR
+                POP_ITER
+                LOAD_CONST               1 (None)
+                RETURN_VALUE
+
+  --   L14:     PUSH_EXC_INFO
+
+ 303            LOAD_GLOBAL             28 (Exception)
+                CHECK_EXC_MATCH
+                POP_JUMP_IF_FALSE       31 (to L18)
+                NOT_TAKEN
+                STORE_FAST               6 (exc)
+
+ 304   L15:     LOAD_DEREF               0 (self)
+                LOAD_ATTR               23 (append_result + NULL|self)
+                LOAD_CONST               7 ('READ ERROR: ')
+                LOAD_FAST                6 (exc)
+                FORMAT_SIMPLE
+                BUILD_STRING             2
+                CALL                     1
+                POP_TOP
+       L16:     POP_EXCEPT
+                LOAD_CONST               1 (None)
+                STORE_FAST               6 (exc)
+                DELETE_FAST              6 (exc)
+                JUMP_BACKWARD_NO_INTERRUPT 158 (to L9)
+
+  --   L17:     LOAD_CONST               1 (None)
+                STORE_FAST               6 (exc)
+                DELETE_FAST              6 (exc)
+                RERAISE                  1
+
+ 303   L18:     RERAISE                  0
+
+  --   L19:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L5 to L6 -> L14 [2]
+  L7 to L8 -> L14 [2]
+  L14 to L15 -> L19 [3] lasti
+  L15 to L16 -> L17 [3] lasti
+  L17 to L19 -> L19 [3] lasti
+
+Disassembly of <code object <lambda> at 0x00000290002C5460, file "app.py", line 300>:
+  --           COPY_FREE_VARS           1
+
+ 300           RESUME                   0
+               LOAD_DEREF               1 (self)
+               LOAD_ATTR                0 (k_var)
+               LOAD_ATTR                3 (set + NULL|self)
+               LOAD_FAST_BORROW         0 (k)
+               LOAD_CONST               0 ('.2f')
+               FORMAT_WITH_SPEC
+               CALL                     1
+               RETURN_VALUE
+
+Disassembly of <code object get_test_result at 0x000002907FF25320, file "app.py", line 312>:
+  --           MAKE_CELL                1 (today)
+               MAKE_CELL                2 (value)
+
+ 312           RESUME                   0
+
+ 316           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR                0 (perform_btn)
+               LOAD_ATTR                3 (configure + NULL|self)
+               LOAD_GLOBAL              4 (BLUE)
+               LOAD_CONST               0 ('white')
+
+ 317           LOAD_GLOBAL              4 (BLUE)
+               LOAD_CONST               0 ('white')
+
+ 316           LOAD_CONST               1 (('bg', 'fg', 'activebackground', 'activeforeground'))
+               CALL_KW                  4
+               POP_TOP
+
+ 321           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR                6 (result_ready)
+               TO_BOOL
+               POP_JUMP_IF_FALSE       15 (to L1)
+               NOT_TAKEN
+               LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR                8 (final_average)
+               POP_JUMP_IF_NOT_NONE     3 (to L2)
+               NOT_TAKEN
+
+ 322   L1:     LOAD_CONST               2 (None)
+               RETURN_VALUE
+
+ 324   L2:     LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR                8 (final_average)
+               STORE_DEREF              2 (value)
+
+ 325           LOAD_GLOBAL             10 (date)
+               LOAD_ATTR               12 (today)
+               PUSH_NULL
+               CALL                     0
+               LOAD_ATTR               15 (isoformat + NULL|self)
+               CALL                     0
+               STORE_DEREF              1 (today)
+
+ 329           LOAD_DEREF               2 (value)
+               LOAD_SMALL_INT           0
+               COMPARE_OP              58 (bool(<=))
+               POP_JUMP_IF_FALSE      101 (to L3)
+               NOT_TAKEN
+
+ 330           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               16 (average_var)
+               LOAD_ATTR               19 (set + NULL|self)
+               LOAD_CONST               3 ('--.--')
+               CALL                     1
+               POP_TOP
+
+ 331           LOAD_CONST               4 (False)
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR               3 (result_ready)
+
+ 332           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               20 (result_btn)
+               LOAD_ATTR                3 (configure + NULL|self)
+               LOAD_CONST               5 ('disabled')
+               LOAD_CONST               6 ('#333333')
+               LOAD_CONST               7 ('#777777')
+               LOAD_CONST               8 (('state', 'bg', 'fg'))
+               CALL_KW                  3
+               POP_TOP
+
+ 333           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               23 (append_result + NULL|self)
+               LOAD_CONST               9 ('INVALID TEST RESULT — FINAL AVERAGE IS 0.00. REPEAT 6 TESTS.')
+               CALL                     1
+               POP_TOP
+
+ 334           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               25 (ui_status + NULL|self)
+               LOAD_CONST              10 ('INVALID — FINAL AVERAGE IS ZERO. REPEAT TEST.')
+               CALL                     1
+               POP_TOP
+
+ 335           LOAD_CONST               2 (None)
+               RETURN_VALUE
+
+ 340   L3:     LOAD_GLOBAL             26 (any)
+               COPY                     1
+               LOAD_COMMON_CONSTANT     4 (<built-in function any>)
+               IS_OP                    0 (is)
+               POP_JUMP_IF_FALSE       42 (to L7)
+               NOT_TAKEN
+               POP_TOP
+               LOAD_FAST_BORROW         1 (today)
+               LOAD_FAST_BORROW         2 (value)
+               BUILD_TUPLE              2
+               LOAD_CONST              11 (<code object <genexpr> at 0x000002900029C030, file "app.py", line 340>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   8 (closure)
+               LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               28 (accepted_results)
+               GET_ITER
+               CALL                     0
+       L4:     FOR_ITER                12 (to L6)
+               TO_BOOL
+               POP_JUMP_IF_TRUE         3 (to L5)
+               NOT_TAKEN
+               JUMP_BACKWARD           11 (to L4)
+       L5:     POP_ITER
+               LOAD_CONST              12 (True)
+               JUMP_FORWARD            31 (to L8)
+       L6:     END_FOR
+               POP_ITER
+               LOAD_CONST               4 (False)
+               JUMP_FORWARD            27 (to L8)
+       L7:     PUSH_NULL
+               LOAD_FAST_BORROW         1 (today)
+               LOAD_FAST_BORROW         2 (value)
+               BUILD_TUPLE              2
+               LOAD_CONST              11 (<code object <genexpr> at 0x000002900029C030, file "app.py", line 340>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   8 (closure)
+               LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               28 (accepted_results)
+               GET_ITER
+               CALL                     0
+               CALL                     1
+       L8:     TO_BOOL
+               POP_JUMP_IF_FALSE      106 (to L9)
+               NOT_TAKEN
+
+ 341           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               16 (average_var)
+               LOAD_ATTR               19 (set + NULL|self)
+               LOAD_CONST               3 ('--.--')
+               CALL                     1
+               POP_TOP
+
+ 342           LOAD_CONST               4 (False)
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR               3 (result_ready)
+
+ 343           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               20 (result_btn)
+               LOAD_ATTR                3 (configure + NULL|self)
+               LOAD_CONST               5 ('disabled')
+               LOAD_CONST               6 ('#333333')
+               LOAD_CONST               7 ('#777777')
+               LOAD_CONST               8 (('state', 'bg', 'fg'))
+               CALL_KW                  3
+               POP_TOP
+
+ 344           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               23 (append_result + NULL|self)
+               LOAD_CONST              13 ('INVALID TEST RESULT — ')
+               LOAD_DEREF               2 (value)
+               LOAD_CONST              14 ('.2f')
+               FORMAT_WITH_SPEC
+               LOAD_CONST              15 (' ALREADY ACCEPTED TODAY. REPEAT 6 TESTS.')
+               BUILD_STRING             3
+               CALL                     1
+               POP_TOP
+
+ 345           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               25 (ui_status + NULL|self)
+               LOAD_CONST              16 ('INVALID — SAME RESULT ALREADY ACCEPTED TODAY. REPEAT TEST.')
+               CALL                     1
+               POP_TOP
+
+ 346           LOAD_CONST               2 (None)
+               RETURN_VALUE
+
+ 349   L9:     LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               28 (accepted_results)
+               LOAD_ATTR               31 (append + NULL|self)
+               LOAD_DEREF               1 (today)
+               LOAD_DEREF               2 (value)
+               BUILD_TUPLE              2
+               CALL                     1
+               POP_TOP
+
+ 350           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               16 (average_var)
+               LOAD_ATTR               19 (set + NULL|self)
+               LOAD_DEREF               2 (value)
+               LOAD_CONST              14 ('.2f')
+               FORMAT_WITH_SPEC
+               CALL                     1
+               POP_TOP
+
+ 351           LOAD_CONST               4 (False)
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR               3 (result_ready)
+
+ 352           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               20 (result_btn)
+               LOAD_ATTR                3 (configure + NULL|self)
+               LOAD_CONST               5 ('disabled')
+               LOAD_CONST               6 ('#333333')
+               LOAD_CONST               7 ('#777777')
+               LOAD_CONST               8 (('state', 'bg', 'fg'))
+               CALL_KW                  3
+               POP_TOP
+
+ 353           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               23 (append_result + NULL|self)
+               LOAD_CONST              17 ('ACCEPTED TEST RESULT = ')
+               LOAD_DEREF               2 (value)
+               LOAD_CONST              14 ('.2f')
+               FORMAT_WITH_SPEC
+               BUILD_STRING             2
+               CALL                     1
+               POP_TOP
+
+ 354           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR               25 (ui_status + NULL|self)
+               LOAD_CONST              18 ('TEST RESULT ACCEPTED')
+               CALL                     1
+               POP_TOP
+               LOAD_CONST               2 (None)
+               RETURN_VALUE
+
+Disassembly of <code object <genexpr> at 0x000002900029C030, file "app.py", line 340>:
+  --           COPY_FREE_VARS           2
+
+ 340           RETURN_GENERATOR
+               POP_TOP
+       L1:     RESUME                   0
+               LOAD_FAST                0 (.0)
+       L2:     FOR_ITER                41 (to L6)
+               UNPACK_SEQUENCE          2
+               STORE_FAST_STORE_FAST   18 (d, v)
+               LOAD_FAST_BORROW         1 (d)
+               LOAD_DEREF               3 (today)
+               COMPARE_OP              72 (==)
+               COPY                     1
+               TO_BOOL
+               POP_JUMP_IF_FALSE       22 (to L5)
+       L3:     NOT_TAKEN
+       L4:     POP_TOP
+               LOAD_GLOBAL              1 (abs + NULL)
+               LOAD_FAST_BORROW         2 (v)
+               LOAD_DEREF               4 (value)
+               BINARY_OP               10 (-)
+               CALL                     1
+               LOAD_CONST               0 (1e-09)
+               COMPARE_OP               2 (<)
+       L5:     YIELD_VALUE              0
+               RESUME                   5
+               POP_TOP
+               JUMP_BACKWARD           43 (to L2)
+       L6:     END_FOR
+               POP_ITER
+               LOAD_CONST               1 (None)
+               RETURN_VALUE
+
+  --   L7:     CALL_INTRINSIC_1         3 (INTRINSIC_STOPITERATION_ERROR)
+               RERAISE                  1
+ExceptionTable:
+  L1 to L3 -> L7 [0] lasti
+  L4 to L7 -> L7 [0] lasti
+
+Disassembly of <code object cancel_test at 0x000002907FF184C0, file "app.py", line 356>:
+356           RESUME                   0
+
+357           LOAD_CONST               0 (True)
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR               0 (cancel_requested)
+
+358           LOAD_CONST               1 (False)
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR               1 (running)
+
+359           LOAD_SMALL_INT           0
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR               2 (test_no)
+
+360           BUILD_LIST               0
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR               3 (current_readings)
+
+361           BUILD_LIST               0
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR               4 (test_results)
+
+362           LOAD_CONST               2 (None)
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR               5 (final_average)
+
+363           LOAD_CONST               1 (False)
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR               6 (result_ready)
+
+364           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               14 (tests_var)
+              LOAD_ATTR               17 (set + NULL|self)
+              LOAD_CONST               3 ('0 / 6')
+              CALL                     1
+              POP_TOP
+
+365           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               18 (test_vars)
+              GET_ITER
+      L1:     FOR_ITER                20 (to L2)
+              STORE_FAST               1 (v)
+
+366           LOAD_FAST_BORROW         1 (v)
+              LOAD_ATTR               17 (set + NULL|self)
+              LOAD_CONST               4 ('--.--')
+              CALL                     1
+              POP_TOP
+              JUMP_BACKWARD           22 (to L1)
+
+365   L2:     END_FOR
+              POP_ITER
+
+367           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               20 (counter_var)
+              LOAD_ATTR               17 (set + NULL|self)
+              LOAD_CONST               5 ('--')
+              CALL                     1
+              POP_TOP
+
+368           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               22 (k_var)
+              LOAD_ATTR               17 (set + NULL|self)
+              LOAD_CONST               6 ('0.00')
+              CALL                     1
+              POP_TOP
+
+369           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               24 (average_var)
+              LOAD_ATTR               17 (set + NULL|self)
+              LOAD_CONST               4 ('--.--')
+              CALL                     1
+              POP_TOP
+
+370           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               26 (result_btn)
+              LOAD_ATTR               29 (configure + NULL|self)
+              LOAD_CONST               7 ('disabled')
+              LOAD_CONST               8 ('#333333')
+              LOAD_CONST               9 ('#777777')
+              LOAD_CONST              10 (('state', 'bg', 'fg'))
+              CALL_KW                  3
+              POP_TOP
+
+371           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               31 (clear_results + NULL|self)
+              CALL                     0
+              POP_TOP
+
+372           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR               32 (message_var)
+              LOAD_ATTR               17 (set + NULL|self)
+              LOAD_CONST              11 ('CANCELLED — READY')
+              CALL                     1
+              POP_TOP
+              LOAD_CONST               2 (None)
+              RETURN_VALUE
+
+Disassembly of <code object sleep_cancelable at 0x000002900023D070, file "app.py", line 374>:
+374           RESUME                   0
+
+375           LOAD_GLOBAL              0 (time)
+              LOAD_ATTR                0 (time)
+              PUSH_NULL
+              CALL                     0
+              LOAD_FAST_BORROW         1 (seconds)
+              BINARY_OP                0 (+)
+              STORE_FAST               2 (end)
+
+376   L1:     LOAD_GLOBAL              0 (time)
+              LOAD_ATTR                0 (time)
+              PUSH_NULL
+              CALL                     0
+              LOAD_FAST_BORROW         2 (end)
+              COMPARE_OP              18 (bool(<))
+              POP_JUMP_IF_FALSE       45 (to L3)
+              NOT_TAKEN
+
+377           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                2 (cancel_requested)
+              TO_BOOL
+              POP_JUMP_IF_FALSE        3 (to L2)
+              NOT_TAKEN
+
+378           LOAD_CONST               0 (False)
+              RETURN_VALUE
+
+379   L2:     LOAD_GLOBAL              0 (time)
+              LOAD_ATTR                4 (sleep)
+              PUSH_NULL
+              LOAD_CONST               1 (0.05)
+              CALL                     1
+              POP_TOP
+              JUMP_BACKWARD           70 (to L1)
+
+380   L3:     LOAD_CONST               2 (True)
+              RETURN_VALUE
+
+Disassembly of <code object ui_status at 0x00000290002C5680, file "app.py", line 382>:
+  --           MAKE_CELL                0 (self)
+               MAKE_CELL                1 (text)
+
+ 382           RESUME                   0
+
+ 383           LOAD_DEREF               0 (self)
+               LOAD_ATTR                1 (ui + NULL|self)
+               LOAD_FAST_BORROW         0 (self)
+               LOAD_FAST_BORROW         1 (text)
+               BUILD_TUPLE              2
+               LOAD_CONST               0 (<code object <lambda> at 0x00000290002C5570, file "app.py", line 383>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   8 (closure)
+               CALL                     1
+               POP_TOP
+               LOAD_CONST               1 (None)
+               RETURN_VALUE
+
+Disassembly of <code object <lambda> at 0x00000290002C5570, file "app.py", line 383>:
+  --           COPY_FREE_VARS           2
+
+ 383           RESUME                   0
+               LOAD_DEREF               0 (self)
+               LOAD_ATTR                0 (message_var)
+               LOAD_ATTR                3 (set + NULL|self)
+               LOAD_DEREF               1 (text)
+               CALL                     1
+               RETURN_VALUE
+
+Disassembly of <code object ui at 0x00000290002E8330, file "app.py", line 385>:
+385           RESUME                   0
+
+386           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                1 (after + NULL|self)
+              LOAD_SMALL_INT           0
+              LOAD_FAST_BORROW         1 (fn)
+              CALL                     2
+              POP_TOP
+              LOAD_CONST               1 (None)
+              RETURN_VALUE
+
+Disassembly of <code object append_result at 0x00000290002C5790, file "app.py", line 388>:
+  --           MAKE_CELL                0 (self)
+               MAKE_CELL                1 (text)
+
+ 388           RESUME                   0
+
+ 389           LOAD_FAST_BORROW         0 (self)
+               LOAD_FAST_BORROW         1 (text)
+               BUILD_TUPLE              2
+               LOAD_CONST               0 (<code object work at 0x000002907FB3ED80, file "app.py", line 389>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   8 (closure)
+               STORE_FAST               2 (work)
+
+ 394           LOAD_DEREF               0 (self)
+               LOAD_ATTR                1 (after + NULL|self)
+               LOAD_SMALL_INT           0
+               LOAD_FAST_BORROW         2 (work)
+               CALL                     2
+               POP_TOP
+               LOAD_CONST               1 (None)
+               RETURN_VALUE
+
+Disassembly of <code object work at 0x000002907FB3ED80, file "app.py", line 389>:
+  --           COPY_FREE_VARS           2
+
+ 389           RESUME                   0
+
+ 390           LOAD_DEREF               0 (self)
+               LOAD_ATTR                0 (result_text)
+               LOAD_ATTR                3 (configure + NULL|self)
+               LOAD_CONST               0 ('normal')
+               LOAD_CONST               1 (('state',))
+               CALL_KW                  1
+               POP_TOP
+
+ 391           LOAD_DEREF               0 (self)
+               LOAD_ATTR                0 (result_text)
+               LOAD_ATTR                5 (insert + NULL|self)
+               LOAD_CONST               2 ('end')
+               LOAD_DEREF               1 (text)
+               LOAD_CONST               3 ('\n')
+               BINARY_OP                0 (+)
+               CALL                     2
+               POP_TOP
+
+ 392           LOAD_DEREF               0 (self)
+               LOAD_ATTR                0 (result_text)
+               LOAD_ATTR                7 (see + NULL|self)
+               LOAD_CONST               2 ('end')
+               CALL                     1
+               POP_TOP
+
+ 393           LOAD_DEREF               0 (self)
+               LOAD_ATTR                0 (result_text)
+               LOAD_ATTR                3 (configure + NULL|self)
+               LOAD_CONST               4 ('disabled')
+               LOAD_CONST               1 (('state',))
+               CALL_KW                  1
+               POP_TOP
+               LOAD_CONST               5 (None)
+               RETURN_VALUE
+
+Disassembly of <code object clear_results at 0x000002907FBA6EB0, file "app.py", line 396>:
+396           RESUME                   0
+
+397           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                0 (result_text)
+              LOAD_ATTR                3 (configure + NULL|self)
+              LOAD_CONST               0 ('normal')
+              LOAD_CONST               1 (('state',))
+              CALL_KW                  1
+              POP_TOP
+
+398           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                0 (result_text)
+              LOAD_ATTR                5 (delete + NULL|self)
+              LOAD_CONST               2 ('1.0')
+              LOAD_CONST               3 ('end')
+              CALL                     2
+              POP_TOP
+
+399           LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                0 (result_text)
+              LOAD_ATTR                3 (configure + NULL|self)
+              LOAD_CONST               4 ('disabled')
+              LOAD_CONST               1 (('state',))
+              CALL_KW                  1
+              POP_TOP
+              LOAD_CONST               5 (None)
+              RETURN_VALUE
+
+Disassembly of <code object poll_connection at 0x0000029000003400, file "app.py", line 401>:
+  --           MAKE_CELL                0 (self)
+
+ 401           RESUME                   0
+
+ 402           LOAD_DEREF               0 (self)
+               LOAD_ATTR                0 (conn)
+               LOAD_ATTR                2 (connected)
+               TO_BOOL
+               POP_JUMP_IF_FALSE      105 (to L1)
+               NOT_TAKEN
+               LOAD_DEREF               0 (self)
+               LOAD_ATTR                4 (connected_port)
+               TO_BOOL
+               POP_JUMP_IF_FALSE       87 (to L1)
+               NOT_TAKEN
+
+ 403           LOAD_GLOBAL              7 (next + NULL)
+               LOAD_FAST_BORROW         0 (self)
+               BUILD_TUPLE              1
+               LOAD_CONST               0 (<code object <genexpr> at 0x000002907FE490D0, file "app.py", line 403>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   8 (closure)
+               LOAD_DEREF               0 (self)
+               LOAD_ATTR                8 (port_map)
+               LOAD_ATTR               11 (items + NULL|self)
+               CALL                     0
+               GET_ITER
+               CALL                     0
+               LOAD_DEREF               0 (self)
+               LOAD_ATTR                4 (connected_port)
+               CALL                     2
+               STORE_FAST               1 (current_display)
+
+ 404           LOAD_DEREF               0 (self)
+               LOAD_ATTR               12 (connection_var)
+               LOAD_ATTR               15 (set + NULL|self)
+               LOAD_CONST               1 ('CONNECTED: ')
+               LOAD_FAST_BORROW         1 (current_display)
+               FORMAT_SIMPLE
+               BUILD_STRING             2
+               CALL                     1
+               POP_TOP
+
+ 405   L1:     LOAD_DEREF               0 (self)
+               LOAD_ATTR               17 (after + NULL|self)
+               LOAD_SMALL_INT         250
+               LOAD_DEREF               0 (self)
+               LOAD_ATTR               18 (poll_connection)
+               CALL                     2
+               POP_TOP
+               LOAD_CONST               2 (None)
+               RETURN_VALUE
+
+Disassembly of <code object <genexpr> at 0x000002907FE490D0, file "app.py", line 403>:
+  --           COPY_FREE_VARS           1
+
+ 403           RETURN_GENERATOR
+               POP_TOP
+       L1:     RESUME                   0
+               LOAD_FAST                0 (.0)
+       L2:     FOR_ITER                28 (to L5)
+               UNPACK_SEQUENCE          2
+               STORE_FAST_STORE_FAST   18 (d, p)
+               LOAD_FAST_BORROW         2 (p)
+               LOAD_DEREF               3 (self)
+               LOAD_ATTR                0 (connected_port)
+               COMPARE_OP              88 (bool(==))
+       L3:     POP_JUMP_IF_TRUE         3 (to L4)
+               NOT_TAKEN
+               JUMP_BACKWARD           24 (to L2)
+       L4:     LOAD_FAST_BORROW         1 (d)
+               YIELD_VALUE              0
+               RESUME                   5
+               POP_TOP
+               JUMP_BACKWARD           30 (to L2)
+       L5:     END_FOR
+               POP_ITER
+               LOAD_CONST               0 (None)
+               RETURN_VALUE
+
+  --   L6:     CALL_INTRINSIC_1         3 (INTRINSIC_STOPITERATION_ERROR)
+               RERAISE                  1
+ExceptionTable:
+  L1 to L3 -> L6 [0] lasti
+  L4 to L6 -> L6 [0] lasti
+
+Disassembly of <code object on_close at 0x000002907FE66FA0, file "app.py", line 407>:
+ 407           RESUME                   0
+
+ 408           LOAD_CONST               0 (True)
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR               0 (cancel_requested)
+
+ 409           NOP
+
+ 410   L1:     LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR                2 (conn)
+               LOAD_ATTR                5 (disconnect + NULL|self)
+               CALL                     0
+               POP_TOP
+
+ 412   L2:     LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR                7 (destroy + NULL|self)
+               CALL                     0
+               POP_TOP
+               LOAD_CONST               1 (None)
+               RETURN_VALUE
+
+  --   L3:     PUSH_EXC_INFO
+
+ 412           LOAD_FAST                0 (self)
+               LOAD_ATTR                7 (destroy + NULL|self)
+               CALL                     0
+               POP_TOP
+               RERAISE                  0
+
+  --   L4:     COPY                     3
+               POP_EXCEPT
+               RERAISE                  1
+ExceptionTable:
+  L1 to L2 -> L3 [0]
+  L3 to L4 -> L4 [1] lasti

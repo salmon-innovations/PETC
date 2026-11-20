@@ -6,6 +6,9 @@ export default defineConfig({
   // In dev Vite serves on 5173; Electron main opens http://localhost:5173.
   // In production Electron loads the built index.html as a file:// page.
   base: "./",
+  resolve: {
+    extensions: [".tsx", ".ts", ".jsx", ".js", ".json"],
+  },
   server: { port: 5173 },
   build: { outDir: "dist" },
   test: {

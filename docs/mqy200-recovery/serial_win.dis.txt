@@ -1,0 +1,678 @@
+  0           RESUME                   0
+
+  1           LOAD_SMALL_INT           0
+              LOAD_CONST               1 (None)
+              IMPORT_NAME              0 (threading)
+              STORE_NAME               0 (threading)
+
+  2           LOAD_SMALL_INT           0
+              LOAD_CONST               1 (None)
+              IMPORT_NAME              1 (time)
+              STORE_NAME               1 (time)
+
+  3           LOAD_SMALL_INT           0
+              LOAD_CONST               2 (('Optional',))
+              IMPORT_NAME              2 (typing)
+              IMPORT_FROM              3 (Optional)
+              STORE_NAME               3 (Optional)
+              POP_TOP
+
+  5           LOAD_SMALL_INT           0
+              LOAD_CONST               1 (None)
+              IMPORT_NAME              4 (serial)
+              STORE_NAME               4 (serial)
+
+  7           LOAD_BUILD_CLASS
+              PUSH_NULL
+              LOAD_CONST               3 (<code object SerialConnection at 0x0000026171C5D370, file "serial_win.py", line 7>)
+              MAKE_FUNCTION
+              LOAD_CONST               4 ('SerialConnection')
+              CALL                     2
+              STORE_NAME               5 (SerialConnection)
+              LOAD_CONST               1 (None)
+              RETURN_VALUE
+
+Disassembly of <code object SerialConnection at 0x0000026171C5D370, file "serial_win.py", line 7>:
+  --           MAKE_CELL                0 (__classdict__)
+
+   7           RESUME                   0
+               LOAD_NAME                0 (__name__)
+               STORE_NAME               1 (__module__)
+               LOAD_CONST               0 ('SerialConnection')
+               STORE_NAME               2 (__qualname__)
+               LOAD_SMALL_INT           7
+               STORE_NAME               3 (__firstlineno__)
+               LOAD_LOCALS
+               STORE_DEREF              0 (__classdict__)
+
+   8           LOAD_CONST               1 (<code object __init__ at 0x0000026171CABAB0, file "serial_win.py", line 8>)
+               MAKE_FUNCTION
+               STORE_NAME               4 (__init__)
+
+  12           LOAD_NAME                5 (property)
+
+  13           LOAD_CONST               2 (<code object connected at 0x0000026171C9C530, file "serial_win.py", line 12>)
+               MAKE_FUNCTION
+
+  12           CALL                     0
+
+  13           STORE_NAME               6 (connected)
+
+  16           LOAD_CONST              14 ((9600,))
+               LOAD_FAST_BORROW         0 (__classdict__)
+               BUILD_TUPLE              1
+               LOAD_CONST               3 (<code object __annotate__ at 0x0000026171CE8530, file "serial_win.py", line 16>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   8 (closure)
+               LOAD_CONST               4 (<code object connect at 0x00000261715BEF50, file "serial_win.py", line 16>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE  16 (annotate)
+               SET_FUNCTION_ATTRIBUTE   1 (defaults)
+               STORE_NAME               7 (connect)
+
+  22           LOAD_CONST               5 (<code object disconnect at 0x0000026171CA4730, file "serial_win.py", line 22>)
+               MAKE_FUNCTION
+               STORE_NAME               8 (disconnect)
+
+  30           LOAD_FAST_BORROW         0 (__classdict__)
+               BUILD_TUPLE              1
+               LOAD_CONST               6 (<code object __annotate__ at 0x000002617185B2D0, file "serial_win.py", line 30>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   8 (closure)
+               LOAD_CONST               7 (<code object write at 0x0000026171C712C0, file "serial_win.py", line 30>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE  16 (annotate)
+               STORE_NAME               9 (write)
+
+  36           LOAD_FAST_BORROW         0 (__classdict__)
+               BUILD_TUPLE              1
+               LOAD_CONST               8 (<code object __annotate__ at 0x0000026171C1E3D0, file "serial_win.py", line 36>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   8 (closure)
+               LOAD_CONST               9 (<code object read_available at 0x0000026171C8C7F0, file "serial_win.py", line 36>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE  16 (annotate)
+               STORE_NAME              10 (read_available)
+
+  43           LOAD_CONST              15 ((0.2, 10, 0.8))
+               LOAD_FAST_BORROW         0 (__classdict__)
+               BUILD_TUPLE              1
+               LOAD_CONST              10 (<code object __annotate__ at 0x0000026171CE8730, file "serial_win.py", line 43>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   8 (closure)
+               LOAD_CONST              11 (<code object request at 0x0000026171A9A720, file "serial_win.py", line 43>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE  16 (annotate)
+               SET_FUNCTION_ATTRIBUTE   1 (defaults)
+               STORE_NAME              11 (request)
+               LOAD_CONST              12 (('lock', 'ser'))
+               STORE_NAME              12 (__static_attributes__)
+               LOAD_FAST_BORROW         0 (__classdict__)
+               STORE_NAME              13 (__classdictcell__)
+               LOAD_CONST              13 (None)
+               RETURN_VALUE
+
+Disassembly of <code object __init__ at 0x0000026171CABAB0, file "serial_win.py", line 8>:
+  8           RESUME                   0
+
+  9           LOAD_CONST               0 (None)
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR               0 (ser)
+
+ 10           LOAD_GLOBAL              2 (threading)
+              LOAD_ATTR                4 (Lock)
+              PUSH_NULL
+              CALL                     0
+              LOAD_FAST_BORROW         0 (self)
+              STORE_ATTR               3 (lock)
+              LOAD_CONST               0 (None)
+              RETURN_VALUE
+
+Disassembly of <code object connected at 0x0000026171C9C530, file "serial_win.py", line 12>:
+ 12           RESUME                   0
+
+ 14           LOAD_GLOBAL              1 (bool + NULL)
+              LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                2 (ser)
+              COPY                     1
+              TO_BOOL
+              POP_JUMP_IF_FALSE       23 (to L1)
+              NOT_TAKEN
+              POP_TOP
+              LOAD_FAST_BORROW         0 (self)
+              LOAD_ATTR                2 (ser)
+              LOAD_ATTR                4 (is_open)
+      L1:     CALL                     1
+              RETURN_VALUE
+
+Disassembly of <code object __annotate__ at 0x0000026171CE8530, file "serial_win.py", line 16>:
+  --           COPY_FREE_VARS           1
+
+  16           RESUME                   0
+               LOAD_FAST_BORROW         0 (format)
+               LOAD_SMALL_INT           2
+               COMPARE_OP             132 (>)
+               POP_JUMP_IF_FALSE        3 (to L1)
+               NOT_TAKEN
+               LOAD_COMMON_CONSTANT     1 (NotImplementedError)
+               RAISE_VARARGS            1
+       L1:     LOAD_CONST               1 ('port')
+               LOAD_DEREF               1 (__classdict__)
+               LOAD_FROM_DICT_OR_GLOBALS 0 (str)
+               LOAD_CONST               2 ('baud')
+               LOAD_DEREF               1 (__classdict__)
+               LOAD_FROM_DICT_OR_GLOBALS 1 (int)
+               BUILD_MAP                2
+               RETURN_VALUE
+
+Disassembly of <code object connect at 0x00000261715BEF50, file "serial_win.py", line 16>:
+  16           RESUME                   0
+
+  17           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR                0 (lock)
+               COPY                     1
+               LOAD_SPECIAL             1 (__exit__)
+               SWAP                     2
+               SWAP                     3
+               LOAD_SPECIAL             0 (__enter__)
+               CALL                     0
+       L1:     POP_TOP
+
+  18           LOAD_GLOBAL              2 (serial)
+               LOAD_ATTR                4 (Serial)
+               PUSH_NULL
+               LOAD_FAST_BORROW_LOAD_FAST_BORROW 18 (port, baud)
+               LOAD_GLOBAL              2 (serial)
+               LOAD_ATTR                6 (PARITY_NONE)
+
+  19           LOAD_GLOBAL              2 (serial)
+               LOAD_ATTR                8 (EIGHTBITS)
+               LOAD_GLOBAL              2 (serial)
+               LOAD_ATTR               10 (STOPBITS_ONE)
+
+  20           LOAD_CONST               0 (0.25)
+               LOAD_SMALL_INT           1
+
+  18           LOAD_CONST               1 (('port', 'baudrate', 'parity', 'bytesize', 'stopbits', 'timeout', 'write_timeout'))
+               CALL_KW                  7
+               LOAD_FAST_BORROW         0 (self)
+               STORE_ATTR               6 (ser)
+
+  17   L2:     LOAD_CONST               2 (None)
+               LOAD_CONST               2 (None)
+               LOAD_CONST               2 (None)
+               CALL                     3
+               POP_TOP
+               LOAD_CONST               2 (None)
+               RETURN_VALUE
+       L3:     PUSH_EXC_INFO
+               WITH_EXCEPT_START
+               TO_BOOL
+               POP_JUMP_IF_TRUE         2 (to L4)
+               NOT_TAKEN
+               RERAISE                  2
+       L4:     POP_TOP
+       L5:     POP_EXCEPT
+               POP_TOP
+               POP_TOP
+               POP_TOP
+               LOAD_CONST               2 (None)
+               RETURN_VALUE
+
+  --   L6:     COPY                     3
+               POP_EXCEPT
+               RERAISE                  1
+ExceptionTable:
+  L1 to L2 -> L3 [2] lasti
+  L3 to L5 -> L6 [4] lasti
+
+Disassembly of <code object disconnect at 0x0000026171CA4730, file "serial_win.py", line 22>:
+  22            RESUME                   0
+
+  23            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                0 (lock)
+                COPY                     1
+                LOAD_SPECIAL             1 (__exit__)
+                SWAP                     2
+                SWAP                     3
+                LOAD_SPECIAL             0 (__enter__)
+                CALL                     0
+        L1:     POP_TOP
+
+  24            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                2 (ser)
+                TO_BOOL
+                POP_JUMP_IF_FALSE       35 (to L5)
+                NOT_TAKEN
+
+  25    L2:     NOP
+
+  26    L3:     LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                2 (ser)
+                LOAD_ATTR                5 (close + NULL|self)
+                CALL                     0
+                POP_TOP
+
+  28    L4:     LOAD_CONST               0 (None)
+                LOAD_FAST_BORROW         0 (self)
+                STORE_ATTR               1 (ser)
+
+  23    L5:     LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                CALL                     3
+                POP_TOP
+                LOAD_CONST               0 (None)
+                RETURN_VALUE
+
+  --    L6:     PUSH_EXC_INFO
+
+  28            LOAD_CONST               0 (None)
+                LOAD_FAST                0 (self)
+                STORE_ATTR               1 (ser)
+                RERAISE                  0
+
+  --    L7:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+
+  23    L8:     PUSH_EXC_INFO
+                WITH_EXCEPT_START
+                TO_BOOL
+                POP_JUMP_IF_TRUE         2 (to L9)
+                NOT_TAKEN
+                RERAISE                  2
+        L9:     POP_TOP
+       L10:     POP_EXCEPT
+                POP_TOP
+                POP_TOP
+                POP_TOP
+                LOAD_CONST               0 (None)
+                RETURN_VALUE
+
+  --   L11:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L1 to L2 -> L8 [2] lasti
+  L3 to L4 -> L6 [2]
+  L4 to L5 -> L8 [2] lasti
+  L6 to L7 -> L7 [3] lasti
+  L7 to L8 -> L8 [2] lasti
+  L8 to L10 -> L11 [4] lasti
+
+Disassembly of <code object __annotate__ at 0x000002617185B2D0, file "serial_win.py", line 30>:
+  --           COPY_FREE_VARS           1
+
+  30           RESUME                   0
+               LOAD_FAST_BORROW         0 (format)
+               LOAD_SMALL_INT           2
+               COMPARE_OP             132 (>)
+               POP_JUMP_IF_FALSE        3 (to L1)
+               NOT_TAKEN
+               LOAD_COMMON_CONSTANT     1 (NotImplementedError)
+               RAISE_VARARGS            1
+       L1:     LOAD_CONST               1 ('data')
+               LOAD_DEREF               1 (__classdict__)
+               LOAD_FROM_DICT_OR_GLOBALS 0 (bytes)
+               BUILD_MAP                1
+               RETURN_VALUE
+
+Disassembly of <code object write at 0x0000026171C712C0, file "serial_win.py", line 30>:
+  30           RESUME                   0
+
+  31           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR                0 (lock)
+               COPY                     1
+               LOAD_SPECIAL             1 (__exit__)
+               SWAP                     2
+               SWAP                     3
+               LOAD_SPECIAL             0 (__enter__)
+               CALL                     0
+       L1:     POP_TOP
+
+  32           LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR                2 (connected)
+               TO_BOOL
+               POP_JUMP_IF_TRUE        12 (to L2)
+               NOT_TAKEN
+
+  33           LOAD_GLOBAL              5 (RuntimeError + NULL)
+               LOAD_CONST               0 ('Not connected')
+               CALL                     1
+               RAISE_VARARGS            1
+
+  34   L2:     LOAD_FAST_BORROW         0 (self)
+               LOAD_ATTR                6 (ser)
+               LOAD_ATTR                9 (write + NULL|self)
+               LOAD_FAST_BORROW         1 (data)
+               CALL                     1
+               POP_TOP
+
+  31   L3:     LOAD_CONST               1 (None)
+               LOAD_CONST               1 (None)
+               LOAD_CONST               1 (None)
+               CALL                     3
+               POP_TOP
+               LOAD_CONST               1 (None)
+               RETURN_VALUE
+       L4:     PUSH_EXC_INFO
+               WITH_EXCEPT_START
+               TO_BOOL
+               POP_JUMP_IF_TRUE         2 (to L5)
+               NOT_TAKEN
+               RERAISE                  2
+       L5:     POP_TOP
+       L6:     POP_EXCEPT
+               POP_TOP
+               POP_TOP
+               POP_TOP
+               LOAD_CONST               1 (None)
+               RETURN_VALUE
+
+  --   L7:     COPY                     3
+               POP_EXCEPT
+               RERAISE                  1
+ExceptionTable:
+  L1 to L3 -> L4 [2] lasti
+  L4 to L6 -> L7 [4] lasti
+
+Disassembly of <code object __annotate__ at 0x0000026171C1E3D0, file "serial_win.py", line 36>:
+  --           COPY_FREE_VARS           1
+
+  36           RESUME                   0
+               LOAD_FAST_BORROW         0 (format)
+               LOAD_SMALL_INT           2
+               COMPARE_OP             132 (>)
+               POP_JUMP_IF_FALSE        3 (to L1)
+               NOT_TAKEN
+               LOAD_COMMON_CONSTANT     1 (NotImplementedError)
+               RAISE_VARARGS            1
+       L1:     LOAD_CONST               1 ('return')
+               LOAD_DEREF               1 (__classdict__)
+               LOAD_FROM_DICT_OR_GLOBALS 0 (bytes)
+               BUILD_MAP                1
+               RETURN_VALUE
+
+Disassembly of <code object read_available at 0x0000026171C8C7F0, file "serial_win.py", line 36>:
+  36            RESUME                   0
+
+  37            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                0 (lock)
+                COPY                     1
+                LOAD_SPECIAL             1 (__exit__)
+                SWAP                     2
+                SWAP                     3
+                LOAD_SPECIAL             0 (__enter__)
+                CALL                     0
+        L1:     POP_TOP
+
+  38            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                2 (connected)
+                TO_BOOL
+                POP_JUMP_IF_TRUE        12 (to L3)
+                NOT_TAKEN
+
+  39            NOP
+
+  37    L2:     LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                CALL                     3
+                POP_TOP
+                LOAD_CONST               1 (b'')
+                RETURN_VALUE
+
+  40    L3:     LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                4 (ser)
+                LOAD_ATTR                6 (in_waiting)
+                STORE_FAST               1 (n)
+
+  41            LOAD_FAST_BORROW         1 (n)
+                TO_BOOL
+                POP_JUMP_IF_FALSE       28 (to L6)
+        L4:     NOT_TAKEN
+        L5:     LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                4 (ser)
+                LOAD_ATTR                9 (read + NULL|self)
+                LOAD_FAST_BORROW         1 (n)
+                CALL                     1
+                JUMP_FORWARD             1 (to L7)
+        L6:     LOAD_CONST               1 (b'')
+
+  37    L7:     SWAP                     3
+                SWAP                     2
+                LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                LOAD_CONST               0 (None)
+                CALL                     3
+                POP_TOP
+                RETURN_VALUE
+        L8:     PUSH_EXC_INFO
+                WITH_EXCEPT_START
+                TO_BOOL
+                POP_JUMP_IF_TRUE         2 (to L9)
+                NOT_TAKEN
+                RERAISE                  2
+        L9:     POP_TOP
+       L10:     POP_EXCEPT
+                POP_TOP
+                POP_TOP
+                POP_TOP
+                LOAD_CONST               0 (None)
+                RETURN_VALUE
+
+  --   L11:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L1 to L2 -> L8 [2] lasti
+  L3 to L4 -> L8 [2] lasti
+  L5 to L7 -> L8 [2] lasti
+  L8 to L10 -> L11 [4] lasti
+
+Disassembly of <code object __annotate__ at 0x0000026171CE8730, file "serial_win.py", line 43>:
+  --           COPY_FREE_VARS           1
+
+  43           RESUME                   0
+               LOAD_FAST_BORROW         0 (format)
+               LOAD_SMALL_INT           2
+               COMPARE_OP             132 (>)
+               POP_JUMP_IF_FALSE        3 (to L1)
+               NOT_TAKEN
+               LOAD_COMMON_CONSTANT     1 (NotImplementedError)
+               RAISE_VARARGS            1
+       L1:     LOAD_CONST               1 ('data')
+               LOAD_DEREF               1 (__classdict__)
+               LOAD_FROM_DICT_OR_GLOBALS 0 (bytes)
+               LOAD_CONST               2 ('return')
+               LOAD_DEREF               1 (__classdict__)
+               LOAD_FROM_DICT_OR_GLOBALS 0 (bytes)
+               BUILD_MAP                2
+               RETURN_VALUE
+
+Disassembly of <code object request at 0x0000026171A9A720, file "serial_win.py", line 43>:
+  43            RESUME                   0
+
+  46            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                1 (write + NULL|self)
+                LOAD_FAST_BORROW         1 (data)
+                CALL                     1
+                POP_TOP
+
+  47            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                2 (lock)
+                COPY                     1
+                LOAD_SPECIAL             1 (__exit__)
+                SWAP                     2
+                SWAP                     3
+                LOAD_SPECIAL             0 (__enter__)
+                CALL                     0
+        L1:     POP_TOP
+
+  48            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                4 (connected)
+                TO_BOOL
+                POP_JUMP_IF_TRUE        12 (to L2)
+                NOT_TAKEN
+
+  49            LOAD_GLOBAL              7 (RuntimeError + NULL)
+                LOAD_CONST               0 ('Not connected')
+                CALL                     1
+                RAISE_VARARGS            1
+
+  50    L2:     LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                8 (ser)
+                LOAD_ATTR               11 (flush + NULL|self)
+                CALL                     0
+                POP_TOP
+
+  47    L3:     LOAD_CONST               1 (None)
+                LOAD_CONST               1 (None)
+                LOAD_CONST               1 (None)
+                CALL                     3
+                POP_TOP
+
+  51    L4:     LOAD_GLOBAL             12 (time)
+                LOAD_ATTR               14 (sleep)
+                PUSH_NULL
+                LOAD_FAST_BORROW         2 (delay)
+                CALL                     1
+                POP_TOP
+
+  52            LOAD_GLOBAL             12 (time)
+                LOAD_ATTR               12 (time)
+                PUSH_NULL
+                CALL                     0
+                LOAD_FAST_BORROW         4 (timeout)
+                BINARY_OP                0 (+)
+                STORE_FAST               5 (deadline)
+
+  53            LOAD_GLOBAL             17 (bytearray + NULL)
+                CALL                     0
+                STORE_FAST               6 (buf)
+
+  54    L5:     LOAD_GLOBAL             12 (time)
+                LOAD_ATTR               12 (time)
+                PUSH_NULL
+                CALL                     0
+                LOAD_FAST_BORROW         5 (deadline)
+                COMPARE_OP              18 (bool(<))
+                POP_JUMP_IF_FALSE      171 (to L14)
+                NOT_TAKEN
+
+  55            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                2 (lock)
+                COPY                     1
+                LOAD_SPECIAL             1 (__exit__)
+                SWAP                     2
+                SWAP                     3
+                LOAD_SPECIAL             0 (__enter__)
+                CALL                     0
+        L6:     POP_TOP
+
+  56            LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                4 (connected)
+                TO_BOOL
+                POP_JUMP_IF_TRUE        11 (to L8)
+                NOT_TAKEN
+
+  57            NOP
+
+  55    L7:     LOAD_CONST               1 (None)
+                LOAD_CONST               1 (None)
+                LOAD_CONST               1 (None)
+                CALL                     3
+                POP_TOP
+                JUMP_FORWARD           121 (to L14)
+
+  58    L8:     LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                8 (ser)
+                LOAD_ATTR               18 (in_waiting)
+                STORE_FAST               7 (n)
+
+  59            LOAD_FAST_BORROW         7 (n)
+                TO_BOOL
+                POP_JUMP_IF_FALSE       43 (to L11)
+        L9:     NOT_TAKEN
+
+  60   L10:     LOAD_FAST_BORROW         6 (buf)
+                LOAD_ATTR               21 (extend + NULL|self)
+                LOAD_FAST_BORROW         0 (self)
+                LOAD_ATTR                8 (ser)
+                LOAD_ATTR               23 (read + NULL|self)
+                LOAD_FAST_BORROW         7 (n)
+                CALL                     1
+                CALL                     1
+                POP_TOP
+
+  55   L11:     LOAD_CONST               1 (None)
+                LOAD_CONST               1 (None)
+                LOAD_CONST               1 (None)
+                CALL                     3
+                POP_TOP
+
+  61   L12:     LOAD_GLOBAL             25 (len + NULL)
+                LOAD_FAST_BORROW         6 (buf)
+                CALL                     1
+                LOAD_FAST_BORROW         3 (expected)
+                COMPARE_OP             188 (bool(>=))
+                POP_JUMP_IF_FALSE        2 (to L13)
+                NOT_TAKEN
+
+  62            JUMP_FORWARD            24 (to L14)
+
+  63   L13:     LOAD_GLOBAL             12 (time)
+                LOAD_ATTR               14 (sleep)
+                PUSH_NULL
+                LOAD_CONST               2 (0.01)
+                CALL                     1
+                POP_TOP
+                JUMP_BACKWARD          196 (to L5)
+
+  64   L14:     LOAD_GLOBAL             27 (bytes + NULL)
+                LOAD_FAST_BORROW         6 (buf)
+                CALL                     1
+                RETURN_VALUE
+
+  47   L15:     PUSH_EXC_INFO
+                WITH_EXCEPT_START
+                TO_BOOL
+                POP_JUMP_IF_TRUE         2 (to L16)
+                NOT_TAKEN
+                RERAISE                  2
+       L16:     POP_TOP
+       L17:     POP_EXCEPT
+                POP_TOP
+                POP_TOP
+                POP_TOP
+                EXTENDED_ARG             1
+                JUMP_BACKWARD_NO_INTERRUPT 284 (to L4)
+
+  --   L18:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+
+  55   L19:     PUSH_EXC_INFO
+                WITH_EXCEPT_START
+                TO_BOOL
+                POP_JUMP_IF_TRUE         2 (to L20)
+                NOT_TAKEN
+                RERAISE                  2
+       L20:     POP_TOP
+       L21:     POP_EXCEPT
+                POP_TOP
+                POP_TOP
+                POP_TOP
+                JUMP_BACKWARD_NO_INTERRUPT 88 (to L12)
+
+  --   L22:     COPY                     3
+                POP_EXCEPT
+                RERAISE                  1
+ExceptionTable:
+  L1 to L3 -> L15 [2] lasti
+  L6 to L7 -> L19 [2] lasti
+  L8 to L9 -> L19 [2] lasti
+  L10 to L11 -> L19 [2] lasti
+  L15 to L17 -> L18 [4] lasti
+  L19 to L21 -> L22 [4] lasti

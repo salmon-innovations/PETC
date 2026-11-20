@@ -30,8 +30,32 @@ export interface StartTestResponse {
   startedAt: string;
 }
 
+export interface CaptureSequence {
+  simulated?: boolean;
+  sample_count?: number;
+  invalid_count?: number;
+  state: "running" | "complete" | "cancelled" | "error";
+  message: string;
+  cycle: number;
+  countdown: number | null;
+  current_k: number | null;
+  peaks: number[];
+  average: number | null;
+  cycles: { cycle: number; samples: number[]; responses: string[]; peak: number }[];
+}
+
 export interface TestResultResponse {
   testId: string;
+  sessionToken: string;
+  passFail: boolean | null;
+  fuelType: string;
+  readings: Record<string, number | null>;
+  capturedAt: string;
+  captureSequence?: CaptureSequence | null;
+}
+
+export interface LiveResultResponse {
+  state: "ready" | "waiting";
   sessionToken: string;
   passFail: boolean | null;
   fuelType: string;
@@ -103,7 +127,7 @@ export interface LtmsSubmitResponse {
   submissionId?: string;
 }
 
-export type AnalyzerType = "mock" | "serial_gas" | "serial_diesel" | "fty_opacimeter" | "fofen_gas" | "fofen_ascii" | "koeng_gas" | "koeng_diesel" | "cartesykj_gas";
+export type AnalyzerType = "mock" | "cartesykj" | "koeng" | "fofen" | "generic_serial" | "serial_gas" | "serial_diesel" | "fty_opacimeter" | "fofen_gas" | "fofen_ascii" | "koeng_gas" | "koeng_diesel" | "cartesykj_gas" | "cartesykj_diesel" | "cartesykj_desiel";
 
 export interface AnalyzerSettings {
   type: AnalyzerType;
@@ -167,6 +191,7 @@ export const sidecarClient = {
       operator_id: params.operatorId,
       plate_number: params.plateNumber,
       fuel_type: params.fuelType,
+      diesel_sequence: params.fuelType === "DIESEL",
       inspection_purpose: params.inspectionPurpose,
     });
     return {
@@ -176,11 +201,59 @@ export const sidecarClient = {
     };
   },
 
-  async getResult(sessionToken: string): Promise<TestResultResponse> {
+  async getResult(
+    sessionToken: string,
+    onProgress?: (progress: CaptureSequence) => void,
+    signal?: AbortSignal,
+    onReady?: () => Promise<void>,
+  ): Promise<TestResultResponse> {
     const c = await client();
-    const { data } = await c.get(`/test/${sessionToken}/result`);
+    const deadline = Date.now() + 180_000;
+    let response = await c.get(`/test/${sessionToken}/result`, { signal });
+    while (response.status === 202) {
+      onProgress?.(response.data.capture_sequence);
+      if (response.data.capture_sequence.state === "complete") {
+        if (!onReady) throw new Error("Press Get Test Result to accept the six-test result.");
+        await onReady();
+        response = await c.get(`/test/${sessionToken}/result`, { signal, params: { accept_result: true } });
+        break;
+      }
+      if (Date.now() >= deadline) throw new Error("Six-test capture timed out. Repeat the test.");
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => {
+          clearTimeout(timer);
+          signal?.removeEventListener("abort", abort);
+          reject(new Error("Capture cancelled"));
+        };
+        const timer = setTimeout(() => {
+          signal?.removeEventListener("abort", abort);
+          resolve();
+        }, 200);
+        signal?.addEventListener("abort", abort, { once: true });
+        if (signal?.aborted) abort();
+      });
+      response = await c.get(`/test/${sessionToken}/result`, { signal });
+    }
+    const { data } = response;
     return {
       testId: data.test_id,
+      sessionToken: data.session_token,
+      passFail: data.pass_fail,
+      fuelType: data.fuel_type,
+      readings: data.readings,
+      capturedAt: data.captured_at,
+      captureSequence: data.capture_sequence,
+    };
+  },
+
+  async getLiveResult(sessionToken: string): Promise<LiveResultResponse | null> {
+    const c = await client();
+    const { data, status } = await c.get(`/test/${sessionToken}/live`, {
+      validateStatus: (code) => code === 200 || code === 202,
+    });
+    if (status === 202) return null;
+    return {
+      state: data.state,
       sessionToken: data.session_token,
       passFail: data.pass_fail,
       fuelType: data.fuel_type,
@@ -192,6 +265,12 @@ export const sidecarClient = {
   async abortTest(sessionToken: string): Promise<void> {
     const c = await client();
     await c.post(`/test/${sessionToken}/abort`);
+  },
+
+  async stopAnalyzer(): Promise<{ status: string; message: string }> {
+    const c = await client();
+    const { data } = await c.post("/api/v1/analyzer/stop");
+    return data;
   },
 
   async capturePhoto(params?: {

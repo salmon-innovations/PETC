@@ -168,6 +168,10 @@ class SerialAnalyzer(Analyzer):
         if event is not None:
             event.set()
 
+    def live_result(self, session_token: str) -> Optional[AnalyzerResult]:
+        with self._lock:
+            return self._results.get(session_token)
+
     @property
     def is_connected(self) -> bool:
         return bool(self._serial and self._serial.is_open)

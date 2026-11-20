@@ -9,6 +9,7 @@ import os
 import uuid
 import json
 import hashlib
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -17,9 +18,12 @@ from typing import Literal, Optional
 import uvicorn
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from ..analyzer.base import Analyzer, AnalyzerConnectionError, AnalyzerTimeoutError, FuelType
+from ..analyzer.builder import ANALYZER_TYPES, concrete_label, infer_analyzer_type, normalize_analyzer_brand, resolve_analyzer_type
+from ..analyzer.serial_base import list_serial_ports
 from ..camera.capture import CameraCapture, CaptureError
 from ..printer.base import Printer, ReceiptData
 from ..gov.base import GovRegistryClient
@@ -47,13 +51,14 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# Dependency container — populated by service.py at startup.
+# Dependency container â€” populated by service.py at startup.
 # ---------------------------------------------------------------------------
 _analyzer: Optional[Analyzer] = None
 _camera: Optional[CameraCapture] = None
 _printer: Optional[Printer] = None
 _gov: Optional[GovRegistryClient] = None
 _cloud_sync: Optional[CloudSyncPusher] = None
+_analyzer_settings_lock = threading.RLock()
 
 
 def init(
@@ -100,6 +105,48 @@ def _get_printer() -> Printer:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Printer not initialised")
     return _printer
 
+def _prepare_analyzer_for_fuel(fuel: FuelType) -> tuple[Analyzer, str]:
+    """Ensure the active analyzer matches the saved brand and requested fuel."""
+    global _analyzer
+    from ..analyzer.builder import build_analyzer_from_settings
+
+    with _analyzer_settings_lock:
+        settings = _load_analyzer_settings()
+        target_type = resolve_analyzer_type(settings.type, fuel)
+        current = _analyzer
+        current_type = infer_analyzer_type(current)
+        if settings.type == "mock" and current_type and current_type != "mock":
+            current_brand = normalize_analyzer_brand(current_type)
+            if resolve_analyzer_type(current_brand, fuel) == current_type:
+                target_type = current_type
+
+        if current is not None and current_type == target_type:
+            if not current.is_connected:
+                current.connect()
+            return current, target_type
+
+        old_analyzer = current
+        if old_analyzer is not None:
+            try:
+                old_analyzer.disconnect()
+            except Exception as exc:
+                logger.warning("Error disconnecting analyzer before fuel switch: %s", exc)
+
+        new_analyzer = build_analyzer_from_settings(target_type)
+        try:
+            new_analyzer.connect()
+        except Exception:
+            if old_analyzer is not None:
+                try:
+                    old_analyzer.connect()
+                    _analyzer = old_analyzer
+                except Exception:
+                    logger.exception("Failed to reconnect previous analyzer after fuel switch failure")
+            raise
+
+        _analyzer = new_analyzer
+        return new_analyzer, target_type
+
 
 def _canonical_submission_payload(caller_payload: dict) -> tuple[dict, str]:
     """Attach the sidecar-commissioned center identity to a cloud payload.
@@ -137,6 +184,7 @@ def _canonical_submission_payload(caller_payload: dict) -> tuple[dict, str]:
 # Schema
 # ---------------------------------------------------------------------------
 class StartTestRequest(BaseModel):
+    diesel_sequence: bool = False
     operator_id: str
     plate_number: str
     fuel_type: str  # "GAS" | "DIESEL"
@@ -160,6 +208,7 @@ class TestResultResponse(BaseModel):
     fuel_type: str
     readings: dict
     captured_at: str
+    capture_sequence: Optional[dict] = None
 
 
 class CapturePhotoRequest(BaseModel):
@@ -185,7 +234,7 @@ class StatusResponse(BaseModel):
     printer_status: dict
     cloud_outbox_pending: int
     agent_version: str
-    # Wallet fields are None until the cloud has answered at least once — in
+    # Wallet fields are None until the cloud has answered at least once â€” in
     # local-mock mode (no PETC_CLOUD_URL) they stay None forever, and the UI
     # simply omits the balance rather than showing a misleading zero.
     wallet_balance_centavos: Optional[int] = None
@@ -204,7 +253,7 @@ class UploadSubmitRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Schema — auth
+# Schema â€” auth
 # ---------------------------------------------------------------------------
 class LoginRequest(BaseModel):
     email: str
@@ -213,6 +262,19 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     token: str
     user: dict
+
+class UpdateProfileRequest(BaseModel):
+    user_id: Optional[str] = None
+    email: str
+    full_name: str
+    tesda_cert_no: Optional[str] = None
+    certification_no: Optional[str] = None
+
+class ChangePasswordRequest(BaseModel):
+    user_id: Optional[str] = None
+    email: Optional[str] = None
+    current_password: str
+    new_password: str
 
 
 # ---------------------------------------------------------------------------
@@ -233,7 +295,7 @@ def login(req: LoginRequest) -> LoginResponse:
         user = session.query(User).filter(User.email == req.email, User.active == True).first()
         if user is None:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
-        # bcrypt check — passlib used at create time; fall back to sha256 in dev
+        # bcrypt check â€” passlib used at create time; fall back to sha256 in dev
         try:
             from passlib.context import CryptContext  # type: ignore
             ctx = CryptContext(schemes=["bcrypt"])
@@ -244,7 +306,7 @@ def login(req: LoginRequest) -> LoginResponse:
             if not valid_password:
                 raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
         except ImportError:
-            # passlib not installed — accept plaintext match for dev seeding only
+            # passlib not installed â€” accept plaintext match for dev seeding only
             if req.password != user.password_hash:
                 raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
 
@@ -262,6 +324,78 @@ def login(req: LoginRequest) -> LoginResponse:
         )
 
 
+@app.put("/auth/profile")
+def update_profile(req: UpdateProfileRequest) -> dict:
+    from ..db.session import SessionLocal
+    from ..db.models import User
+
+    with SessionLocal() as session:
+        user = None
+        if req.user_id:
+            user = session.query(User).filter(User.id == req.user_id, User.active == True).first()
+        if user is None and req.email:
+            user = session.query(User).filter(User.email == req.email, User.active == True).first()
+        if user is None:
+            user = session.query(User).filter(User.active == True).first()
+        if user is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+
+        user.full_name = req.full_name
+        user.email = req.email
+        if req.tesda_cert_no is not None:
+            user.tesda_cert_no = req.tesda_cert_no
+        if req.certification_no is not None:
+            user.certification_no = req.certification_no
+
+        session.commit()
+        session.refresh(user)
+
+        return {
+            "id": user.id,
+            "email": user.email,
+            "fullName": user.full_name,
+            "role": user.role,
+            "tesdaCertNo": user.tesda_cert_no,
+            "certificationNo": user.certification_no,
+        }
+
+
+@app.post("/auth/change-password")
+def change_password(req: ChangePasswordRequest) -> dict:
+    from ..db.session import SessionLocal
+    from ..db.models import User
+
+    with SessionLocal() as session:
+        user = None
+        if req.user_id:
+            user = session.query(User).filter(User.id == req.user_id, User.active == True).first()
+        if user is None and req.email:
+            user = session.query(User).filter(User.email == req.email, User.active == True).first()
+        if user is None:
+            user = session.query(User).filter(User.active == True).first()
+        if user is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+
+        # Verify current password
+        try:
+            from passlib.context import CryptContext  # type: ignore
+            ctx = CryptContext(schemes=["bcrypt"])
+            try:
+                valid_password = ctx.verify(req.current_password, user.password_hash)
+            except Exception:
+                valid_password = req.current_password == user.password_hash
+            if not valid_password:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Current password is incorrect")
+            user.password_hash = ctx.hash(req.new_password)
+        except ImportError:
+            if req.current_password != user.password_hash:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Current password is incorrect")
+            user.password_hash = req.new_password
+
+        session.commit()
+        return {"status": "ok", "message": "Password updated successfully"}
+
+
 @app.get("/status", response_model=StatusResponse)
 def get_status(
     analyzer: Analyzer = Depends(_get_analyzer),
@@ -274,13 +408,15 @@ def get_status(
     with SessionLocal() as session:
         pending = session.query(CloudOutbox).filter(CloudOutbox.status == "PENDING").count()
 
-    # Read-through of the reconciler's cache — never a live cloud call. This
+    # Read-through of the reconciler's cache â€” never a live cloud call. This
     # endpoint backs a 10 s UI poll and has to keep answering when the cloud is
     # unreachable.
     wallet = get_cached_wallet()
 
+    from ..analyzer.mock import MockAnalyzer
+
     return StatusResponse(
-        analyzer_connected=analyzer.is_connected,
+        analyzer_connected=not isinstance(analyzer, MockAnalyzer) and analyzer.is_connected,
         printer_status=printer.check_status(),
         cloud_outbox_pending=pending,
         agent_version="0.1.0",
@@ -301,19 +437,29 @@ def start_test(
     from ..db.session import SessionLocal
     from ..db.models import EmissionTest, User
 
-    started_at = datetime.now(timezone.utc)
-    if is_production() and not analyzer.is_connected:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "DO 2023-008 requires an interfaced analyzer before test start",
-        )
+    from ..analyzer.mock import MockAnalyzer
 
     try:
-        token = analyzer.start_test(FuelType(req.fuel_type.upper()))
+        fuel = FuelType(req.fuel_type.upper())
+        analyzer, concrete_type = _prepare_analyzer_for_fuel(fuel)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     except AnalyzerConnectionError as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "fuel_type must be GAS or DIESEL") from exc
+    except Exception as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            f"Could not connect {concrete_label(locals().get('concrete_type', req.fuel_type))}: {exc}",
+        ) from exc
+
+    is_mock_analyzer = isinstance(analyzer, MockAnalyzer)
+
+    started_at = datetime.now(timezone.utc)
+    if (is_production() or not is_mock_analyzer) and not analyzer.is_connected:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Connect the analyzer in Settings before starting the test",
+        )
 
     test_id = str(uuid.uuid4())
     plate_number = _normalize_plate(req.plate_number)
@@ -333,6 +479,14 @@ def start_test(
                 status.HTTP_409_CONFLICT,
                 "Vehicle failed within the last hour; DO 2023-008 retest lock is active",
             )
+        try:
+            if is_mock_analyzer and fuel is FuelType.DIESEL and req.diesel_sequence:
+                token = analyzer.start_diesel_sequence()
+            else:
+                token = analyzer.start_test(fuel)
+        except AnalyzerConnectionError as exc:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+
         if session.get(User, req.operator_id) is None:
             session.add(
                 User(
@@ -387,11 +541,28 @@ def start_test(
 @app.get("/test/{session_token}/result", response_model=TestResultResponse)
 def get_result(
     session_token: str,
+    accept_result: bool = False,
     analyzer: Analyzer = Depends(_get_analyzer),
     cloud_sync: CloudSyncPusher = Depends(_get_cloud_sync),
 ) -> TestResultResponse:
     from ..db.session import SessionLocal
     from ..db.models import DieselTestResult, EmissionTest, GasTestResult
+
+    # MQY-200 performs six timed cycles before a final reading is available.
+    # Return progress immediately; only the completed result retrieval is timed.
+    from ..analyzer.cartesykj_desiel import CartesykjDieselAnalyzer
+    is_mqy200 = isinstance(analyzer, CartesykjDieselAnalyzer)
+    from ..analyzer.mock import MockAnalyzer
+    is_mock_sequence = isinstance(analyzer, MockAnalyzer) and analyzer.has_capture_sequence(session_token)
+    if is_mqy200 or is_mock_sequence:
+        try:
+            progress = analyzer.capture_progress(session_token)
+        except AnalyzerTimeoutError as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+        if progress["state"] == "running" or (progress["state"] == "complete" and not accept_result):
+            return JSONResponse(status_code=202, content={"capture_sequence": progress})
+        if progress["state"] != "complete":
+            raise HTTPException(status.HTTP_409_CONFLICT, progress["message"])
 
     started_capture = time.monotonic()
     try:
@@ -410,7 +581,7 @@ def get_result(
     # and some gas benches (including the KOENG KEG-500 CE) do not carry RPM in
     # their gas-data frame.  Preserve and display that machine result here; the
     # stricter DO/LTMS completeness check still runs before submission.
-    _validate_machine_readings(result.fuel_type.value, readings)
+    _validate_machine_readings(result.fuel_type.value, readings, allow_k_only=is_mqy200)
     captured_at = result.captured_at
     raw_bytes_hex = result.raw_bytes.hex()
 
@@ -452,6 +623,7 @@ def get_result(
             "fuelType": result.fuel_type.value,
             "serialNo": result.serial_no,
             "captureElapsedSeconds": round(elapsed, 4),
+            "captureSequence": result.capture_sequence,
             "passFail": result.pass_fail,
         }, test.operator_id)
         session.commit()
@@ -469,6 +641,7 @@ def get_result(
             "serial_no": result.serial_no,
             "captured_at": captured_at.isoformat(),
             "readings": readings,
+            "capture_sequence": result.capture_sequence,
             "photo_count": photo_count,
             "raw": result.raw_bytes.hex(),
         },
@@ -481,8 +654,33 @@ def get_result(
         fuel_type=result.fuel_type.value,
         readings=readings,
         captured_at=captured_at.isoformat(),
+        capture_sequence=result.capture_sequence,
     )
 
+
+@app.get("/test/{session_token}/live", response_model=None)
+def get_live_result(
+    session_token: str,
+    analyzer: Analyzer = Depends(_get_analyzer),
+):
+    """Return the current analyzer frame without consuming or saving it."""
+    try:
+        result = analyzer.live_result(session_token)
+    except AnalyzerConnectionError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+    if result is None:
+        return JSONResponse(
+            status_code=202,
+            content={"state": "waiting", "message": "Waiting for analyzer reading"},
+        )
+    return {
+        "state": "ready",
+        "session_token": session_token,
+        "fuel_type": result.fuel_type.value,
+        "readings": _reading_to_dict(result),
+        "captured_at": result.captured_at.isoformat(),
+        "pass_fail": result.pass_fail,
+    }
 
 @app.post("/test/{session_token}/abort")
 def abort_test(
@@ -491,6 +689,19 @@ def abort_test(
 ) -> dict:
     analyzer.abort_test(session_token)
     return {"aborted": session_token}
+
+
+@app.post("/api/v1/analyzer/stop")
+def stop_analyzer(
+    analyzer: Analyzer = Depends(_get_analyzer),
+) -> dict:
+    """Halt any active acquisition and reset/disconnect the analyzer serial port."""
+    try:
+        analyzer.disconnect()
+        return {"status": "stopped", "message": "Analyzer hardware stopped"}
+    except Exception as exc:
+        logger.warning("Error stopping analyzer hardware: %s", exc)
+        return {"status": "error", "message": str(exc)}
 
 
 @app.get("/api/v1/photos/{photo_id}")
@@ -924,7 +1135,7 @@ def submit_upload_v1(
     /api/submissions, short-poll up to 60s for LTMS result.
 
     Local-mock path (fallback when PETC_CLOUD_URL unset and PETC_GOV_MOCK=true):
-    call the local mock gov client directly — preserves developer workflow.
+    call the local mock gov client directly â€” preserves developer workflow.
     """
     from ..db.session import SessionLocal
     from ..db.models import EmissionTest, GovOutbox, LtmsSubmission, TestPhoto
@@ -953,7 +1164,7 @@ def submit_upload_v1(
 
     request_json = json.dumps(payload, default=str)
 
-    # ── Cloud submission path ─────────────────────────────────────────────
+    # â”€â”€ Cloud submission path â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if cc.is_available():
         cloud = cc.get_client()
 
@@ -1081,7 +1292,7 @@ def submit_upload_v1(
                 "incidentDueAt": (now + timedelta(hours=24)).isoformat(),
             }
 
-        # 5. Terminal result received — persist and optionally render CEC
+        # 5. Terminal result received â€” persist and optionally render CEC
         result_state = final_status.state
         cert_no = final_status.certificate_no
         rejection_reason = final_status.rejection_reason
@@ -1152,7 +1363,7 @@ def submit_upload_v1(
             "Production requires cloud-mediated LTMS/IRDS submission",
         )
 
-    # ── Local-mock path (dev / offline) ───────────────────────────────────
+    # â”€â”€ Local-mock path (dev / offline) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     from ..gov.base import EmissionPayload
 
     with SessionLocal() as session:
@@ -1589,12 +1800,11 @@ def analytics_daily(days: int = 7) -> list:
 @app.get("/api/v1/ports")
 def list_ports() -> list:
     """Return available serial ports for the settings / hardware-config screen."""
-    from ..analyzer.serial_base import list_serial_ports
     return list_serial_ports()
 
 
 # ---------------------------------------------------------------------------
-# Settings routes — analyzer hardware config (read + hot-reconnect)
+# Settings routes â€” analyzer hardware config (read + hot-reconnect)
 # ---------------------------------------------------------------------------
 _ANALYZER_SETTING_KEYS = (
     "analyzer.type",
@@ -1607,17 +1817,7 @@ _ANALYZER_SETTING_KEYS = (
     "analyzer.serial_no",
 )
 
-_ANALYZER_TYPES = {
-    "mock",
-    "serial_gas",
-    "serial_diesel",
-    "fty_opacimeter",
-    "fofen_gas",
-    "fofen_ascii",
-    "koeng_gas",
-    "koeng_diesel",
-    "cartesykj_gas",
-}
+_ANALYZER_TYPES = ANALYZER_TYPES
 _PARITY_VALUES = {"N", "E", "O"}
 
 
@@ -1642,7 +1842,7 @@ def _load_analyzer_settings() -> AnalyzerSettings:
             for r in session.query(AppSetting).filter(AppSetting.key.in_(_ANALYZER_SETTING_KEYS)).all()
         }
     return AnalyzerSettings(
-        type=rows.get("analyzer.type", "mock"),
+        type=normalize_analyzer_brand(rows.get("analyzer.type", "mock")),
         port=rows.get("analyzer.port", "COM1"),
         baud=int(rows.get("analyzer.baud", "9600")),
         dataBits=int(rows.get("analyzer.data_bits", "8")),
@@ -1669,7 +1869,8 @@ def update_analyzer_settings(req: AnalyzerSettings) -> dict:
     from ..db.models import AppSetting
     from ..analyzer.builder import build_analyzer_from_settings
 
-    if req.type not in _ANALYZER_TYPES:
+    req_type = normalize_analyzer_brand(req.type)
+    if req_type not in _ANALYZER_TYPES:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             f"type must be one of {sorted(_ANALYZER_TYPES)}")
     if req.parity.upper() not in _PARITY_VALUES:
@@ -1681,27 +1882,13 @@ def update_analyzer_settings(req: AnalyzerSettings) -> dict:
     if req.baud <= 0:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "baud must be positive")
 
-    previous = _load_analyzer_settings()
     normalized_req = req.model_copy(update={
+        "type": req_type,
+        "port": req.port.strip(),
         "parity": req.parity.upper(),
+        "address": req.address.strip(),
         "serialNo": req.serialNo.strip(),
     })
-    if normalized_req == previous and _analyzer is not None and _analyzer.is_connected:
-        # The selected adapter already owns the serial port.  Re-saving an
-        # unchanged form must not construct a second adapter for the same COM
-        # port, which Windows correctly rejects as "Access is denied".
-        return {"applied": True, "connected": True}
-
-    new_values = {
-        "analyzer.type": req.type,
-        "analyzer.port": req.port,
-        "analyzer.baud": str(req.baud),
-        "analyzer.data_bits": str(req.dataBits),
-        "analyzer.parity": req.parity.upper(),
-        "analyzer.stop_bits": str(req.stopBits),
-        "analyzer.address": req.address,
-        "analyzer.serial_no": req.serialNo.strip(),
-    }
 
     def _persist(values: dict[str, str]) -> None:
         with SessionLocal() as session:
@@ -1713,27 +1900,32 @@ def update_analyzer_settings(req: AnalyzerSettings) -> dict:
                     row.value = value
             session.commit()
 
-    _persist(new_values)
+    with _analyzer_settings_lock:
+        previous = _load_analyzer_settings()
+        previous = previous.model_copy(update={
+            "port": previous.port.strip(),
+            "parity": previous.parity.upper(),
+            "address": previous.address.strip(),
+            "serialNo": previous.serialNo.strip(),
+        })
 
-    old_analyzer = _analyzer
-    old_disconnected = False
-    try:
-        new_analyzer = build_analyzer_from_settings()
-        # Serial ports are exclusive on Windows.  When changing settings for
-        # the same physical port, release the old handle before connecting the
-        # replacement.  For a different port we retain the zero-downtime order.
-        if (
-            old_analyzer is not None
-            and old_analyzer.is_connected
-            and previous.type != "mock"
-            and previous.port.casefold() == req.port.casefold()
-        ):
-            old_analyzer.disconnect()
-            old_disconnected = True
-        new_analyzer.connect()
-    except Exception as exc:
-        logger.exception("Failed to bring up new analyzer; rolling back")
-        _persist({
+        if normalized_req == previous and _analyzer is not None and _analyzer.is_connected:
+            # The selected adapter already owns the serial port. Re-saving an
+            # unchanged form must not construct a second adapter for the same
+            # COM port, which Windows correctly rejects as "Access is denied".
+            return {"applied": True, "connected": True}
+
+        new_values = {
+            "analyzer.type": normalized_req.type,
+            "analyzer.port": normalized_req.port,
+            "analyzer.baud": str(normalized_req.baud),
+            "analyzer.data_bits": str(normalized_req.dataBits),
+            "analyzer.parity": normalized_req.parity,
+            "analyzer.stop_bits": str(normalized_req.stopBits),
+            "analyzer.address": normalized_req.address,
+            "analyzer.serial_no": normalized_req.serialNo,
+        }
+        previous_values = {
             "analyzer.type": previous.type,
             "analyzer.port": previous.port,
             "analyzer.baud": str(previous.baud),
@@ -1742,29 +1934,59 @@ def update_analyzer_settings(req: AnalyzerSettings) -> dict:
             "analyzer.stop_bits": str(previous.stopBits),
             "analyzer.address": previous.address,
             "analyzer.serial_no": previous.serialNo,
-        })
-        if old_disconnected and old_analyzer is not None:
-            try:
-                old_analyzer.connect()
-            except Exception:
-                logger.exception("Failed to reconnect previous analyzer after rollback")
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            f"Could not connect with new settings: {exc}. Reverted to previous configuration.",
-        ) from exc
+        }
 
-    _analyzer = new_analyzer
-    if old_analyzer is not None:
+        _persist(new_values)
+
+        old_analyzer = _analyzer
+        old_disconnected = False
+        new_analyzer = None
+        same_physical_port = (
+            old_analyzer is not None
+            and old_analyzer.is_connected
+            and previous.type != "mock"
+            and previous.port.casefold() == normalized_req.port.casefold()
+        )
         try:
-            old_analyzer.disconnect()
-        except Exception:
-            logger.exception("Error disconnecting previous analyzer (ignored)")
+            new_analyzer = build_analyzer_from_settings()
+            # Serial ports are exclusive on Windows. Release the previous
+            # handle before opening a replacement for the same physical port.
+            if same_physical_port:
+                old_analyzer.disconnect()
+                old_disconnected = True
+                time.sleep(0.25)
+            new_analyzer.connect()
+        except Exception as exc:
+            logger.exception("Failed to bring up new analyzer; rolling back")
+            if new_analyzer is not None:
+                try:
+                    new_analyzer.disconnect()
+                except Exception:
+                    logger.exception("Error disconnecting failed analyzer (ignored)")
+            _persist(previous_values)
+            if old_disconnected and old_analyzer is not None:
+                try:
+                    time.sleep(0.25)
+                    old_analyzer.connect()
+                except Exception:
+                    logger.exception("Failed to reconnect previous analyzer after rollback")
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                f"Could not connect with new settings: {exc}. Reverted to previous configuration.",
+            ) from exc
 
-    return {"applied": True, "connected": new_analyzer.is_connected}
+        _analyzer = new_analyzer
+        if old_analyzer is not None and old_analyzer is not new_analyzer:
+            try:
+                old_analyzer.disconnect()
+            except Exception:
+                logger.exception("Error disconnecting previous analyzer (ignored)")
+
+        return {"applied": True, "connected": new_analyzer.is_connected}
 
 
 # ---------------------------------------------------------------------------
-# Settings routes — camera hardware
+# Settings routes â€” camera hardware
 # ---------------------------------------------------------------------------
 _CAMERA_TYPES = {"mock", "opencv"}
 
@@ -1904,11 +2126,11 @@ def _require_nonblank(value, label: str) -> None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{label} is required")
 
 
-def _validate_machine_readings(fuel_type: str, readings: dict) -> None:
+def _validate_machine_readings(fuel_type: str, readings: dict, *, allow_k_only: bool = False) -> None:
     if not readings:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "machine readings are required")
     gas_fields = ("co_pct", "hc_ppm", "co2_pct", "o2_pct", "lambda_value")
-    diesel_fields = ("opacity_pct", "k_value")
+    diesel_fields = ("k_value",) if allow_k_only else ("opacity_pct", "k_value")
     fields = gas_fields if fuel_type.upper() == "GAS" else diesel_fields
     for field in fields:
         value = readings.get(field)
@@ -2173,3 +2395,6 @@ def _test_detail_to_response(test) -> dict:
 
 def run(host: str = "127.0.0.1", port: int = 8765) -> None:
     uvicorn.run(app, host=host, port=port, log_level="info")
+
+
+

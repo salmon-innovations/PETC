@@ -1,5 +1,6 @@
 package com.petc.ltms;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,7 @@ public class LtmsCecNumberAllocator {
     private final Clock clock;
     private final int orNumberWidth;
 
+    @Autowired
     public LtmsCecNumberAllocator(
             JdbcTemplate jdbc,
             @Value("${petc.ltms.cec-or-number-width:6}") int orNumberWidth

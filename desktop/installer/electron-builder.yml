@@ -6,6 +6,7 @@ directories:
   output: dist/installer
 
 artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
+afterPack: installer/stamp-win-icon.js
 
 # Renderer built bundle
 files:
@@ -19,9 +20,12 @@ files:
     filter:
       - "main.js"
       - "preload.js"
+      - "commissioning.js"
 
 # PyInstaller-frozen sidecar binary (built separately before electron-builder)
 extraResources:
+  - from: ../SoftwareIcon/PETC.png
+    to: PETC.png
   - from: sidecar/dist/petc
     to: petc-sidecar
     filter:
@@ -48,6 +52,10 @@ dmg:
       path: /Applications
 
 win:
+  icon: build/PETC.ico
+  # No Windows signing certificate is configured. The afterPack hook stamps
+  # the icon without invoking electron-builder's signing toolchain.
+  signAndEditExecutable: false
   target:
     - target: nsis
       arch: [x64]
@@ -58,6 +66,8 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: PETC Desktop
+  installerIcon: build/PETC.ico
+  uninstallerIcon: build/PETC.ico
 
 publish:
   provider: generic

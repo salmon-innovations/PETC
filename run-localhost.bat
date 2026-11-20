@@ -10,6 +10,7 @@ set "MODE=menu"
 
 if /I "%~1"=="install" set "MODE=single" & goto install_desktop
 if /I "%~1"=="minio" set "MODE=single" & goto run_minio
+if /I "%~1"=="website" set "MODE=single" & goto run_website
 if /I "%~1"=="renderer" set "MODE=single" & goto run_renderer
 if /I "%~1"=="frontend" set "MODE=single" & goto run_renderer
 if /I "%~1"=="electron" set "MODE=single" & goto run_electron
@@ -28,11 +29,13 @@ echo   4. Start Electron desktop app
 echo   5. Optional manual sidecar API
 echo   6. Stop localhost app processes
 echo   7. Exit
+echo   8. Start local Operator Website ^(http://localhost:3000^)
 echo.
 echo Recommended run order: 1, 2, 3, 4
 echo Use option 5 only if Electron does not start the sidecar automatically.
+echo Use option 8 for the browser-based Operator Website, not Electron.
 echo.
-set /p "CHOICE=Enter choice [1-7]: "
+set /p "CHOICE=Enter choice [1-8]: "
 
 if "%CHOICE%"=="1" goto install_desktop
 if "%CHOICE%"=="2" goto start_minio_window
@@ -41,6 +44,7 @@ if "%CHOICE%"=="4" goto start_electron_window
 if "%CHOICE%"=="5" goto start_sidecar_window
 if "%CHOICE%"=="6" goto stop_localhost
 if "%CHOICE%"=="7" exit /b 0
+if "%CHOICE%"=="8" goto start_website_window
 
 echo Invalid choice.
 pause
@@ -82,6 +86,19 @@ goto action_done
 :run_minio
 cd /d "%ROOT%"
 docker compose up minio
+exit /b %ERRORLEVEL%
+
+:start_website_window
+echo Starting the local Operator Website in a new window: http://localhost:3000
+echo Make sure Docker Desktop and the local PETC PostgreSQL database are running.
+start "PETC Operator Website" cmd /k call "%~f0" website
+goto action_done
+
+:run_website
+cd /d "%ROOT%"
+echo Starting the local cloud backend, MinIO, and Operator Website...
+echo When the services are ready, open http://localhost:3000
+docker compose up --build
 exit /b %ERRORLEVEL%
 
 :start_renderer_window

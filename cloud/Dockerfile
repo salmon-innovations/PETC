@@ -4,7 +4,10 @@ FROM --platform=$BUILDPLATFORM eclipse-temurin:21-jdk-alpine AS build
 WORKDIR /app
 COPY gradlew settings.gradle.kts build.gradle.kts ./
 COPY gradle ./gradle
-RUN ./gradlew dependencies --no-daemon -q
+# The repository is also used from Windows, where gradlew may arrive with
+# CRLF endings and without its Unix execute bit. Normalize both before Linux
+# attempts to invoke its /bin/sh shebang.
+RUN sed -i 's/\r$//' gradlew && chmod +x gradlew && ./gradlew dependencies --no-daemon -q
 COPY src ./src
 RUN ./gradlew bootJar --no-daemon -q
 

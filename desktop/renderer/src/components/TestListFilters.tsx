@@ -1,5 +1,6 @@
 import { INSPECTION_PURPOSE_LABELS, type FuelType, type InspectionPurpose } from "../types";
 import { EMPTY_TEST_FILTERS, type TestListFilterState, type TestResultFilter } from "../utils/testFilters";
+import { MagnifyingGlass, ArrowsClockwise } from "@phosphor-icons/react";
 
 interface TestListFiltersProps {
   filters: TestListFilterState;
@@ -20,39 +21,43 @@ export function TestListFilters({
   const hasFilters = Object.values(filters).some(Boolean);
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <div className={`grid items-end gap-3 sm:grid-cols-2 ${ltmsStates ? "xl:grid-cols-7" : "xl:grid-cols-6"}`}>
-        <label className="sm:col-span-2 xl:col-span-2">
-          <span className="sr-only">Search tests</span>
-          <input
-            type="search"
-            value={filters.search}
-            onChange={(event) => update("search", event.target.value)}
-            placeholder="Search plate, certificate, submission…"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-          />
+    <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm space-y-4">
+      <div className={`grid items-end gap-3.5 sm:grid-cols-2 ${ltmsStates ? "xl:grid-cols-7" : "xl:grid-cols-6"}`}>
+        {/* Search input with icon */}
+        <label className="sm:col-span-2 xl:col-span-2 space-y-1.5 block">
+          <span className="text-xs font-bold text-slate-700 block">Search Test Records</span>
+          <div className="relative">
+            <MagnifyingGlass size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              type="search"
+              value={filters.search}
+              onChange={(event) => update("search", event.target.value)}
+              placeholder="Filter by plate, cert #, or ID…"
+              className="w-full rounded-xl border border-slate-300 bg-white pl-10 pr-4 py-2.5 text-sm font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs min-h-[42px]"
+            />
+          </div>
         </label>
 
         <FilterSelect
-          label="Result"
+          label="Pass / Fail"
           value={filters.result}
           onChange={(value) => update("result", value as TestResultFilter)}
           options={[
-            ["PASS", "Passed"],
-            ["FAIL", "Failed"],
-            ...(resultIncludesNotRecorded ? [["NOT_RECORDED", "Not recorded"]] : []),
+            ["PASS", "Passed Only"],
+            ["FAIL", "Failed Only"],
+            ...(resultIncludesNotRecorded ? [["NOT_RECORDED", "Not Recorded"]] : []),
           ] as Array<[string, string]>}
         />
 
         <FilterSelect
-          label="Purpose"
+          label="Inspection Purpose"
           value={filters.purpose}
           onChange={(value) => update("purpose", value as "" | InspectionPurpose)}
           options={Object.entries(INSPECTION_PURPOSE_LABELS)}
         />
 
         <FilterSelect
-          label="Fuel"
+          label="Fuel Category"
           value={filters.fuelType}
           onChange={(value) => update("fuelType", value as "" | FuelType)}
           options={[
@@ -64,32 +69,33 @@ export function TestListFilters({
 
         {ltmsStates && (
           <FilterSelect
-            label="LTMS status"
+            label="LTMS Registry State"
             value={filters.ltmsState}
             onChange={(value) => update("ltmsState", value)}
             options={ltmsStates.map((state) => [state, state.replaceAll("_", " ")])}
           />
         )}
 
-        <label>
-          <span className="mb-1 block text-xs font-medium text-gray-600">Test date</span>
+        <label className="space-y-1.5 block">
+          <span className="text-xs font-bold text-slate-700 block">Test Date</span>
           <input
             type="date"
             value={filters.testDate}
             onChange={(event) => update("testDate", event.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs min-h-[42px]"
           />
         </label>
       </div>
 
       {hasFilters && (
-        <div className="mt-3 flex justify-end">
+        <div className="flex justify-end pt-1 border-t border-slate-100">
           <button
             type="button"
             onClick={() => onChange({ ...EMPTY_TEST_FILTERS })}
-            className="text-xs font-medium text-blue-600 hover:text-blue-800"
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
           >
-            Clear filters
+            <ArrowsClockwise size={14} weight="bold" />
+            <span>Reset All Filters</span>
           </button>
         </div>
       )}
@@ -109,14 +115,14 @@ function FilterSelect({
   onChange: (value: string) => void;
 }) {
   return (
-    <label>
-      <span className="mb-1 block text-xs font-medium text-gray-600">{label}</span>
+    <label className="space-y-1.5 block">
+      <span className="text-xs font-bold text-slate-700 block">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs min-h-[42px] cursor-pointer"
       >
-        <option value="">All</option>
+        <option value="">All Categories</option>
         {options.map(([optionValue, optionLabel]) => (
           <option key={optionValue} value={optionValue}>{optionLabel}</option>
         ))}
